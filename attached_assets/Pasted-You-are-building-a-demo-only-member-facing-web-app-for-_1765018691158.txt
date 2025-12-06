@@ -1,0 +1,758 @@
+You are building a demo-only, member-facing web app for Airborne Fitness, an aerial fitness studio in Mumbai.
+
+The goal is to create a polished, mobile-first, highly aesthetic front-end that simulates all flows.
+No real backend integration is required – mock data and fake APIs are fine.
+Focus on UI, UX, flows and state management, not production backend.
+
+1. Tech Stack & Project Setup
+
+Use Next.js (latest) with TypeScript.
+
+Use App Router.
+
+Use Tailwind CSS for styling.
+
+Assume Firebase Firestore and Razorpay exist conceptually, but:
+
+For this demo, do NOT actually connect to Firebase or Razorpay.
+
+Instead, simulate network calls with mock async functions and local state (React context or simple in-memory store).
+
+No need to actually send SMS – simulate OTP flow on the frontend.
+
+Project structure suggestion:
+
+/app
+
+/login
+
+/dashboard
+
+/enroll
+
+/book
+
+/sessions
+
+/news
+
+/components
+
+/lib (for mock data + utilities)
+
+/styles
+
+2. Brand & Visual Style (Very Important)
+
+This app is for an aerial fitness studio. It must look premium, airy, athletic, feminine-but-strong.
+
+Color palette:
+
+Primary colours:
+
+White: #FFFFFF
+
+Teal Primary: #04C0C1 (main brand accent – use heavily)
+
+Black: #000000
+
+Secondary colours:
+
+Light Aqua: #00D8D7
+
+Deep Teal: #009B9D
+
+Dark Grey: #333333
+
+Tailwind config:
+
+In tailwind.config, extend theme:
+
+extend: {
+  colors: {
+    airborne: {
+      bg: '#111111',        // overall dark-ish background sections
+      surface: '#1C1C1C',   // cards
+      teal: '#04C0C1',
+      aqua: '#00D8D7',
+      deep: '#009B9D',
+      dark: '#333333',
+    },
+  },
+  fontFamily: {
+    sans: ['Poppins', 'system-ui', 'sans-serif'],
+  },
+}
+
+
+Style rules:
+
+Mobile-first design.
+
+Use rounded-xl / rounded-2xl cards, soft shadows, lots of breathing space.
+
+Background: either dark grey (#111) with teal cards, or white cards on dark sections.
+
+Buttons:
+
+Primary: teal (#04C0C1) background, white text.
+
+Hover: lighten to aqua (#00D8D7).
+
+Use simple iconography from Heroicons (or similar) for:
+
+Login
+
+Book class
+
+Calendar
+
+Aerial hoop / silks (generic fitness icons if specific not available)
+
+Typography: clean, bold headings, medium body text, no serif.
+
+3. Core Concept & Data Model (in Front-End Only)
+
+Use mock data (arrays/objects) to represent:
+
+Classes / Categories
+
+type ClassCategory = 'Pilates & Mobility' | 'Kids Advance Aerial' | 'Aerial Hoop & Silk' | 'Aerial Fitness' | 'Kids Aerial Fitness' | 'Functional Training';
+
+
+Each class type has:
+
+id
+
+name
+
+description
+
+ageGroup (Adults / Kids / Kids 5–7 / Kids 8–14)
+
+sessionsPerWeek
+
+schedule: list of { dayOfWeek, startTime, endTime } in IST
+
+oneWeekExtension: boolean
+
+Membership Plans
+
+For each class category, define membership plans (demo data):
+
+Pilates & Mobility
+
+Walk-in: 1 session, ₹1,000
+
+8 sessions: ₹5,000
+
+12 sessions: ₹7,500
+
+Kids Advance Aerial
+
+Walk-in: 1 session, ₹1,000
+
+Monthly (8 sessions): ₹7,000
+
+3 Months (24 sessions): ₹20,000
+
+Aerial Hoop & Silk
+
+Same as Kids Advance Aerial pricing (walk-in + 8 + 24 sessions)
+
+Aerial Fitness (Adults)
+
+Walk-in: ₹1,000
+
+4 sessions: ₹3,000
+
+8 sessions: ₹5,500
+
+24 sessions: ₹15,500
+
+48 sessions: ₹30,000
+
+96 sessions: ₹58,000
+
+Kids Aerial Fitness
+
+Walk-in: ₹1,000
+
+8 sessions: ₹6,000
+
+24 sessions: ₹17,000
+
+48 sessions: ₹33,000
+
+96 sessions: ₹64,000
+
+Functional Training
+
+Walk-in: ₹1,000
+
+12 sessions: ₹5,000
+
+36 sessions: ₹13,500
+
+72 sessions: ₹27,000
+
+144 sessions: ₹50,000
+
+Booking Rules
+
+All times are IST.
+
+Each session has max 14 members.
+
+Booking window: user can book only within 48 hours before class start.
+
+Cancellation window: user can cancel only until 1 hour before start.
+
+Waitlist: when 14/14 booked:
+
+Show “Join Waitlist (x already waiting)”.
+
+Waitlist is first-come, first-served.
+
+When a booked user cancels, the first waitlisted user is auto-promoted.
+
+Membership state (mock)
+
+Simulate a logged-in user having:
+
+memberProfile (from enrollment)
+
+activeMembership (class type, sessions remaining, expiry date)
+
+bookedSessions array
+
+waitlistedSessions array
+
+Use React Context (MemberContext) to hold this state across pages.
+
+No persistence is required; state resets on refresh is acceptable for demo.
+
+4. Pages & Flows
+4.1. /login – Mobile Number + OTP Login (Demo)
+
+Full-screen, centered login card.
+
+Background: gradient from airborne.deep to airborne.teal.
+
+Card title: “Welcome to Airborne Fitness”.
+
+Subtitle: “Book aerial, pilates & functional sessions with one tap.”
+
+Step 1: Phone Input
+
+Input for Indian mobile number (assume +91).
+
+Button: “Send OTP”.
+
+On click: simulate async API call (1 second delay), then reveal OTP field.
+
+Step 2: OTP Input
+
+4 or 6-digit OTP input fields (single combined input is fine).
+
+Use a fixed OTP like 123456 for demo.
+
+Button: “Verify & Continue”.
+
+On success: navigate to /dashboard and mark user as logged in in context.
+
+No real SMS; just simulated.
+
+4.2. Global Layout (After Login)
+
+Use a bottom tab navigation bar on mobile with icons + labels:
+
+Tabs:
+
+Home (Dashboard)
+
+Book
+
+My Sessions
+
+News
+
+Profile
+
+Use Next.js layout so this nav appears on all inner pages.
+
+4.3. /dashboard – Member Home
+
+Sections, vertically stacked:
+
+Greeting & Status
+
+“Hi, [Member Name]”
+
+Chip showing membership status:
+
+Active (teal)
+
+Expiring soon (amber-style, you can pick a subtle variation of teal)
+
+Inactive (dark grey)
+
+Show:
+
+Sessions remaining (big number + small label)
+
+Expiry date
+
+Progress bar for sessions used.
+
+Quick Actions (Horizontal cards)
+
+“Book a Class” → /book
+
+“View My Sessions” → /sessions
+
+“Renew Membership” → open enrollment flow / /enroll
+
+Today’s Classes
+
+Cards showing today’s upcoming classes (from mock schedule).
+
+For each card:
+
+Class name (e.g., “Aerial Fitness”)
+
+Time (e.g., 8 – 9 AM)
+
+Spots left (14 − bookings)
+
+CTA:
+
+“Book” if not booked and within 48h
+
+“Booked” state if user already booked
+
+“Join Waitlist” if full
+
+Use color coding:
+
+Available: teal
+
+Full: deep teal + “Full” badge
+
+Booked: outlined, check icon
+
+Studio Updates (Preview)
+
+Show 2–3 latest News cards with “View all” link to /news.
+
+4.4. /enroll – Membership Enrollment + Payment (Demo)
+
+This is a multi-step form:
+
+Step 1: Personal Details
+
+Fields:
+
+Student Full Name
+
+If under 18 → Parent/Guardian Name (toggle + conditional field)
+
+Address (multi-line)
+
+Birthdate (date picker)
+
+Mobile Number (prefilled from login, non-editable or editable with warning)
+
+Email Address
+
+Emergency Contact Name
+
+Emergency Contact Number
+
+Any Medical Issues? (textarea)
+
+Button: “Next: Membership”.
+
+Step 2: Membership Selection
+
+Show class type cards in a grid (scrollable):
+
+Each card:
+
+Class name
+
+Short description
+
+Age group
+
+“View schedule” small link (opens small modal listing days/times).
+
+Upon selecting a class, show relevant membership plans below as radio buttons:
+
+Example:
+
+Aerial Fitness – Adults
+○ Walk-in – 1 session – ₹1,000
+● Monthly – 8 sessions – ₹5,500
+○ 3 Months – 24 sessions – ₹15,500
+...
+
+Show dynamic summary on the side/bottom:
+
+“Selected: Aerial Fitness – 8 Sessions – ₹5,500
+Validity: 28 days + 7-day buffer (One Week Extension where applicable)”
+
+Button: “Next: Waiver”.
+
+Step 3: Waiver Agreement
+
+Show scrollable box with waiver text (shorten slightly but keep meaning).
+
+Below:
+
+Checkbox: “I have read and agree to the waiver terms.”
+
+Checkbox: “I am 18+ or I have consent from a parent/guardian.”
+
+Field for digital signature: “Type your full name as a signature”.
+
+Button: “Next: Payment”.
+
+Step 4: Payment (Demo Razorpay)
+
+Summary card:
+
+Member name
+
+Class type
+
+Plan
+
+Amount
+
+Button: “Pay Securely with Razorpay”.
+
+On click:
+
+Open a modal that looks like a payment sheet:
+
+Show dummy card/UPI options.
+
+Button: “Simulate Payment Success”.
+
+On success:
+
+Close modal, show success state with checkmark.
+
+Update context: set activeMembership with sessions, expiry date from today (use simple JS date math) and mark user as enrolled.
+
+Button: “Start Booking Classes” → /book.
+
+4.5. /book – Class Booking
+
+This page lets the user browse and book sessions in the next 48 hours.
+
+Layout:
+
+Filters:
+
+Tab or pill filters for:
+
+All
+
+Aerial Fitness
+
+Kids Aerial
+
+Pilates
+
+Functional
+
+Date toggle for:
+
+Today
+
+Tomorrow
+
+Day +2 (within 48h)
+
+Timetable Cards:
+
+Group by time of day:
+
+Morning
+
+Afternoon
+
+Evening
+
+Each card:
+
+Class category (e.g. Aerial Fitness)
+
+Age group (Adults, Kids 5–7, Kids 8–14)
+
+Time (8:00 – 9:00 AM)
+
+Day-of-week + date (Mon, 12 Jan)
+
+Spots: e.g. “10 / 14 spots booked” or “4 spots left”
+
+If user has an active membership for that class type:
+
+Show main CTA:
+
+“Book Now”
+
+Or “Booked” with checkmark
+
+Or “Join Waitlist (3 on waitlist)”
+
+If they don’t have membership:
+
+Disable booking and show “Enroll to Book” link → /enroll.
+
+Booking flow:
+
+Clicking “Book Now” opens a confirm modal:
+
+Recap: class, date/time, session will be deducted.
+
+Confirm button: “Confirm Booking”.
+
+After confirming:
+
+Update context: push into bookedSessions.
+
+Show toast: “You’re booked for Aerial Fitness on Tue 8–9 AM.”
+
+Update card to “Booked”.
+
+If session is full:
+
+Show “Full” badge and “Join Waitlist (x on waitlist)” button.
+
+On click:
+
+Add to waitlistedSessions.
+
+Card shows “Waitlisted – Position #x”.
+
+4.6. /sessions – My Sessions (Bookings, Cancellations, Waitlist)
+
+Split into tabs:
+
+Upcoming
+
+Past
+
+Waitlisted
+
+Upcoming Sessions:
+
+Each card:
+
+Class category
+
+Date & time
+
+Location: “Airborne Fitness – Lower Parel” (static text)
+
+Status:
+
+Confirmed
+
+Within 1h of start (show “Locked – cannot cancel”)
+
+Button:
+
+“Cancel Booking” if more than 1 hour before start.
+
+If user taps Cancel:
+
+Confirm modal: “Are you sure you want to cancel?”
+
+On confirm:
+
+Remove from bookedSessions.
+
+Add a toast: “Booking cancelled.”
+
+Simulate waitlist promotion by:
+
+Removing first waitlisted user in mock data and logging “1 user auto-promoted” (no UI needed beyond maybe a note).
+
+Waitlisted Tab:
+
+Show all sessions where user is on waitlist.
+
+Show position in queue.
+
+Provide ability to “Leave Waitlist”.
+
+Past Tab:
+
+List of previous booked sessions (mock historic data).
+
+Just for visual credibility.
+
+4.7. /news – Studio Updates & Highlights
+
+Admin-updated in real system, but for demo, use static array like:
+
+const NEWS_ITEMS = [
+  {
+    id: 1,
+    title: 'Kids Aerial Showcase – 23rd March',
+    date: '2025-03-23',
+    category: 'Event',
+    content: 'Our kids advanced aerial batch will perform a showcase...',
+  },
+  {
+    id: 2,
+    title: 'New Functional Training 7 AM Batch Added',
+    date: '2025-04-01',
+    category: 'Announcement',
+    content: 'We have added a fresh 7–8 AM functional batch...',
+  },
+  ...
+];
+
+
+Display as vertical list of cards with:
+
+Category pill (Event / Announcement / Workshop)
+
+Title
+
+Date
+
+Short description
+
+Allow clicking to expand card to show full details in an accordion or modal.
+
+4.8. Profile / Settings (Optional but Nice)
+
+Include a simple /profile page reachable from nav:
+
+Member photo placeholder (initials in circle).
+
+Name, phone, email.
+
+Active membership info.
+
+“Edit details” (non-functional for now).
+
+“Log out” button → clears context and route to /login.
+
+5. State Management & Mock APIs
+
+Since this is a demo and backend is not required:
+
+Use React Context (e.g. MemberProvider) to store:
+
+isLoggedIn
+
+memberProfile
+
+activeMembership
+
+bookedSessions
+
+waitlistedSessions
+
+Create mockApi.ts in /lib with async functions:
+
+async function sendOtp(phone: string) { /* wait 500ms, resolve */ }
+async function verifyOtp(phone: string, otp: string) { /* check 123456 */ }
+async function createEnrollment(payload) { /* resolve mock membership */ }
+async function simulatePayment(amount: number) { /* resolve after delay */ }
+async function bookSession(sessionId) { /* update local state */ }
+async function cancelSession(sessionId) { /* update local state */ }
+
+
+These functions just simulate network calls and update context.
+
+6. UX Polish & Microinteractions
+
+Use framer-motion or simple Tailwind transitions for:
+
+Button hover
+
+Card hover / tap
+
+Modal transitions
+
+Toaster notifications:
+
+Use a simple toast library (or custom component) for:
+
+Login success
+
+Booking success
+
+Cancellation success
+
+Enrollment/payment success
+
+Show skeleton loaders for:
+
+Loading classes on /book
+
+Loading dashboard
+
+7. Demo Constraints (Important)
+
+No real Firebase, Razorpay, or SMS integration.
+
+No backend server required.
+
+All logic can live in client components and mock libs.
+
+Focus on:
+
+Beautiful, on-brand UI
+
+All flows visually working
+
+Buttons, modals, navigation
+
+Realistic data and states
+
+8. Final Checklist
+
+Make sure the final app:
+
+Starts at /login and simulates mobile OTP login.
+
+Takes user to /dashboard with:
+
+Membership status
+
+Today’s classes
+
+Quick actions
+
+Allows enrollment via /enroll:
+
+Multi-step form
+
+Membership selection
+
+Waiver
+
+Simulated Razorpay payment
+
+Lets user browse and book sessions in /book with:
+
+48-hour booking window behavior
+
+Capacity and waitlist UI
+
+Shows all bookings and cancellations logic in /sessions.
+
+Shows studio updates in /news.
+
+Looks highly aesthetic, premium, and aligned with the Airborne Fitness teal brand.
+
+Build the full project according to this spec.
