@@ -50,11 +50,11 @@ export default function Login() {
         className="w-full max-w-sm flex flex-col items-center"
       >
         {/* Logo Area */}
-        <div className="mb-10 p-4 bg-white rounded-2xl shadow-sm border border-gray-100 w-full flex justify-center">
+        <div className="mb-10 w-full flex justify-center">
            <img src={logo} alt="Airborne Aerial Fitness" className="h-24 object-contain" />
         </div>
 
-        <div className="w-full bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+        <div className="w-full bg-white p-8 rounded shadow-sm border border-gray-100">
           <h2 className="text-2xl font-bold text-gray-900 mb-2 text-center">Welcome</h2>
           <p className="text-gray-500 text-center text-sm mb-8">
             {step === 'phone' ? 'Enter your mobile number to continue' : 'Enter the verification code sent to your phone'}
@@ -73,7 +73,7 @@ export default function Login() {
                 <div className="space-y-2">
                   <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Mobile Number</label>
                   <div className="flex gap-2">
-                    <div className="flex items-center justify-center px-3 bg-gray-50 rounded-xl border border-gray-200 text-gray-500 text-sm font-medium">
+                    <div className="flex items-center justify-center px-3 bg-gray-50 rounded border border-gray-200 text-gray-500 text-sm font-medium">
                       +91
                     </div>
                     <Input 
@@ -82,7 +82,7 @@ export default function Login() {
                       placeholder="99999 99999" 
                       value={phone}
                       onChange={e => setPhone(e.target.value.replace(/\D/g, ''))}
-                      className="h-12 bg-gray-50 border-gray-200 text-gray-900 placeholder:text-gray-400 focus-visible:ring-airborne-teal rounded-xl"
+                      className="h-12 bg-gray-50 border-gray-200 text-gray-900 placeholder:text-gray-400 focus-visible:ring-airborne-teal rounded"
                       maxLength={10}
                       required
                     />
@@ -91,7 +91,7 @@ export default function Login() {
                 <Button 
                   data-testid="button-get-otp"
                   type="submit" 
-                  className="w-full h-12 bg-airborne-teal hover:bg-airborne-deep text-white font-semibold rounded-xl shadow-md shadow-airborne-teal/20 transition-all mt-2"
+                  className="w-full h-12 bg-airborne-teal hover:bg-airborne-deep text-white font-semibold rounded shadow-md shadow-airborne-teal/20 transition-all mt-2"
                   disabled={isLoading || phone.length < 10}
                 >
                   {isLoading ? <Loader2 className="animate-spin" /> : "Get OTP"}

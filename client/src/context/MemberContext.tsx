@@ -19,12 +19,17 @@ interface UserProfile {
   memberships: MembershipMap; // Empty if new user
 }
 
+export interface SelectedPlan {
+  category: string;
+  plan: MembershipPlan;
+}
+
 interface MemberContextType {
   user: UserProfile | null;
   bookedSessions: string[]; // List of session IDs
   login: (phone: string) => Promise<boolean>;
   logout: () => void;
-  enroll: (details: any, plan: MembershipPlan, categoryName: string) => void;
+  enroll: (details: any, selectedPlans: SelectedPlan[]) => void;
   bookClass: (sessionId: string, categoryName: string) => Promise<boolean>;
   cancelClass: (sessionId: string, categoryName: string) => Promise<void>;
   hasMembershipFor: (categoryName: string) => boolean;
@@ -87,35 +92,36 @@ export function MemberProvider({ children }: { children: ReactNode }) {
     setBookedSessions([]);
   };
 
-  const enroll = (details: any, plan: MembershipPlan, categoryName: string) => {
+  const enroll = (details: any, selectedPlans: SelectedPlan[]) => {
     if (!user) return;
 
-    const newMembership: MembershipDetails = {
-      sessionsRemaining: plan.sessions,
-      expiryDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * (plan.validityDays || 30)),
-      planName: plan.name
-    };
+    const newMemberships: MembershipMap = { ...user.memberships };
+    const categories: string[] = [];
+
+    selectedPlans.forEach(({ category, plan }) => {
+      newMemberships[category] = {
+        sessionsRemaining: plan.sessions,
+        expiryDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * (plan.validityDays || 30)),
+        planName: plan.name
+      };
+      categories.push(category);
+    });
 
     setUser({
       ...user,
       name: details.name || user.name,
       email: details.email,
-      memberships: {
-        ...user.memberships,
-        [categoryName]: newMembership
-      }
+      memberships: newMemberships
     });
 
     toast({
       title: "Enrollment Successful!",
-      description: `You are now a member of ${categoryName}.`,
+      description: `You are now a member of ${categories.join(', ')}.`,
     });
   };
 
   const hasMembershipFor = (categoryName: string): boolean => {
     if (!user) return false;
-    // Simple partial match to handle "Aerial Fitness" matching "Aerial Fitness - Adults" etc if keys vary slightly
-    // But based on mockData keys, they should be exact matches from ClassCategory type
     return !!user.memberships[categoryName];
   };
 

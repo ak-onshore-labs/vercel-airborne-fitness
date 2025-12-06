@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { Home, Calendar, User, Newspaper, Dumbbell } from "lucide-react";
 import { cn } from "@/lib/utils";
+import logo from "@assets/image_1765019094396.png";
 
 export default function MobileLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -22,8 +23,8 @@ export default function MobileLayout({ children }: { children: React.ReactNode }
       <div className="max-w-md mx-auto min-h-screen relative bg-white shadow-xl overflow-hidden flex flex-col">
         {/* Header - Only on inner pages */}
         {!isAuthPage && (
-          <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-gray-100 px-6 h-14 flex items-center justify-center">
-            <span className="font-bold tracking-tight text-lg">AIRBORNE</span>
+          <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-gray-100 px-6 h-16 flex items-center justify-center">
+            <img src={logo} alt="Airborne" className="h-10 object-contain" />
           </header>
         )}
 
@@ -40,7 +41,7 @@ export default function MobileLayout({ children }: { children: React.ReactNode }
                 return (
                   <Link key={item.href} href={item.href}>
                     <a className={cn(
-                      "flex flex-col items-center justify-center w-full h-full space-y-1 transition-all duration-200 px-2 py-1 rounded-lg",
+                      "flex flex-col items-center justify-center w-full h-full space-y-1 transition-all duration-200 px-2 py-1 rounded",
                       isActive ? "text-airborne-teal" : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"
                     )}>
                       <item.icon size={20} strokeWidth={isActive ? 2.5 : 2} />

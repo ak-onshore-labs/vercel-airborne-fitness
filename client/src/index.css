@@ -8,19 +8,19 @@
 @theme inline {
   --font-sans: 'Poppins', 'system-ui', 'sans-serif';
 
-  --color-airborne-bg: #F9FAFB; /* Light gray background for web app feel */
-  --color-airborne-surface: #FFFFFF; /* White cards */
-  --color-airborne-teal: #04C0C1; /* Primary Brand Teal */
+  --color-airborne-bg: #F9FAFB;
+  --color-airborne-surface: #FFFFFF;
+  --color-airborne-teal: #04C0C1;
   --color-airborne-aqua: #00D8D7;
   --color-airborne-deep: #009B9D;
   --color-airborne-dark: #333333;
   --color-airborne-light: #F5F5F5;
-  --color-airborne-border: #E0E7FF; /* Soft border */
+  --color-airborne-border: #E0E7FF;
 
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius-sm: 0px;
+  --radius-md: 2px;
+  --radius-lg: 4px;
+  --radius-xl: 6px;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -87,7 +87,7 @@
   --muted: #F3F4F6;
   --muted-foreground: #6B7280;
 
-  --accent: #E0F2FE; /* Very light blue/teal tint */
+  --accent: #E0F2FE;
   --accent-foreground: #009B9D;
 
   --destructive: #EF4444;
@@ -97,7 +97,7 @@
   --input: #F3F4F6;
   --ring: #04C0C1;
 
-  --radius: 1rem; /* Rounded-xl default */
+  --radius: 0.25rem; /* Squarish corners */
 
   --chart-1: #04C0C1;
   --chart-2: #00D8D7;
