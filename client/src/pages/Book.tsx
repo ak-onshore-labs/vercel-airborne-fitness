@@ -6,141 +6,192 @@ import { cn } from "@/lib/utils";
 import { useLocation } from "wouter";
 import MobileLayout from "@/components/layout/MobileLayout";
 import { Button } from "@/components/ui/button";
+import { AlertCircle, Calendar, Filter, Lock, Loader2 } from "lucide-react";
 
 export default function Book() {
-  const { bookClass, bookedSessions, activeMembership } = useMember();
+  const { bookClass, bookedSessions, hasMembershipFor, user } = useMember();
   const [, setLocation] = useLocation();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [filter, setFilter] = useState<string>("All");
   const [loadingId, setLoadingId] = useState<string | null>(null);
 
-  const categories = ["All", "Aerial Fitness", "Pilates", "Aerial Hoop", "Functional"];
+  const categories = ["All", "Aerial Fitness", "Pilates", "Aerial Hoop", "Functional", "Kids Aerial"];
   const dates = [new Date(), addDays(new Date(), 1), addDays(new Date(), 2)];
 
-  const handleBook = async (sessionId: string) => {
-    if (!activeMembership) {
-      setLocation("/enroll");
-      return;
-    }
+  const handleBook = async (sessionId: string, categoryName: string) => {
     setLoadingId(sessionId);
-    await bookClass(sessionId);
+    await bookClass(sessionId, categoryName);
     setLoadingId(null);
   };
 
+  // Filter logic
   const filteredSessions = MOCK_SCHEDULE.filter(session => {
     const isDateMatch = isSameDay(session.startTime, selectedDate);
     if (!isDateMatch) return false;
     
+    // Map session classId (kebab) to display name (Title Case)
+    const sessionCategoryName = session.classId.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    
+    // Check if user has membership for this session
+    // We only show classes if they have membership OR if they are viewing "All" but we flag them
+    // Requirement: "Show only the member’s class categories"
+    
+    // First, let's find the matching category name in user memberships
+    const userHasAccess = Object.keys(user?.memberships || {}).some(cat => 
+        cat.toLowerCase().includes(session.classId.replace(/-/g, ' '))
+    );
+    
+    if (!userHasAccess) return false; // HIDE unpurchased classes entirely as per requirement
+
     if (filter === "All") return true;
-    // Simple includes check for mapping category names to IDs
     return session.classId.includes(filter.toLowerCase().replace(' ', '-').split('&')[0].trim());
   });
+
+  const hasAnyMembership = user && Object.keys(user.memberships).length > 0;
 
   return (
     <MobileLayout>
       <div className="p-6 pb-24">
-        <h1 className="text-2xl font-bold mb-6">Book a Class</h1>
-
-        {/* Date Selector */}
-        <div className="flex gap-3 mb-6 overflow-x-auto pb-2 -mx-6 px-6 scrollbar-hide">
-          {dates.map((date, i) => {
-            const isSelected = isSameDay(date, selectedDate);
-            return (
-              <button
-                key={i}
-                onClick={() => setSelectedDate(date)}
-                data-testid={`button-date-${format(date, 'yyyy-MM-dd')}`}
-                className={cn(
-                  "flex flex-col items-center justify-center min-w-[70px] h-20 rounded-xl border transition-all",
-                  isSelected 
-                    ? "bg-airborne-teal border-airborne-teal text-white shadow-[0_0_15px_rgba(4,192,193,0.3)]" 
-                    : "bg-airborne-surface border-white/5 text-gray-400 hover:bg-white/5"
-                )}
-              >
-                <span className="text-xs font-medium uppercase">{format(date, 'EEE')}</span>
-                <span className="text-2xl font-bold">{format(date, 'd')}</span>
-              </button>
-            )
-          })}
+        <div className="flex justify-between items-center mb-6">
+             <h1 className="text-2xl font-bold text-gray-900">Book Class</h1>
+             <div className="bg-gray-100 p-2 rounded-full">
+                 <Calendar size={20} className="text-gray-500" />
+             </div>
         </div>
 
-        {/* Filter Chips */}
-        <div className="flex gap-2 mb-6 overflow-x-auto pb-2 -mx-6 px-6 scrollbar-hide">
-          {categories.map(cat => (
-            <button
-              key={cat}
-              onClick={() => setFilter(cat)}
-              data-testid={`button-filter-${cat.replace(' ', '-')}`}
-              className={cn(
-                "px-4 py-2 rounded-full text-xs font-medium whitespace-nowrap transition-colors border",
-                filter === cat 
-                  ? "bg-white text-black border-white" 
-                  : "bg-transparent text-gray-400 border-white/10 hover:border-white/30"
-              )}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
-
-        {/* Sessions List */}
-        <div className="space-y-4">
-          {filteredSessions.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              No classes available for this filter.
-            </div>
-          ) : (
-            filteredSessions.map(session => {
-              const isBooked = bookedSessions.includes(session.id);
-              const isFull = session.bookedSpots >= session.totalSpots;
-              
-              return (
-                <div key={session.id} className="bg-airborne-surface border border-white/5 rounded-xl p-4 flex gap-4" data-testid={`card-session-${session.id}`}>
-                  <div className="flex flex-col items-center justify-center w-16 border-r border-white/5 pr-4">
-                    <span className="text-sm font-bold text-white">{format(session.startTime, 'HH:mm')}</span>
-                    <span className="text-[10px] text-gray-500">{format(session.endTime, 'HH:mm')}</span>
-                  </div>
-                  
-                  <div className="flex-1">
-                    <div className="flex justify-between items-start mb-1">
-                      <h3 className="font-semibold text-white capitalize">{session.classId.replace(/-/g, ' ')}</h3>
-                      {isFull && !isBooked && (
-                        <span className="text-[10px] text-amber-500 font-medium px-2 py-0.5 bg-amber-500/10 rounded">FULL</span>
-                      )}
-                    </div>
-                    <p className="text-xs text-gray-400 mb-3">Instructor: {session.instructor}</p>
-                    
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-gray-500">
-                        {session.totalSpots - session.bookedSpots} spots left
-                      </span>
-                      
-                      {isBooked ? (
-                        <Button disabled size="sm" className="h-8 bg-green-500/20 text-green-500 hover:bg-green-500/20 border-none" data-testid={`button-booked-${session.id}`}>
-                          Booked
-                        </Button>
-                      ) : isFull ? (
-                        <Button size="sm" variant="outline" className="h-8 text-xs border-white/10" data-testid={`button-waitlist-${session.id}`}>
-                          Waitlist
-                        </Button>
-                      ) : (
-                        <Button 
-                          size="sm" 
-                          onClick={() => handleBook(session.id)}
-                          disabled={loadingId === session.id}
-                          className="h-8 bg-airborne-teal hover:bg-airborne-aqua text-white text-xs px-6"
-                          data-testid={`button-book-${session.id}`}
-                        >
-                          {loadingId === session.id ? "..." : "Book"}
-                        </Button>
-                      )}
-                    </div>
-                  </div>
+        {!hasAnyMembership ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4 text-gray-400">
+                    <Lock size={24} />
                 </div>
-              );
-            })
-          )}
-        </div>
+                <h2 className="text-lg font-bold text-gray-900 mb-2">No Classes Available</h2>
+                <p className="text-gray-500 text-sm mb-6 max-w-xs">You need to purchase a membership to view and book classes.</p>
+                <Button onClick={() => setLocation('/enroll')} className="bg-airborne-teal hover:bg-airborne-deep text-white rounded-xl shadow-lg shadow-teal-100">
+                    Enroll Now
+                </Button>
+            </div>
+        ) : (
+            <>
+                {/* Date Selector */}
+                <div className="flex gap-3 mb-6 overflow-x-auto pb-2 -mx-6 px-6 scrollbar-hide">
+                {dates.map((date, i) => {
+                    const isSelected = isSameDay(date, selectedDate);
+                    return (
+                    <button
+                        key={i}
+                        onClick={() => setSelectedDate(date)}
+                        data-testid={`button-date-${format(date, 'yyyy-MM-dd')}`}
+                        className={cn(
+                        "flex flex-col items-center justify-center min-w-[70px] h-20 rounded-2xl border transition-all",
+                        isSelected 
+                            ? "bg-airborne-teal border-airborne-teal text-white shadow-md shadow-teal-100 scale-105" 
+                            : "bg-white border-gray-100 text-gray-400 hover:border-gray-200"
+                        )}
+                    >
+                        <span className="text-[10px] font-bold uppercase tracking-wider">{format(date, 'EEE')}</span>
+                        <span className="text-2xl font-bold">{format(date, 'd')}</span>
+                    </button>
+                    )
+                })}
+                </div>
+
+                {/* Filter Chips - Only show categories user has? Or allow filter of owned? */}
+                {/* Requirement: Show only member's class types. So filter chips should strictly be what they own */}
+                <div className="flex gap-2 mb-6 overflow-x-auto pb-2 -mx-6 px-6 scrollbar-hide">
+                    <button
+                        onClick={() => setFilter("All")}
+                        className={cn(
+                            "px-4 py-2 rounded-full text-xs font-medium whitespace-nowrap transition-all border",
+                            filter === "All" 
+                            ? "bg-gray-900 text-white border-gray-900" 
+                            : "bg-white text-gray-500 border-gray-200"
+                        )}
+                    >
+                        All
+                    </button>
+                    {Object.keys(user?.memberships || {}).map(cat => (
+                        <button
+                        key={cat}
+                        onClick={() => setFilter(cat)}
+                        className={cn(
+                            "px-4 py-2 rounded-full text-xs font-medium whitespace-nowrap transition-all border",
+                            filter === cat 
+                            ? "bg-gray-900 text-white border-gray-900" 
+                            : "bg-white text-gray-500 border-gray-200"
+                        )}
+                        >
+                        {cat}
+                        </button>
+                    ))}
+                </div>
+
+                {/* Sessions List */}
+                <div className="space-y-4">
+                {filteredSessions.length === 0 ? (
+                    <div className="text-center py-12 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                        <p className="text-gray-500 text-sm">No classes found for this date.</p>
+                    </div>
+                ) : (
+                    filteredSessions.map(session => {
+                    const isBooked = bookedSessions.includes(session.id);
+                    const isFull = session.bookedSpots >= session.totalSpots;
+                    // Infer category name again for booking function
+                    const categoryName = Object.keys(user?.memberships || {}).find(cat => 
+                        cat.toLowerCase().includes(session.classId.replace(/-/g, ' '))
+                    ) || "";
+                    
+                    return (
+                        <div key={session.id} className="bg-white border border-gray-100 rounded-2xl p-5 flex gap-5 shadow-sm hover:shadow-md transition-shadow" data-testid={`card-session-${session.id}`}>
+                            <div className="flex flex-col items-center justify-center w-16 border-r border-gray-100 pr-5">
+                                <span className="text-lg font-bold text-gray-900">{format(session.startTime, 'HH:mm')}</span>
+                                <span className="text-[10px] font-medium text-gray-400 uppercase">{format(session.endTime, 'HH:mm')}</span>
+                            </div>
+                            
+                            <div className="flex-1">
+                                <div className="flex justify-between items-start mb-1">
+                                <h3 className="font-bold text-gray-900 capitalize text-base">{session.classId.replace(/-/g, ' ')}</h3>
+                                {isFull && !isBooked && (
+                                    <span className="text-[10px] text-amber-600 font-bold px-2 py-1 bg-amber-50 rounded-full border border-amber-100">FULL</span>
+                                )}
+                                </div>
+                                <p className="text-xs text-gray-500 mb-4 flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-airborne-teal"></span>
+                                    Instructor: {session.instructor}
+                                </p>
+                                
+                                <div className="flex justify-between items-center">
+                                <span className="text-xs font-medium text-gray-400 bg-gray-50 px-2 py-1 rounded-md">
+                                    {session.totalSpots - session.bookedSpots} spots left
+                                </span>
+                                
+                                {isBooked ? (
+                                    <Button disabled size="sm" className="h-9 bg-green-50 text-green-600 border border-green-100 shadow-none font-semibold" data-testid={`button-booked-${session.id}`}>
+                                    Booked
+                                    </Button>
+                                ) : isFull ? (
+                                    <Button size="sm" variant="outline" className="h-9 text-xs border-gray-200 text-gray-600 hover:bg-gray-50" data-testid={`button-waitlist-${session.id}`}>
+                                    Join Waitlist
+                                    </Button>
+                                ) : (
+                                    <Button 
+                                    size="sm" 
+                                    onClick={() => handleBook(session.id, categoryName)}
+                                    disabled={loadingId === session.id}
+                                    className="h-9 bg-airborne-teal hover:bg-airborne-deep text-white text-xs px-5 rounded-lg font-semibold shadow-md shadow-teal-100"
+                                    data-testid={`button-book-${session.id}`}
+                                    >
+                                    {loadingId === session.id ? <Loader2 className="animate-spin h-3 w-3" /> : "Book Class"}
+                                    </Button>
+                                )}
+                                </div>
+                            </div>
+                        </div>
+                    );
+                    })
+                )}
+                </div>
+            </>
+        )}
       </div>
     </MobileLayout>
   );

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMember } from "@/context/MemberContext";
-import { CLASSES, MEMBERSHIP_PLANS, MembershipPlan } from "@/lib/mockData";
+import { CLASSES, MEMBERSHIP_PLANS, MembershipPlan, ClassCategory } from "@/lib/mockData";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -8,129 +8,165 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useLocation } from "wouter";
 import { ArrowLeft, Check, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import MobileLayout from "@/components/layout/MobileLayout";
 
 // Step components
 const PersonalDetails = ({ onNext, data, onChange }: any) => (
-  <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-4">
-    <h2 className="text-xl font-bold mb-4">Personal Details</h2>
-    <div className="space-y-3">
-      <Input data-testid="input-name" placeholder="Full Name" value={data.name} onChange={e => onChange('name', e.target.value)} className="bg-airborne-surface border-white/10" />
-      <Input data-testid="input-email" placeholder="Email Address" type="email" value={data.email} onChange={e => onChange('email', e.target.value)} className="bg-airborne-surface border-white/10" />
-      <Input data-testid="input-dob" placeholder="Date of Birth" type="date" className="bg-airborne-surface border-white/10" />
-      <Input data-testid="input-emergency-contact" placeholder="Emergency Contact Name" className="bg-airborne-surface border-white/10" />
-      <Input data-testid="input-emergency-phone" placeholder="Emergency Contact Number" type="tel" className="bg-airborne-surface border-white/10" />
-      <Textarea data-testid="input-medical" placeholder="Any medical conditions or injuries?" className="bg-airborne-surface border-white/10" />
+  <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
+    <div>
+        <h2 className="text-2xl font-bold text-gray-900">About You</h2>
+        <p className="text-gray-500 text-sm">Let's get to know you better.</p>
     </div>
-    <Button onClick={onNext} className="w-full mt-6 bg-airborne-teal hover:bg-airborne-aqua text-white" data-testid="button-next-1">Next: Membership</Button>
+    
+    <div className="space-y-4">
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-gray-500 uppercase">Full Name</label>
+        <Input data-testid="input-name" placeholder="Jane Doe" value={data.name} onChange={e => onChange('name', e.target.value)} className="bg-gray-50 border-gray-200 h-12 rounded-xl focus-visible:ring-airborne-teal" />
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-gray-500 uppercase">Email</label>
+        <Input data-testid="input-email" placeholder="jane@example.com" type="email" value={data.email} onChange={e => onChange('email', e.target.value)} className="bg-gray-50 border-gray-200 h-12 rounded-xl focus-visible:ring-airborne-teal" />
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-gray-500 uppercase">Date of Birth</label>
+        <Input data-testid="input-dob" placeholder="Date of Birth" type="date" className="bg-gray-50 border-gray-200 h-12 rounded-xl focus-visible:ring-airborne-teal" />
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-gray-500 uppercase">Emergency Contact</label>
+        <Input data-testid="input-emergency-contact" placeholder="Contact Name" className="bg-gray-50 border-gray-200 h-12 rounded-xl focus-visible:ring-airborne-teal mb-2" />
+        <Input data-testid="input-emergency-phone" placeholder="Contact Number" type="tel" className="bg-gray-50 border-gray-200 h-12 rounded-xl focus-visible:ring-airborne-teal" />
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-gray-500 uppercase">Medical Conditions</label>
+        <Textarea data-testid="input-medical" placeholder="Any injuries or conditions we should know?" className="bg-gray-50 border-gray-200 rounded-xl focus-visible:ring-airborne-teal min-h-[100px]" />
+      </div>
+    </div>
+    <Button onClick={onNext} className="w-full h-12 bg-airborne-teal hover:bg-airborne-deep text-white rounded-xl shadow-lg shadow-teal-100 mt-4" data-testid="button-next-1">
+        Continue
+    </Button>
   </motion.div>
 );
 
-const MembershipSelection = ({ onNext, onBack, onSelectPlan, selectedPlan }: any) => {
-  const [selectedCategory, setSelectedCategory] = useState(CLASSES[0].name);
-
+const MembershipSelection = ({ onNext, onBack, onSelectPlan, selectedPlan, onSelectCategory, selectedCategory }: any) => {
   return (
-    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-4">
-      <h2 className="text-xl font-bold mb-4">Choose a Plan</h2>
+    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900">Select Plan</h2>
+        <p className="text-gray-500 text-sm">Choose a class category and membership.</p>
+      </div>
       
       {/* Category Horizontal Scroll */}
-      <div className="flex gap-3 overflow-x-auto pb-4 -mx-6 px-6 scrollbar-hide">
-        {CLASSES.map(cls => (
-          <button
-            key={cls.id}
-            onClick={() => setSelectedCategory(cls.name)}
-            data-testid={`button-category-${cls.id}`}
-            className={cn(
-              "flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium transition-colors border",
-              selectedCategory === cls.name
-                ? "bg-white text-black border-white"
-                : "bg-airborne-surface text-gray-400 border-white/10"
-            )}
-          >
-            {cls.name}
-          </button>
-        ))}
+      <div className="space-y-2">
+         <label className="text-xs font-medium text-gray-500 uppercase">Class Category</label>
+         <div className="flex gap-2 overflow-x-auto pb-2 -mx-6 px-6 scrollbar-hide">
+            {CLASSES.map(cls => (
+            <button
+                key={cls.id}
+                onClick={() => onSelectCategory(cls.name)}
+                data-testid={`button-category-${cls.id}`}
+                className={cn(
+                "flex-shrink-0 px-4 py-3 rounded-xl text-sm font-medium transition-all border",
+                selectedCategory === cls.name
+                    ? "bg-airborne-teal text-white border-airborne-teal shadow-md shadow-teal-100"
+                    : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"
+                )}
+            >
+                {cls.name}
+            </button>
+            ))}
+        </div>
       </div>
 
       <div className="space-y-3">
+        <label className="text-xs font-medium text-gray-500 uppercase">Available Plans</label>
         {(MEMBERSHIP_PLANS[selectedCategory] || MEMBERSHIP_PLANS['default']).map((plan: MembershipPlan) => (
           <div 
             key={plan.id}
             onClick={() => onSelectPlan(plan)}
             data-testid={`card-plan-${plan.id}`}
             className={cn(
-              "p-4 rounded-xl border cursor-pointer transition-all flex justify-between items-center",
+              "p-5 rounded-2xl border cursor-pointer transition-all flex justify-between items-center group",
               selectedPlan?.id === plan.id
-                ? "bg-airborne-teal/10 border-airborne-teal"
-                : "bg-airborne-surface border-white/5 hover:border-white/20"
+                ? "bg-teal-50 border-airborne-teal ring-1 ring-airborne-teal"
+                : "bg-white border-gray-100 hover:border-gray-200 hover:shadow-sm"
             )}
           >
             <div>
-              <h3 className="font-semibold text-white">{plan.name}</h3>
-              <p className="text-xs text-gray-400">{plan.sessions} sessions • Valid {plan.validityDays} days</p>
+              <h3 className={cn("font-bold text-base", selectedPlan?.id === plan.id ? "text-airborne-teal" : "text-gray-900")}>{plan.name}</h3>
+              <p className="text-xs text-gray-500 mt-1">{plan.sessions} sessions • Valid {plan.validityDays} days</p>
             </div>
-            <div className="flex items-center gap-3">
-              <span className="font-bold text-lg">₹{plan.price.toLocaleString()}</span>
-              <div className={cn(
-                "w-5 h-5 rounded-full border flex items-center justify-center",
-                selectedPlan?.id === plan.id ? "bg-airborne-teal border-airborne-teal" : "border-gray-600"
-              )}>
-                {selectedPlan?.id === plan.id && <Check size={12} className="text-white" />}
-              </div>
+            <div className="text-right">
+              <span className="font-bold text-lg text-gray-900 block">₹{plan.price.toLocaleString()}</span>
+              {selectedPlan?.id === plan.id && (
+                  <span className="text-[10px] font-bold text-airborne-teal uppercase tracking-wider">Selected</span>
+              )}
             </div>
           </div>
         ))}
       </div>
 
-      <div className="flex gap-3 mt-6">
-        <Button variant="outline" onClick={onBack} className="flex-1 border-white/10 text-white" data-testid="button-back-2">Back</Button>
-        <Button onClick={onNext} disabled={!selectedPlan} className="flex-1 bg-airborne-teal hover:bg-airborne-aqua text-white" data-testid="button-next-2">Next: Waiver</Button>
+      <div className="flex gap-3 mt-6 pt-4">
+        <Button variant="outline" onClick={onBack} className="flex-1 h-12 border-gray-200 text-gray-600 rounded-xl" data-testid="button-back-2">Back</Button>
+        <Button onClick={onNext} disabled={!selectedPlan} className="flex-1 h-12 bg-airborne-teal hover:bg-airborne-deep text-white rounded-xl shadow-lg shadow-teal-100" data-testid="button-next-2">Continue</Button>
       </div>
     </motion.div>
   );
 };
 
 const Waiver = ({ onNext, onBack }: any) => (
-  <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-4">
-    <h2 className="text-xl font-bold mb-4">Liability Waiver</h2>
-    <div className="h-60 overflow-y-auto bg-airborne-surface border border-white/5 p-4 rounded-lg text-xs text-gray-400 leading-relaxed">
-      <p className="mb-2">I hereby agree to the following:</p>
-      <p className="mb-2">1. That I am participating in the Exercise Classes, Health Programs or Workshops offered by Airborne Fitness during which I will receive information and instruction about Aerial Fitness, Pilates, and other activities. I recognize that exercise requires physical exertion that may be strenuous and may cause physical injury, and I am fully aware of the risks and hazards involved.</p>
-      <p className="mb-2">2. I understand that it is my responsibility to consult with a physician prior to and regarding my participation in the Exercise Classes, Health Programs or Workshops. I represent and warrant that I am physically fit and I have no medical condition that would prevent my full participation in the Exercise Classes, Health Programs or Workshops.</p>
-      <p>3. In consideration of being permitted to participate in the Exercise Classes, Health Programs or Workshops, I agree to assume full responsibility for any risks, injuries or damages, known or unknown, which I might incur as a result of participating in the program.</p>
+  <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
+    <div>
+        <h2 className="text-2xl font-bold text-gray-900">Waiver</h2>
+        <p className="text-gray-500 text-sm">Please review and sign.</p>
+    </div>
+
+    <div className="h-64 overflow-y-auto bg-gray-50 border border-gray-200 p-4 rounded-xl text-xs text-gray-500 leading-relaxed">
+      <p className="mb-3 font-bold text-gray-700">LIABILITY WAIVER AND RELEASE</p>
+      <p className="mb-2">1. I acknowledge that I am voluntarily participating in the activities offered by Airborne Fitness.</p>
+      <p className="mb-2">2. I recognize that these activities involve physical exertion and potential risks of injury.</p>
+      <p className="mb-2">3. I hereby release, waive, discharge, and covenant not to sue Airborne Fitness, its owners, instructors, and agents from any and all liability.</p>
+      <p className="mb-2">4. I certify that I am physically fit and have not been advised to the contrary by a qualified medical professional.</p>
     </div>
     
-    <div className="space-y-3 pt-2">
-      <label className="flex items-start gap-3 cursor-pointer">
-        <input type="checkbox" className="mt-1 rounded bg-airborne-surface border-white/20" data-testid="checkbox-waiver-agree" />
-        <span className="text-xs text-gray-300">I have read and agree to the waiver terms and conditions.</span>
+    <div className="space-y-4 pt-2">
+      <label className="flex items-start gap-3 cursor-pointer bg-white p-3 rounded-xl border border-gray-100 hover:border-gray-200 transition-colors">
+        <input type="checkbox" className="mt-1 rounded border-gray-300 text-airborne-teal focus:ring-airborne-teal" data-testid="checkbox-waiver-agree" />
+        <span className="text-xs text-gray-600 font-medium">I have read and agree to the waiver terms.</span>
       </label>
-      <label className="flex items-start gap-3 cursor-pointer">
-        <input type="checkbox" className="mt-1 rounded bg-airborne-surface border-white/20" data-testid="checkbox-age-confirm" />
-        <span className="text-xs text-gray-300">I am 18 years of age or older.</span>
+      <label className="flex items-start gap-3 cursor-pointer bg-white p-3 rounded-xl border border-gray-100 hover:border-gray-200 transition-colors">
+        <input type="checkbox" className="mt-1 rounded border-gray-300 text-airborne-teal focus:ring-airborne-teal" data-testid="checkbox-age-confirm" />
+        <span className="text-xs text-gray-600 font-medium">I am 18 years of age or older.</span>
       </label>
-      <Input placeholder="Type Full Name to Sign" className="bg-airborne-surface border-white/10 mt-2" data-testid="input-signature" />
+      
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-gray-500 uppercase">Digital Signature</label>
+        <Input placeholder="Type Full Name" className="bg-gray-50 border-gray-200 h-12 rounded-xl focus-visible:ring-airborne-teal" data-testid="input-signature" />
+      </div>
     </div>
 
     <div className="flex gap-3 mt-6">
-      <Button variant="outline" onClick={onBack} className="flex-1 border-white/10 text-white" data-testid="button-back-3">Back</Button>
-      <Button onClick={onNext} className="flex-1 bg-airborne-teal hover:bg-airborne-aqua text-white" data-testid="button-next-3">Next: Payment</Button>
+      <Button variant="outline" onClick={onBack} className="flex-1 h-12 border-gray-200 text-gray-600 rounded-xl" data-testid="button-back-3">Back</Button>
+      <Button onClick={onNext} className="flex-1 h-12 bg-airborne-teal hover:bg-airborne-deep text-white rounded-xl shadow-lg shadow-teal-100" data-testid="button-next-3">To Payment</Button>
     </div>
   </motion.div>
 );
 
 const Payment = ({ onBack, onComplete, plan, loading }: any) => (
   <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
-    <h2 className="text-xl font-bold mb-4">Payment Summary</h2>
+    <div>
+        <h2 className="text-2xl font-bold text-gray-900">Payment</h2>
+        <p className="text-gray-500 text-sm">Secure checkout.</p>
+    </div>
     
-    <div className="bg-airborne-surface border border-white/5 p-6 rounded-2xl">
-      <div className="flex justify-between items-center mb-4 border-b border-white/5 pb-4">
+    <div className="bg-white border border-gray-100 p-6 rounded-2xl shadow-sm">
+      <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
         <div>
-          <h3 className="font-semibold text-white">{plan.name}</h3>
-          <p className="text-xs text-gray-400">{plan.sessions} Sessions</p>
+          <h3 className="font-bold text-gray-900 text-lg">{plan.name}</h3>
+          <p className="text-xs text-gray-500">{plan.sessions} Sessions</p>
         </div>
-        <span className="text-xl font-bold">₹{plan.price.toLocaleString()}</span>
+        <span className="text-2xl font-bold text-airborne-teal">₹{plan.price.toLocaleString()}</span>
       </div>
-      <div className="space-y-2 text-sm text-gray-400">
+      <div className="space-y-3 text-sm text-gray-600">
         <div className="flex justify-between">
           <span>Subtotal</span>
           <span>₹{plan.price.toLocaleString()}</span>
@@ -139,8 +175,8 @@ const Payment = ({ onBack, onComplete, plan, loading }: any) => (
           <span>GST (18%)</span>
           <span>₹{(plan.price * 0.18).toLocaleString()}</span>
         </div>
-        <div className="flex justify-between text-white font-bold pt-2 border-t border-white/5 mt-2">
-          <span>Total</span>
+        <div className="flex justify-between text-gray-900 font-bold pt-4 border-t border-gray-100 mt-2">
+          <span>Total Amount</span>
           <span>₹{(plan.price * 1.18).toLocaleString()}</span>
         </div>
       </div>
@@ -150,12 +186,12 @@ const Payment = ({ onBack, onComplete, plan, loading }: any) => (
       <Button 
         onClick={onComplete} 
         disabled={loading}
-        className="w-full h-12 bg-airborne-teal hover:bg-airborne-aqua text-white font-semibold rounded-lg shadow-[0_0_20px_rgba(4,192,193,0.3)]"
+        className="w-full h-14 bg-gray-900 hover:bg-black text-white font-bold rounded-xl shadow-lg transition-all"
         data-testid="button-pay-razorpay"
       >
-        {loading ? "Processing..." : "Pay Securely with Razorpay"}
+        {loading ? "Processing..." : "Pay Securely"}
       </Button>
-      <Button variant="ghost" onClick={onBack} className="w-full text-gray-400 hover:text-white" data-testid="button-cancel-payment">Cancel</Button>
+      <Button variant="ghost" onClick={onBack} className="w-full text-gray-400 hover:text-gray-600" data-testid="button-cancel-payment">Cancel Transaction</Button>
     </div>
   </motion.div>
 );
@@ -165,72 +201,69 @@ export default function Enroll() {
   const [, setLocation] = useLocation();
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({ name: user?.name || "", email: "" });
+  const [selectedCategory, setSelectedCategory] = useState(CLASSES[0].name);
   const [selectedPlan, setSelectedPlan] = useState<MembershipPlan | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   const handleComplete = async () => {
     if (!selectedPlan) return;
     setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate Razorpay
-    enroll(formData, selectedPlan);
+    await new Promise(resolve => setTimeout(resolve, 1500)); 
+    
+    enroll(formData, selectedPlan, selectedCategory);
+    
     setIsLoading(false);
     setLocation("/dashboard");
   };
 
   return (
-    <div className="min-h-screen bg-airborne-bg text-white">
-      <div className="max-w-md mx-auto p-6">
-        <div className="flex items-center gap-4 mb-8">
-           {step > 1 && (
-             <button onClick={() => setStep(s => s - 1)} className="text-gray-400 hover:text-white" data-testid="button-step-back">
-               <ArrowLeft size={20} />
-             </button>
-           )}
-           <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
-             <div 
-               className="h-full bg-airborne-teal transition-all duration-300"
-               style={{ width: `${(step / 4) * 100}%` }}
-             />
-           </div>
-           <span className="text-xs text-gray-400">Step {step}/4</span>
-        </div>
+    <MobileLayout>
+        <div className="p-6">
+            {/* Progress Bar */}
+            <div className="flex items-center gap-2 mb-8">
+                {[1, 2, 3, 4].map(s => (
+                    <div key={s} className={cn("h-1 flex-1 rounded-full transition-colors duration-300", s <= step ? "bg-airborne-teal" : "bg-gray-200")} />
+                ))}
+            </div>
 
-        <AnimatePresence mode="wait">
-          {step === 1 && (
-            <PersonalDetails 
-              key="step1" 
-              data={formData} 
-              onChange={(k: string, v: string) => setFormData(p => ({...p, [k]: v}))}
-              onNext={() => setStep(2)} 
-            />
-          )}
-          {step === 2 && (
-            <MembershipSelection 
-              key="step2" 
-              selectedPlan={selectedPlan}
-              onSelectPlan={setSelectedPlan}
-              onBack={() => setStep(1)} 
-              onNext={() => setStep(3)} 
-            />
-          )}
-          {step === 3 && (
-            <Waiver 
-              key="step3" 
-              onBack={() => setStep(2)} 
-              onNext={() => setStep(4)} 
-            />
-          )}
-          {step === 4 && (
-            <Payment 
-              key="step4" 
-              plan={selectedPlan}
-              loading={isLoading}
-              onBack={() => setStep(3)} 
-              onComplete={handleComplete} 
-            />
-          )}
-        </AnimatePresence>
-      </div>
-    </div>
+            <AnimatePresence mode="wait">
+            {step === 1 && (
+                <PersonalDetails 
+                key="step1" 
+                data={formData} 
+                onChange={(k: string, v: string) => setFormData(p => ({...p, [k]: v}))}
+                onNext={() => setStep(2)} 
+                />
+            )}
+            {step === 2 && (
+                <MembershipSelection 
+                key="step2" 
+                selectedPlan={selectedPlan}
+                onSelectPlan={setSelectedPlan}
+                selectedCategory={selectedCategory}
+                onSelectCategory={setSelectedCategory}
+                onBack={() => setStep(1)} 
+                onNext={() => setStep(3)} 
+                />
+            )}
+            {step === 3 && (
+                <Waiver 
+                key="step3" 
+                onBack={() => setStep(2)} 
+                onNext={() => setStep(4)} 
+                />
+            )}
+            {step === 4 && (
+                <Payment 
+                key="step4" 
+                plan={selectedPlan}
+                loading={isLoading}
+                onBack={() => setStep(3)} 
+                onComplete={handleComplete} 
+                />
+            )}
+            </AnimatePresence>
+        </div>
+    </MobileLayout>
   );
 }

@@ -1,0 +1,246 @@
+You're not building a full application — you're building a lightweight, mobile-first V1 webapp that works beautifully inside a phone browser.
+Please re-architect the design accordingly.
+
+CRITICAL FIXES YOU MUST APPLY NOW
+🔥 1. MAKE IT A MOBILE-FIRST WEBAPP (NOT AN APP-LIKE UI)
+
+The design must look like a simple, responsive website, not a full mobile app shell.
+
+Remove any heavy persistent sidebars, app shell, or dashboard layouts.
+
+Use scrollable pages, simple top navigation, and minimal transitions.
+
+Make all pages single-column, mobile-optimized, center-aligned content.
+
+Primary navigation = simple tabs or icons at the bottom; no complex drawers.
+
+🔥 2. FIX THE LOGIN FLOW — CREATE FORKED USER JOURNEY BASED ON PHONE NUMBER
+Phone numbers to hardcode:
+
+"9999988888" = NEW MEMBER
+→ Must force them into the Enrollment Flow immediately
+→ After enrollment & mock payment → redirect to dashboard → show only classes they purchased
+
+"9999977777" = EXISTING MEMBER
+→ Skip enrollment entirely
+→ Take directly to the dashboard
+→ Show classes based on pre-loaded membership(s)
+→ Sessions left, expiry, bookings immediately visible
+
+After OTP verification:
+if phone === "9999988888" → go to /enroll (mandatory)
+if phone === "9999977777" → go to /dashboard (existing member journey)
+else → show “Phone number not demo-enabled”
+
+
+No user should see the booking options until their membership is known.
+
+🔥 3. CLASS VISIBILITY MUST DEPEND ON MEMBERSHIP TYPE
+
+For both demo users:
+
+Existing Member (9999977777)
+
+Preload demo memberships like:
+
+{
+  "Aerial Fitness": { sessions: 14, expiry: "2025-03-30" },
+  "Functional Training": { sessions: 8, expiry: "2025-03-21" }
+}
+
+New Member (9999988888)
+
+They see NO classes until they complete enrollment.
+
+After enrollment:
+
+Only show:
+
+the class types they purchased
+
+corresponding schedules
+
+relevant booking options
+
+All other classes must show:
+“Not part of your membership. Enroll to unlock.”
+
+🔥 4. DESIGN MUST BE SOFTER, MORE MINIMAL, AND PASTEL — NOT NEON
+
+Rework ALL UI to use soft, airy, pastel tones, not harsh neon.
+
+Use these colors WITH REDUCED SATURATION (pastel style):
+
+Primary Teal: #04C0C1
+
+Aqua: #00D8D7
+
+Deep Teal: #009B9D
+
+Black: #000000
+
+Soft Grey: #333333
+
+UI rules:
+
+Soft rounded corners → rounded-xl, rounded-2xl
+
+Soft shadows (shadow-md with 20% opacity)
+
+Pastel teal borders (1.5px, slightly desaturated teal)
+
+Light teal accents (#00D8D7 faded variant)
+
+Replace neon glow or harsh gradients with:
+
+Subtle gradient: from-[#04C0C1] to-[#00D8D7] opacity-75
+
+White cards, pastel teal buttons, minimal iconography
+
+Fit the vibe of an aerial/pilates studio → calm, premium, feminine-but-powerful
+
+🔥 5. FIX THE HOMESCREEN — REMOVE ACCESS TO ALL CLASSES
+
+Current issue:
+After OTP, the user sees every class type, which breaks the business logic.
+
+Solution:
+
+Dashboard must show:
+
+Membership Status
+
+Purchased Class Types Only
+
+Their Sessions Remaining
+
+Today’s classes for THEIR memberships only
+
+“Enroll for More Types” CTA (optional)
+
+NOT allowed:
+
+❌ Showing all classes
+❌ Showing categories the member has no membership for
+❌ Allowing bookings before enrollment
+
+🔥 6. FIX ENROLLMENT FLOW OUTPUT
+
+After new member (9999988888) completes the enrollment + payment demo:
+
+Update context with:
+
+memberships: {
+  [selectedClassType]: {
+    sessions: purchasedSessions,
+    expiry: calculatedDate
+  }
+}
+
+
+Then:
+
+Redirect → /dashboard
+
+Show only the newly purchased class types
+
+Allow booking based on purchase
+
+Booking limits apply (48-hour rule, 14 slots, waitlist)
+
+🔥 7. APPLY A LIGHTER, MORE ELEGANT COMPONENT SYSTEM
+
+Ensure consistent use of:
+
+Soft pastel borders in teal tone
+
+Rounded card elements
+
+Minimal shadows
+
+Simple heroicons (small, thin)
+
+No solid harsh blocks; use airy spacing
+
+🔥 8. PAGES THAT MUST BE REBUILT ACCORDING TO FIXES
+1. /login
+
+Soft pastel teal gradient
+
+Gentle rounded OTP card
+
+No neon/glow
+
+2. /enroll
+
+Multi-step pastel form
+
+Class selection cards with soft teal outlines
+
+Membership selection list with subtle highlights
+
+3. /dashboard
+
+Clean header: “Hi, <Name>”
+
+Show ONLY member’s class types
+
+Pastel progress rings/bars
+
+A “Today’s Sessions” section filtered based on membership
+
+Hidden content for unpurchased classes
+
+4. /book
+
+Show only the member’s class categories
+
+Booking cards must be pastel & rounded
+
+Show:
+
+Spots left
+
+Waitlist option
+
+Booking window logic
+
+5. /news
+
+Soft little cards with teal accents
+
+6. /sessions
+
+Upcoming / Past / Waitlisted tabs
+
+🔥 9. MAKE IT A WEB APP, NOT AN APP-LIKE NAVIGATION STRUCTURE
+
+Remove animations that feel “native-like”
+
+Replace bottom tab bar with simple bottom buttons or a clean top navbar
+
+Use responsive mobile-friendly pages
+
+Keep it light, simple, scrollable
+
+🔥 10. FINAL CHECKLIST FOR REPLIT
+
+Please ensure the final output:
+
+Is a mobile-first web version, not a PWA-style full app
+
+Has two demo users with forked journeys:
+
+9999988888 → Full enrollment → membership → booking
+
+9999977777 → Direct to dashboard → booking
+
+Shows only relevant class types based on membership
+
+Uses Airborne pastel teal brand vibe
+
+Has soft corners & consistent teal-accent borders
+
+Feels beautiful, minimal, premium & clean
+
+Rebuild the project according to all of the above changes.
