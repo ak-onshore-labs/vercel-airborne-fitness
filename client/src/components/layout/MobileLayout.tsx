@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { Home, Calendar, User, Newspaper, Dumbbell } from "lucide-react";
 import { cn } from "@/lib/utils";
-import logo from "@assets/image_1765019094396.png";
+import logo from "@assets/image_1765022997002.png";
 
 export default function MobileLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();

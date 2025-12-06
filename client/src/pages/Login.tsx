@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, ArrowRight } from "lucide-react";
-import logo from "@assets/image_1765019094396.png";
+import logo from "@assets/image_1765022997002.png";
 
 export default function Login() {
   const { login } = useMember();
