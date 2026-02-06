@@ -12,13 +12,39 @@ import MobileLayout from "@/components/layout/MobileLayout";
 
 const PersonalDetails = ({ onNext, data, onChange }: any) => (
   <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
-    <h2 className="text-2xl font-bold text-gray-900">About You</h2>
-    <div className="space-y-4">
-      <Input placeholder="Full Name" value={data.name} onChange={e => onChange('name', e.target.value)} className="h-12 rounded" />
-      <Input placeholder="Email" type="email" value={data.email} onChange={e => onChange('email', e.target.value)} className="h-12 rounded" />
-      <Input placeholder="Date of Birth" type="date" className="h-12 rounded" />
+    <div>
+        <h2 className="text-2xl font-bold text-gray-900">About You</h2>
+        <p className="text-gray-500 text-sm">Let's get to know you better.</p>
     </div>
-    <Button onClick={onNext} className="w-full h-12 bg-airborne-teal text-white rounded">Continue</Button>
+    
+    <div className="space-y-4">
+      <div className="space-y-1">
+        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Full Name</label>
+        <Input placeholder="Jane Doe" value={data.name} onChange={e => onChange('name', e.target.value)} className="bg-gray-50 border-gray-100 h-12 rounded focus-visible:ring-airborne-teal" />
+      </div>
+      <div className="space-y-1">
+        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Email</label>
+        <Input placeholder="jane@example.com" type="email" value={data.email} onChange={e => onChange('email', e.target.value)} className="bg-gray-50 border-gray-100 h-12 rounded focus-visible:ring-airborne-teal" />
+      </div>
+      <div className="space-y-1">
+        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Date of Birth</label>
+        <Input type="date" className="bg-gray-50 border-gray-100 h-12 rounded focus-visible:ring-airborne-teal" />
+      </div>
+      <div className="space-y-1">
+        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Emergency Contact</label>
+        <div className="space-y-2">
+          <Input placeholder="Contact Name" className="bg-gray-50 border-gray-100 h-12 rounded focus-visible:ring-airborne-teal" />
+          <Input placeholder="Contact Number" className="bg-gray-50 border-gray-100 h-12 rounded focus-visible:ring-airborne-teal" />
+        </div>
+      </div>
+      <div className="space-y-1">
+        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Medical Conditions</label>
+        <Textarea placeholder="Any injuries or conditions we should know?" className="bg-gray-50 border-gray-100 rounded focus-visible:ring-airborne-teal min-h-[100px]" />
+      </div>
+    </div>
+    <Button onClick={onNext} className="w-full h-12 bg-airborne-teal hover:bg-airborne-deep text-white rounded shadow-lg shadow-teal-100 mt-4">
+        Continue
+    </Button>
   </motion.div>
 );
 
@@ -77,10 +103,41 @@ const KidDetails = ({ onNext, onBack, data, onChange }: any) => (
 
 const Waiver = ({ onNext, onBack }: any) => (
   <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
-    <h2 className="text-2xl font-bold text-gray-900">Waiver</h2>
-    <div className="h-64 overflow-y-auto bg-gray-50 border p-4 rounded text-xs text-gray-500">Liability Waiver Content...</div>
-    <Button onClick={onNext} className="w-full h-12 bg-airborne-teal text-white rounded">Agree & Continue</Button>
-    <Button variant="ghost" onClick={onBack} className="w-full">Back</Button>
+    <div>
+        <h2 className="text-2xl font-bold text-gray-900">Waiver</h2>
+        <p className="text-gray-500 text-sm">Please review and sign.</p>
+    </div>
+
+    <div className="bg-gray-50 border border-gray-100 p-6 rounded text-xs text-gray-500 leading-relaxed">
+      <p className="mb-4 font-bold text-gray-700 uppercase tracking-tight">Liability Waiver and Release</p>
+      <div className="space-y-3">
+        <p>1. I acknowledge that I am voluntarily participating in the activities offered by Airborne Fitness.</p>
+        <p>2. I recognize that these activities involve physical exertion and potential risks of injury and potential risks of injury.</p>
+        <p>3. I hereby release, waive, discharge, and covenant not to sue Airborne Fitness, its owners, instructors, and agents from any and all liability.</p>
+        <p>4. I certify that I am physically fit and have not been advised to the contrary by a qualified medical professional.</p>
+      </div>
+    </div>
+    
+    <div className="space-y-3 pt-2">
+      <label className="flex items-center gap-3 p-4 bg-white border border-gray-100 rounded cursor-pointer hover:border-gray-200 transition-colors">
+        <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-airborne-teal focus:ring-airborne-teal" />
+        <span className="text-sm text-gray-600">I have read and agree to the waiver terms.</span>
+      </label>
+      <label className="flex items-center gap-3 p-4 bg-white border border-gray-100 rounded cursor-pointer hover:border-gray-200 transition-colors">
+        <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-airborne-teal focus:ring-airborne-teal" />
+        <span className="text-sm text-gray-600">I am 18 years of age or older.</span>
+      </label>
+      
+      <div className="space-y-1 pt-2">
+        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Digital Signature</label>
+        <Input placeholder="Type Full Name" className="bg-gray-50 border-gray-100 h-12 rounded focus-visible:ring-airborne-teal" />
+      </div>
+    </div>
+
+    <div className="flex gap-3 mt-6">
+      <Button variant="outline" onClick={onBack} className="flex-1 h-12 border-gray-200 text-gray-600 rounded">Back</Button>
+      <Button onClick={onNext} className="flex-1 h-12 bg-airborne-teal hover:bg-airborne-deep text-white rounded shadow-lg shadow-teal-100">To Payment</Button>
+    </div>
   </motion.div>
 );
 
