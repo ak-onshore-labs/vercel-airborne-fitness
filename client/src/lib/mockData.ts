@@ -1,4 +1,4 @@
-import { addDays, format, startOfDay } from "date-fns";
+import { addDays, startOfDay } from "date-fns";
 
 export type ClassCategory = 
   | 'Pilates & Mobility' 
@@ -29,7 +29,6 @@ export interface ClassSession {
   classId: string;
   startTime: Date;
   endTime: Date;
-  instructor: string;
   totalSpots: number;
   bookedSpots: number;
 }
@@ -115,21 +114,19 @@ export const MEMBERSHIP_PLANS: Record<string, MembershipPlan[]> = {
   ]
 };
 
-// Generate Mock Schedule for next 3 days
+// Generate Mock Schedule for next 7 days
 const TODAY = startOfDay(new Date());
 
 export const MOCK_SCHEDULE: ClassSession[] = [];
 
-[0, 1, 2].forEach(dayOffset => {
+[0, 1, 2, 3, 4, 5, 6].forEach(dayOffset => {
   const date = addDays(TODAY, dayOffset);
   
-  // Morning Classes
   MOCK_SCHEDULE.push({
     id: `session-${dayOffset}-1`,
     classId: 'aerial-fitness',
     startTime: new Date(new Date(date).setHours(8, 0, 0, 0)),
     endTime: new Date(new Date(date).setHours(9, 0, 0, 0)),
-    instructor: 'Sarah',
     totalSpots: 14,
     bookedSpots: 8 + dayOffset 
   });
@@ -139,29 +136,24 @@ export const MOCK_SCHEDULE: ClassSession[] = [];
     classId: 'pilates',
     startTime: new Date(new Date(date).setHours(9, 30, 0, 0)),
     endTime: new Date(new Date(date).setHours(10, 30, 0, 0)),
-    instructor: 'Mike',
     totalSpots: 10,
-    bookedSpots: 10 // Full
+    bookedSpots: 10 
   });
 
-  // Afternoon
   MOCK_SCHEDULE.push({
     id: `session-${dayOffset}-3`,
     classId: 'kids-aerial',
     startTime: new Date(new Date(date).setHours(16, 0, 0, 0)),
     endTime: new Date(new Date(date).setHours(17, 0, 0, 0)),
-    instructor: 'Jenny',
     totalSpots: 12,
     bookedSpots: 5
   });
 
-  // Evening Classes
   MOCK_SCHEDULE.push({
     id: `session-${dayOffset}-4`,
     classId: 'aerial-hoop',
     startTime: new Date(new Date(date).setHours(18, 0, 0, 0)),
     endTime: new Date(new Date(date).setHours(19, 0, 0, 0)),
-    instructor: 'Jenny',
     totalSpots: 8,
     bookedSpots: 2
   });
@@ -171,7 +163,6 @@ export const MOCK_SCHEDULE: ClassSession[] = [];
     classId: 'functional',
     startTime: new Date(new Date(date).setHours(19, 30, 0, 0)),
     endTime: new Date(new Date(date).setHours(20, 30, 0, 0)),
-    instructor: 'Alex',
     totalSpots: 20,
     bookedSpots: 15
   });

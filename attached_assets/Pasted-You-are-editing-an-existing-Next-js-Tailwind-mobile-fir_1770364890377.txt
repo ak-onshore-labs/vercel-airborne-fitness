@@ -1,0 +1,263 @@
+You are editing an existing Next.js + Tailwind mobile-first web app demo.
+ IMPORTANT: Do not redesign the UI. Keep the current design language. Make the following functional and UI changes surgically, with minimal refactoring, and ensure no existing flows break.
+General Rules
+Keep all existing routes and state management unless explicitly asked to remove.
+
+
+Prefer small targeted edits over big rewrites.
+
+
+Keep mock data / context logic intact.
+
+
+If a feature is removed (News, trainer details), remove its UI, navigation entry, and any unused components/data safely.
+
+
+Make sure all pages still compile and no imports break.
+
+
+
+CHANGE 1: Book Section shows a rolling 7-day weekly schedule
+Requirement
+In the “Book” section, show schedule for 7 days starting today in order:
+If today is Friday, show: Friday, Saturday, Sunday, Monday, Tuesday, Wednesday, Thursday
+
+
+Always show 7 days, always starting from today.
+
+
+This is a weekly view, not limited to 72 hours.
+
+
+Implementation details
+
+
+When user taps a day, show that day’s sessions.
+
+
+Keep the current UI style (pills/tabs) and pastel borders.
+
+
+Data
+Reuse existing schedule mock data.
+
+
+Implement a helper function in /lib/date.ts:
+
+
+getNext7DaysIST(): { label: string; date: Date; iso: string; dayName: string }[]
+
+
+Use IST consistently.
+
+
+
+CHANGE 2: For kids-class enrollment only, ask kid details BEFORE waiver
+Requirement
+Only if the member is enrolling in kids classes, add a step before waiver:
+Kid Name
+
+
+Kid DOB
+
+
+Kid Gender (dropdown: Male/Female/Other/Prefer not to say)
+
+
+Kids classes include:
+Kids Aerial Fitness
+ (Any other category marked as kids)
+
+
+Implementation details
+Enrollment already supports selecting one or more class categories.
+
+
+If the selected categories include ANY kids category, insert a new step:
+
+
+“Kid Details”
+
+
+If user selects multiple categories including kids + adult, still show kid details once.
+
+
+Store in enrollment state under:
+
+
+kidDetails: { name: string; dob: string; gender: string }
+
+
+Keep the same component styling as other form steps.
+
+
+
+CHANGE 3: Remove the News section completely
+Requirement
+Remove News from the entire app.
+Implementation details
+Remove News tab/button from navigation.
+
+
+Remove /news route/page.
+
+
+Remove any components, mock data, context references used only for News.
+
+
+Ensure no broken imports remain.
+
+
+If any “preview news” widget exists on dashboard, remove it and adjust spacing to keep layout clean.
+
+
+
+CHANGE 4: Branch-wise split (Lower Parel + Mazgaon), members can book at either branch
+Requirement
+There are two branches:
+Lower Parel
+
+
+Mazgaon
+
+
+Once a member is enrolled into any class category, they can book and attend sessions at either branch.
+ Branch selection affects what schedule is displayed in Book and what booking record is stored.
+Implementation details
+Add a branch selector to app state (Context):
+
+
+selectedBranch: 'Lower Parel' | 'Mazgaon'
+
+
+default: Lower Parel
+
+
+Store branch in booking records:
+
+
+Each booking must include branch.
+
+
+Schedules should be shown branch-wise:
+
+
+If schedule data is the same for demo, you can reuse it but still show branch selection and attach branch to bookings.
+
+
+Show a subtle label “Lower Parel” / “Mazgaon” on session cards.
+
+
+
+CHANGE 4b: On enrollment “Select Plan” screen add CTA: “View Schedule”
+Requirement
+In enrollment flow, on the plan selection screen, add a CTA button:
+“View Schedule”
+
+
+Tapping it navigates to the Book section.
+
+
+Behavior
+Keep the user’s enrollment progress saved.
+
+
+When returning from Book to Enrollment, do NOT reset the form.
+
+
+Add a small “Back to Enrollment” button on Book page if user came from enrollment (use a query param like ?from=enroll=1).
+
+
+
+CHANGE 5: Book section must have branch selector at the top
+Requirement
+At the top of Book page, add a branch toggle/dropdown:
+“Lower Parel” and “Mazgaon”
+
+
+Must be visible before the schedule list.
+
+
+Switching branch updates session list immediately.
+
+
+UI
+Must match existing UI:
+
+
+soft pill selector or dropdown with rounded corners
+
+
+pastel teal border
+
+
+subtle highlight for selected branch
+
+
+
+CHANGE 6: Remove trainer details from app completely
+Requirement
+Trainer details must not appear anywhere.
+Implementation details
+Remove trainer name from:
+
+
+Class cards
+
+
+Class detail pages
+
+
+Booking confirmations
+
+
+Admin-only areas (if any present in demo)
+
+
+Remove trainer fields from mock session objects (or ignore them in UI).
+
+
+Ensure UI remains consistent and no empty labels remain.
+
+
+
+Additional Safety Checks
+After implementing changes:
+Ensure both demo login flows still work.
+
+
+Ensure enrollment still works for:
+
+
+Adult-only membership
+
+
+Kids-only membership (must ask kid details)
+
+
+Mixed adult + kids membership (must ask kid details once)
+
+
+Ensure Book page shows:
+
+
+7-day selector starting today
+
+
+Branch selector
+
+
+Book session writes booking with branch
+
+
+Ensure no News artifacts remain.
+
+
+Ensure no trainer text appears anywhere.
+
+
+
+Output Expectation
+Make the edits directly in the existing project.
+ Do not create a new project.
+ Do not change branding or overall look.

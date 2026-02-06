@@ -12,7 +12,6 @@ import Book from "@/pages/Book";
 import Enroll from "@/pages/Enroll";
 import Profile from "@/pages/Profile";
 import Sessions from "@/pages/Sessions";
-import News from "@/pages/News";
 
 function Router() {
   return (
@@ -23,7 +22,6 @@ function Router() {
       <Route path="/book" component={Book} />
       <Route path="/enroll" component={Enroll} />
       <Route path="/sessions" component={Sessions} />
-      <Route path="/news" component={News} />
       <Route path="/profile" component={Profile} />
       <Route component={NotFound} />
     </Switch>
