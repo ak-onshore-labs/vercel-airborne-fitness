@@ -1,0 +1,287 @@
+Your task is to implement a demo-only waitlist + cancel booking system that visually behaves realistically, using front-end state only (React Context/local store). No backend/Firebase required.
+
+Make minimal, surgical changes. Do not refactor unrelated code.
+
+A) Booking cards must show available slots
+
+On the “Book” page session cards (where user books a class instance), add:
+
+Available slots count displayed clearly:
+
+availableSlots = capacity - bookedCount
+
+capacity is always 14
+
+Display format examples:
+
+“4 slots left”
+
+“0 slots left” + show FULL state
+
+Keep styling consistent with existing card layout (small badge/pill or subtle line under time).
+
+B) Implement waitlist state + logic (demo)
+1) Add / extend the session inventory model
+
+Each session instance must have:
+
+sessionId (unique string)
+
+category
+
+date (YYYY-MM-DD, IST)
+
+startTime, endTime
+
+branch
+
+capacity = 14
+
+bookedCount (number)
+
+waitlistCount (number)
+
+If your app currently generates sessions from schedule without counts, create a lightweight sessionInventory state in Context that attaches counts by sessionId.
+
+2) Seed demo “FULL” sessions
+
+To make waitlist visible in demo:
+
+On initial app load, set a few popular sessions (e.g., evening Aerial Fitness, weekend morning) to:
+
+bookedCount = 14
+
+waitlistCount = 2 (optional)
+This must not affect the schedule list rendering; it only changes booking UI state.
+
+C) Booking logic
+
+When user taps on a session card:
+
+If user is eligible and session is NOT full (bookedCount < 14)
+
+Show CTA: “Book”
+
+On confirm:
+
+Add record to memberBookings as status "BOOKED"
+
+Increment bookedCount for that sessionId
+
+Show toast: “Booked successfully”
+
+Card state changes to “Booked”
+
+If session IS full (bookedCount === 14)
+
+Show “FULL” badge
+
+Show CTA: “Join Waitlist (X)”, where X = waitlistCount
+
+On confirm:
+
+Add record to memberBookings as status "WAITLISTED"
+
+Increment waitlistCount for that sessionId
+
+Assign waitlistPosition = waitlistCount AFTER increment (or previous + 1)
+
+Show toast: “Added to waitlist. Position #N”
+
+Card state changes to “Waitlisted (#N)”
+
+If user already booked or already waitlisted
+
+Disable booking CTA
+
+Show the appropriate state:
+
+“Booked”
+
+“Waitlisted (#N)”
+
+D) Add Cancel booking + Leave waitlist (demo)
+
+Add cancel actions in the “My Sessions” page under Upcoming tab.
+
+Upcoming tab must show BOTH:
+
+"BOOKED" bookings
+
+"WAITLISTED" bookings
+
+For BOOKED items
+
+Show a “Cancel booking” button (if cancellation allowed; otherwise disabled with “Cancellation closed”)
+
+On cancel confirm:
+
+Mark the booking status as "CANCELLED" (do not hard delete)
+
+Decrement bookedCount for that sessionId by 1 (floor at 0)
+
+If waitlistCount > 0 for that sessionId:
+
+Find the earliest waitlisted booking for that same sessionId (by createdAt)
+
+Promote it:
+
+Change status "WAITLISTED" → "BOOKED"
+
+Decrement waitlistCount by 1
+
+Increment bookedCount by 1
+
+Recompute remaining waitlist positions (shift everyone up by 1)
+
+Show toast: “Spot opened. Waitlist member promoted.”
+
+Show toast: “Booking cancelled”
+
+For WAITLISTED items
+
+Show a “Leave waitlist” button (same cancellation window rule)
+
+On confirm:
+
+Mark status "CANCELLED"
+
+Decrement waitlistCount by 1 (floor at 0)
+
+Recompute waitlist positions for remaining waitlisted users on that sessionId
+
+Show toast: “Removed from waitlist”
+
+E) Cancellation window rule (use existing logic if present)
+
+Use IST times. Cancellation allowed only up to 1 hour before session start.
+
+If current time is within 1 hour of start:
+
+Disable cancel button
+
+Show “Cancellation closed” label
+
+Since this is demo-only, if time parsing is complex, implement a simplified version:
+
+Use date + startTime to compute DateTime in IST
+
+Compare with now in IST
+
+F) “My Sessions” Upcoming UI requirements (must remain in same style)
+
+In Upcoming tab:
+
+Sort items by session date/time ascending
+
+Display status badges:
+
+BOOKED: “Confirmed”
+
+WAITLISTED: “Waitlist #X”
+
+Show branch and time details
+
+Keep card style consistent (rounded, pastel borders, soft shadows)
+
+G) Data Structures & Context (minimal additions)
+
+In React Context store:
+
+sessionInventory: Record<sessionId, { capacity, bookedCount, waitlistCount }>
+
+memberBookings: Booking[]
+
+Booking type:
+
+type BookingStatus = "BOOKED" | "WAITLISTED" | "CANCELLED";
+
+type Booking = {
+  id: string;
+  sessionId: string;
+  status: BookingStatus;
+  createdAt: number;
+  category: string;
+  branch: "Lower Parel" | "Mazgaon";
+  date: string; // YYYY-MM-DD
+  startTime: string;
+  endTime: string;
+  waitlistPosition?: number;
+};
+
+
+Create helper functions in context:
+
+bookSession(session)
+
+joinWaitlist(session)
+
+cancelBooking(bookingId)
+
+leaveWaitlist(bookingId)
+
+promoteWaitlist(sessionId) (internal helper)
+
+recomputeWaitlistPositions(sessionId)
+
+All changes should be front-end only.
+
+H) UI placements (where changes must show)
+
+Book page session cards
+
+show available slots
+
+show FULL state when 0 slots left
+
+show Join Waitlist with count
+
+show Waitlisted state after joining
+
+My Sessions → Upcoming tab
+
+include Booked + Waitlisted
+
+provide Cancel/Leave actions
+
+show status badges
+
+I) Final test checklist
+
+After implementation:
+
+A seeded “FULL” session must show:
+
+“0 slots left”
+
+FULL badge
+
+Join Waitlist CTA with count
+
+Joining waitlist:
+
+Adds item to My Sessions Upcoming with “Waitlist #X”
+
+Booking a normal session:
+
+Decreases available slots
+
+Adds “Confirmed” item to My Sessions Upcoming
+
+Cancelling a booked session when waitlist exists:
+
+Decreases bookedCount
+
+Promotes first waitlisted booking to confirmed
+
+Updates waitlist positions
+
+Leaving waitlist:
+
+Removes it from upcoming (or marks cancelled and hides cancelled)
+
+Decrements waitlist count and shifts positions
+
+Ensure no build errors and no UI redesign.
+
+Proceed with these enhancements now while preserving the existing UI and branding.

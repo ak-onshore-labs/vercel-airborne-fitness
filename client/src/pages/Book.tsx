@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useMember } from "@/context/MemberContext";
 import { MOCK_SCHEDULE } from "@/lib/mockData";
 import { format, isSameDay } from "date-fns";
@@ -10,7 +10,7 @@ import { Calendar, Lock, Loader2, MapPin, ArrowLeft } from "lucide-react";
 import { getNext7DaysIST } from "@/lib/date";
 
 export default function Book() {
-  const { bookClass, bookedSessions, user, selectedBranch, setSelectedBranch } = useMember();
+  const { bookSession, joinWaitlist, bookedSessions, user, selectedBranch, setSelectedBranch, sessionInventory } = useMember();
   const [location, setLocation] = useLocation();
   const searchParams = new URLSearchParams(window.location.search);
   const fromEnroll = searchParams.get('from') === 'enroll';
@@ -22,9 +22,19 @@ export default function Book() {
 
   const categories = ["All", "Aerial Fitness", "Pilates", "Aerial Hoop", "Functional", "Kids Aerial"];
 
-  const handleBook = async (sessionId: string, categoryName: string) => {
-    setLoadingId(sessionId);
-    await bookClass(sessionId, categoryName, selectedBranch);
+  const getSessionState = (sessionId: string) => {
+    const inv = sessionInventory[sessionId] || { capacity: 14, bookedCount: 8, waitlistCount: 0 };
+    const booking = bookedSessions.find(b => b.sessionId === sessionId && b.status !== "CANCELLED");
+    return { inv, booking };
+  };
+
+  const handleAction = async (session: any, categoryName: string, isWaitlist: boolean) => {
+    setLoadingId(session.id);
+    if (isWaitlist) {
+      await joinWaitlist(session, categoryName);
+    } else {
+      await bookSession(session, categoryName);
+    }
     setLoadingId(null);
   };
 
@@ -75,10 +85,11 @@ export default function Book() {
             </div>
         ) : (
             filteredSessions.map(session => {
-            const isBooked = bookedSessions.some(b => b.sessionId === session.id);
-            const isFull = session.bookedSpots >= session.totalSpots;
+            const { inv, booking } = getSessionState(session.id);
+            const isFull = inv.bookedCount >= inv.capacity;
             const categoryName = Object.keys(user?.memberships || {}).find(cat => cat.toLowerCase().includes(session.classId.replace(/-/g, ' '))) || "";
             const hasMembership = !!categoryName;
+            const slotsLeft = Math.max(0, inv.capacity - inv.bookedCount);
             
             return (
                 <div key={session.id} className="bg-white border border-gray-100 rounded p-5 flex gap-5 shadow-sm hover:shadow-md transition-shadow">
@@ -89,17 +100,25 @@ export default function Book() {
                     <div className="flex-1">
                         <div className="flex justify-between items-start mb-1">
                           <h3 className="font-bold text-gray-900 capitalize text-base">{session.classId.replace(/-/g, ' ')}</h3>
-                          <span className="text-[10px] bg-teal-50 text-airborne-teal px-1 rounded">{selectedBranch}</span>
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="text-[10px] bg-teal-50 text-airborne-teal px-1 rounded">{selectedBranch}</span>
+                            {isFull && !booking && <span className="text-[10px] font-bold text-red-500 px-1 bg-red-50 rounded">FULL</span>}
+                          </div>
                         </div>
                         <div className="flex justify-between items-center mt-4">
-                        <span className="text-xs font-medium text-gray-400 bg-gray-50 px-2 py-1 rounded-md">{session.totalSpots - session.bookedSpots} spots left</span>
-                        {isBooked ? (
-                            <Button disabled size="sm" className="h-9 bg-green-50 text-green-600 border border-green-100">Booked</Button>
+                        <span className={cn("text-xs font-medium px-2 py-1 rounded-md", slotsLeft > 0 ? "text-gray-400 bg-gray-50" : "text-red-500 bg-red-50")}>
+                          {slotsLeft > 0 ? `${slotsLeft} slots left` : "0 slots left"}
+                        </span>
+                        
+                        {booking ? (
+                          <Button disabled size="sm" className={cn("h-9 border shadow-none font-semibold", booking.status === "BOOKED" ? "bg-green-50 text-green-600 border-green-100" : "bg-amber-50 text-amber-600 border-amber-100")}>
+                            {booking.status === "BOOKED" ? "Booked" : `Waitlisted (#${booking.waitlistPosition})`}
+                          </Button>
                         ) : !hasMembership ? (
                              <Button size="sm" onClick={() => setLocation('/enroll')} className="h-9 bg-gray-900 text-white text-xs px-5 rounded">Enroll</Button>
                         ) : (
-                            <Button size="sm" onClick={() => handleBook(session.id, categoryName)} disabled={loadingId === session.id || isFull} className="h-9 bg-airborne-teal text-white text-xs px-5 rounded">
-                            {loadingId === session.id ? <Loader2 className="animate-spin h-3 w-3" /> : isFull ? "Full" : "Book"}
+                            <Button size="sm" onClick={() => handleAction(session, categoryName, isFull)} disabled={loadingId === session.id} className={cn("h-9 text-white text-xs px-5 rounded", isFull ? "bg-amber-500" : "bg-airborne-teal")}>
+                            {loadingId === session.id ? <Loader2 className="animate-spin h-3 w-3" /> : isFull ? `Join Waitlist (${inv.waitlistCount})` : "Book Class"}
                             </Button>
                         )}
                         </div>
