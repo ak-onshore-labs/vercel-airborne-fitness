@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useMember } from "@/context/MemberContext";
 import { format, isSameDay, addDays, startOfToday } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -6,6 +6,7 @@ import { useLocation } from "wouter";
 import MobileLayout from "@/components/layout/MobileLayout";
 import { Button } from "@/components/ui/button";
 import { Loader2, ArrowLeft } from "lucide-react";
+import { apiFetch } from "@/lib/api";
 
 interface ScheduleItem {
   id: string;
@@ -81,9 +82,13 @@ export default function Book() {
   const categories = ["All", "Aerial Fitness", "Pilates", "Aerial Hoop", "Functional", "Kids Aerial"];
 
   useEffect(() => {
-    fetch('/api/schedule')
-      .then(r => r.json())
-      .then(data => { setSchedule(data); setLoadingSchedule(false); })
+    apiFetch<ScheduleItem[]>('/api/schedule')
+      .then((result) => {
+        if (result.ok && Array.isArray(result.data)) {
+          setSchedule(result.data);
+        }
+        setLoadingSchedule(false);
+      })
       .catch(() => setLoadingSchedule(false));
   }, []);
 

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, ReactNode, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useLocation } from 'wouter';
+import { apiFetch } from '@/lib/api';
 
 export interface MembershipDetails {
   id: string;
@@ -39,12 +40,17 @@ export interface Booking {
   waitlistPosition?: number;
 }
 
+export interface LoginResult {
+  success: boolean;
+  isNew?: boolean;
+}
+
 interface MemberContextType {
   user: UserProfile | null;
   bookedSessions: Booking[];
   selectedBranch: 'Lower Parel' | 'Mazgaon';
   setSelectedBranch: (branch: 'Lower Parel' | 'Mazgaon') => void;
-  login: (phone: string) => Promise<boolean>;
+  login: (phone: string) => Promise<LoginResult>;
   logout: () => void;
   enroll: (details: any, selectedPlans: SelectedPlan[], waiver?: any, kidInfo?: any) => Promise<void>;
   bookSession: (session: any, categoryName: string) => Promise<boolean>;
@@ -65,37 +71,35 @@ export function MemberProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
-  const login = async (phone: string): Promise<boolean> => {
+  const login = async (phone: string): Promise<LoginResult> => {
     try {
-      const res = await fetch('/api/login', {
+      const result = await apiFetch<{ member: UserProfile; memberships: MembershipMap; isNew: boolean }>('/api/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone }),
       });
-      if (!res.ok) {
-        toast({ variant: "destructive", title: "Login Failed" });
-        return false;
+      if (!result.ok) {
+        toast({ variant: "destructive", title: "Login Failed", description: result.message });
+        return { success: false };
       }
-      const data = await res.json();
+      const { member, memberships, isNew } = result.data;
       setUser({
-        id: data.member.id,
-        name: data.member.name,
-        phone: data.member.phone,
-        email: data.member.email,
-        memberships: data.memberships,
+        id: member.id,
+        name: member.name,
+        phone: member.phone,
+        email: member.email,
+        memberships,
       });
 
       // Load bookings
-      const bookingsRes = await fetch(`/api/bookings/${data.member.id}`);
-      if (bookingsRes.ok) {
-        const bookingsData = await bookingsRes.json();
-        setBookedSessions(bookingsData.filter((b: any) => b.status !== "CANCELLED"));
+      const bookingsResult = await apiFetch<Booking[]>(`/api/bookings/${member.id}`);
+      if (bookingsResult.ok && Array.isArray(bookingsResult.data)) {
+        setBookedSessions(bookingsResult.data.filter((b) => b.status !== "CANCELLED"));
       }
 
-      return true;
+      return { success: true, isNew };
     } catch {
       toast({ variant: "destructive", title: "Connection error" });
-      return false;
+      return { success: false };
     }
   };
 
@@ -103,155 +107,126 @@ export function MemberProvider({ children }: { children: ReactNode }) {
 
   const enroll = async (details: any, selectedPlans: SelectedPlan[], waiver?: any, kidInfo?: any) => {
     if (!user) return;
-    try {
-      const res = await fetch('/api/enroll', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          memberId: user.id,
-          personalDetails: {
-            name: details.name,
-            email: details.email,
-            dob: details.dob,
-            emergencyContactName: details.emergencyContactName,
-            emergencyContactPhone: details.emergencyContactPhone,
-            medicalConditions: details.medicalConditions,
-          },
-          plans: selectedPlans.map(sp => ({
-            category: sp.category,
-            planName: sp.plan.name,
-            sessions: sp.plan.sessions,
-            price: sp.plan.price,
-            validityDays: sp.plan.validityDays,
-          })),
-          waiver,
-          kidDetails: kidInfo,
-        }),
-      });
-      if (!res.ok) throw new Error('Enrollment failed');
-      const data = await res.json();
-      setUser(prev => prev ? { ...prev, name: details.name || prev.name, email: details.email, memberships: data.memberships } : null);
-      toast({ title: "Enrollment Successful!" });
-    } catch {
-      toast({ variant: "destructive", title: "Enrollment failed" });
+    const result = await apiFetch<{ memberships: MembershipMap }>('/api/enroll', {
+      method: 'POST',
+      body: JSON.stringify({
+        memberId: user.id,
+        personalDetails: {
+          name: details.name,
+          email: details.email,
+          dob: details.dob,
+          emergencyContactName: details.emergencyContactName,
+          emergencyContactPhone: details.emergencyContactPhone,
+          medicalConditions: details.medicalConditions,
+        },
+        plans: selectedPlans.map(sp => ({
+          category: sp.category,
+          planName: sp.plan.name,
+          sessions: sp.plan.sessions,
+          price: sp.plan.price,
+          validityDays: sp.plan.validityDays,
+        })),
+        waiver,
+        kidDetails: kidInfo,
+      }),
+    });
+    if (!result.ok) {
+      toast({ variant: "destructive", title: "Enrollment failed", description: result.message });
+      throw new Error(result.message);
     }
+    setUser(prev => prev ? { ...prev, name: details.name || prev.name, email: details.email, memberships: result.data.memberships } : null);
+    toast({ title: "Enrollment Successful!" });
   };
 
   const hasMembershipFor = (categoryName: string): boolean => !!user?.memberships[categoryName];
 
   const refreshBookings = useCallback(async () => {
     if (!user) return;
-    const res = await fetch(`/api/bookings/${user.id}`);
-    if (res.ok) {
-      const data = await res.json();
-      setBookedSessions(data.filter((b: any) => b.status !== "CANCELLED"));
+    const result = await apiFetch<Booking[]>(`/api/bookings/${user.id}`);
+    if (result.ok && Array.isArray(result.data)) {
+      setBookedSessions(result.data.filter((b) => b.status !== "CANCELLED"));
     }
   }, [user]);
 
   const getSessionCounts = async (scheduleId: string, date: string) => {
-    const res = await fetch(`/api/session-bookings?scheduleId=${scheduleId}&date=${date}`);
-    if (res.ok) return res.json();
+    const result = await apiFetch<{ bookedCount: number; waitlistCount: number }>(
+      `/api/session-bookings?scheduleId=${encodeURIComponent(scheduleId)}&date=${encodeURIComponent(date)}`
+    );
+    if (result.ok) return result.data;
     return { bookedCount: 0, waitlistCount: 0 };
   };
 
   const bookSession = async (session: any, categoryName: string) => {
     if (!user) return false;
-    try {
-      const res = await fetch('/api/book', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          memberId: user.id,
-          scheduleId: session.scheduleId,
-          sessionDate: session.sessionDate,
-          category: categoryName,
-          branch: selectedBranch,
-          startTime: session.startTime,
-          endTime: session.endTime,
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        toast({ variant: "destructive", title: "Booking Failed", description: err.message });
-        return false;
-      }
-      const booking = await res.json();
-      setBookedSessions(prev => [...prev, booking]);
-      
-      // Decrement local membership count
-      setUser(prev => {
-        if (!prev) return null;
-        const m = prev.memberships[categoryName];
-        if (!m) return prev;
-        return { ...prev, memberships: { ...prev.memberships, [categoryName]: { ...m, sessionsRemaining: m.sessionsRemaining - 1 } } };
-      });
-
-      toast({ title: "Booked successfully!" });
-      return true;
-    } catch {
-      toast({ variant: "destructive", title: "Booking error" });
+    const result = await apiFetch<Booking>('/api/book', {
+      method: 'POST',
+      body: JSON.stringify({
+        memberId: user.id,
+        scheduleId: session.scheduleId,
+        sessionDate: session.sessionDate,
+        category: categoryName,
+        branch: selectedBranch,
+        startTime: session.startTime,
+        endTime: session.endTime,
+      }),
+    });
+    if (!result.ok) {
+      toast({ variant: "destructive", title: "Booking Failed", description: result.message });
       return false;
     }
+    setBookedSessions(prev => [...prev, result.data]);
+    setUser(prev => {
+      if (!prev) return null;
+      const m = prev.memberships[categoryName];
+      if (!m) return prev;
+      return { ...prev, memberships: { ...prev.memberships, [categoryName]: { ...m, sessionsRemaining: m.sessionsRemaining - 1 } } };
+    });
+    toast({ title: "Booked successfully!" });
+    return true;
   };
 
   const joinWaitlist = async (session: any, categoryName: string) => {
     if (!user) return false;
-    try {
-      const res = await fetch('/api/waitlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          memberId: user.id,
-          scheduleId: session.scheduleId,
-          sessionDate: session.sessionDate,
-          category: categoryName,
-          branch: selectedBranch,
-          startTime: session.startTime,
-          endTime: session.endTime,
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        toast({ variant: "destructive", title: "Waitlist Failed", description: err.message });
-        return false;
-      }
-      const booking = await res.json();
-      setBookedSessions(prev => [...prev, booking]);
-      toast({ title: `Added to waitlist. Position #${booking.waitlistPosition}` });
-      return true;
-    } catch {
-      toast({ variant: "destructive", title: "Waitlist error" });
+    const result = await apiFetch<Booking>('/api/waitlist', {
+      method: 'POST',
+      body: JSON.stringify({
+        memberId: user.id,
+        scheduleId: session.scheduleId,
+        sessionDate: session.sessionDate,
+        category: categoryName,
+        branch: selectedBranch,
+        startTime: session.startTime,
+        endTime: session.endTime,
+      }),
+    });
+    if (!result.ok) {
+      toast({ variant: "destructive", title: "Waitlist Failed", description: result.message });
       return false;
     }
+    setBookedSessions(prev => [...prev, result.data]);
+    toast({ title: `Added to waitlist. Position #${result.data.waitlistPosition}` });
+    return true;
   };
 
   const cancelBooking = async (bookingId: string) => {
     if (!user) return;
-    try {
-      const res = await fetch('/api/cancel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookingId, memberId: user.id }),
-      });
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      setBookedSessions(data.bookings);
-      
-      // Refresh memberships to get updated session count
-      const loginRes = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: user.phone }),
-      });
-      if (loginRes.ok) {
-        const loginData = await loginRes.json();
-        setUser(prev => prev ? { ...prev, memberships: loginData.memberships } : null);
-      }
-
-      toast({ title: "Booking cancelled" });
-    } catch {
-      toast({ variant: "destructive", title: "Cancel failed" });
+    const result = await apiFetch<{ bookings: Booking[] }>('/api/cancel', {
+      method: 'POST',
+      body: JSON.stringify({ bookingId, memberId: user.id }),
+    });
+    if (!result.ok) {
+      toast({ variant: "destructive", title: "Cancel failed", description: result.message });
+      return;
     }
+    setBookedSessions(result.data.bookings);
+    const loginResult = await apiFetch<{ memberships: MembershipMap }>('/api/login', {
+      method: 'POST',
+      body: JSON.stringify({ phone: user.phone }),
+    });
+    if (loginResult.ok) {
+      setUser(prev => prev ? { ...prev, memberships: loginResult.data.memberships } : null);
+    }
+    toast({ title: "Booking cancelled" });
   };
 
   const leaveWaitlist = async (bookingId: string) => {

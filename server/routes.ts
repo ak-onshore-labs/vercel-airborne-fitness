@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { type Server } from "http";
 import { storage } from "./storage";
 import { seedDatabase } from "./seed";
-import { z } from "zod";
+import { asyncHandler } from "./middleware";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -15,7 +15,7 @@ export async function registerRoutes(
   });
 
   // --- AUTH / LOGIN ---
-  app.post("/api/login", async (req: Request, res: Response) => {
+  app.post("/api/login", asyncHandler(async (req: Request, res: Response) => {
     const { phone } = req.body;
     if (!phone || typeof phone !== "string") {
       return res.status(400).json({ message: "Phone number required" });
@@ -40,18 +40,18 @@ export async function registerRoutes(
     }
 
     res.json({ member, memberships: membershipMap, isNew: isNew || membershipList.length === 0 });
-  });
+  }));
 
   // --- MEMBER PROFILE UPDATE ---
-  app.patch("/api/members/:id", async (req: Request, res: Response) => {
+  app.patch("/api/members/:id", asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
     const updated = await storage.updateMember(id, req.body);
     if (!updated) return res.status(404).json({ message: "Member not found" });
     res.json(updated);
-  });
+  }));
 
   // --- ENROLLMENT ---
-  app.post("/api/enroll", async (req: Request, res: Response) => {
+  app.post("/api/enroll", asyncHandler(async (req: Request, res: Response) => {
     const { memberId, personalDetails, plans, waiver, kidDetails: kidInfo } = req.body;
     if (!memberId || !plans || !Array.isArray(plans) || plans.length === 0) {
       return res.status(400).json({ message: "Invalid enrollment data" });
@@ -117,30 +117,30 @@ export async function registerRoutes(
     }
 
     res.json({ memberships: membershipMap });
-  });
+  }));
 
   // --- SCHEDULE ---
-  app.get("/api/schedule", async (_req: Request, res: Response) => {
+  app.get("/api/schedule", asyncHandler(async (_req: Request, res: Response) => {
     const schedule = await storage.getSchedule();
     res.json(schedule);
-  });
+  }));
 
   // --- BOOKINGS ---
-  app.get("/api/bookings/:memberId", async (req: Request, res: Response) => {
+  app.get("/api/bookings/:memberId", asyncHandler(async (req: Request, res: Response) => {
     const result = await storage.getBookingsForMember(req.params.memberId);
     res.json(result);
-  });
+  }));
 
-  app.get("/api/session-bookings", async (req: Request, res: Response) => {
+  app.get("/api/session-bookings", asyncHandler(async (req: Request, res: Response) => {
     const { scheduleId, date } = req.query;
     if (!scheduleId || !date) return res.status(400).json({ message: "Missing params" });
     const result = await storage.getBookingsForSession(scheduleId as string, date as string);
     const booked = result.filter(b => b.status === "BOOKED").length;
     const waitlisted = result.filter(b => b.status === "WAITLISTED").length;
     res.json({ bookedCount: booked, waitlistCount: waitlisted });
-  });
+  }));
 
-  app.post("/api/book", async (req: Request, res: Response) => {
+  app.post("/api/book", asyncHandler(async (req: Request, res: Response) => {
     const { memberId, scheduleId, sessionDate, category, branch, startTime, endTime } = req.body;
     if (!memberId || !scheduleId || !sessionDate || !category || !branch) {
       return res.status(400).json({ message: "Missing booking data" });
@@ -182,9 +182,9 @@ export async function registerRoutes(
     });
 
     res.json(booking);
-  });
+  }));
 
-  app.post("/api/waitlist", async (req: Request, res: Response) => {
+  app.post("/api/waitlist", asyncHandler(async (req: Request, res: Response) => {
     const { memberId, scheduleId, sessionDate, category, branch, startTime, endTime } = req.body;
 
     const existingBookings = await storage.getBookingsForSession(scheduleId, sessionDate);
@@ -209,11 +209,12 @@ export async function registerRoutes(
     });
 
     res.json(booking);
-  });
+  }));
 
-  app.post("/api/cancel", async (req: Request, res: Response) => {
+  app.post("/api/cancel", asyncHandler(async (req: Request, res: Response) => {
     const { bookingId, memberId } = req.body;
     if (!bookingId) return res.status(400).json({ message: "Missing bookingId" });
+    if (!memberId) return res.status(400).json({ message: "Missing memberId" });
 
     const memberBookings = await storage.getBookingsForMember(memberId);
     const booking = memberBookings.find(b => b.id === bookingId);
@@ -259,7 +260,7 @@ export async function registerRoutes(
     // Return updated bookings
     const updatedBookings = await storage.getBookingsForMember(memberId);
     res.json({ bookings: updatedBookings.filter(b => b.status !== "CANCELLED") });
-  });
+  }));
 
   // --- MEMBERSHIP PLANS (static data for frontend) ---
   app.get("/api/plans", (_req: Request, res: Response) => {

@@ -28,24 +28,12 @@ export default function Login() {
     e.preventDefault();
     if (otp.length < 4) return;
     setIsLoading(true);
-    
-    const success = await login(phone);
+
+    const { success, isNew } = await login(phone);
     setIsLoading(false);
-    
+
     if (success) {
-      // After login, the context has user data. Check if new (no memberships).
-      // We re-login to get the isNew flag from the API response directly
-      const res = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone }),
-      });
-      const data = await res.json();
-      if (data.isNew) {
-        setLocation("/enroll");
-      } else {
-        setLocation("/dashboard");
-      }
+      setLocation(isNew ? "/enroll" : "/dashboard");
     }
   };
 

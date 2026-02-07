@@ -8,6 +8,7 @@ import { useLocation } from "wouter";
 import { X, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
 import MobileLayout from "@/components/layout/MobileLayout";
+import { apiFetch } from "@/lib/api";
 
 interface ClassCategory {
   id: string;
@@ -224,8 +225,8 @@ export default function Enroll() {
   const [plans, setPlans] = useState<Record<string, MembershipPlan[]>>({});
 
   useEffect(() => {
-    fetch('/api/categories').then(r => r.json()).then(setCategories);
-    fetch('/api/plans').then(r => r.json()).then(setPlans);
+    apiFetch<ClassCategory[]>('/api/categories').then((r) => r.ok && Array.isArray(r.data) && setCategories(r.data));
+    apiFetch<Record<string, MembershipPlan[]>>('/api/plans').then((r) => r.ok && r.data && setPlans(r.data));
   }, []);
 
   const hasKidsCategory = selectedPlans.some(p => p.category.toLowerCase().includes('kids'));
@@ -247,14 +248,19 @@ export default function Enroll() {
   const handleComplete = async () => {
     if (selectedPlans.length === 0) return;
     setIsLoading(true);
-    await enroll(
-      formData,
-      selectedPlans,
-      waiverData,
-      hasKidsCategory ? kidInfo : undefined
-    );
-    setIsLoading(false);
-    setLocation("/dashboard");
+    try {
+      await enroll(
+        formData,
+        selectedPlans,
+        waiverData,
+        hasKidsCategory ? kidInfo : undefined
+      );
+      setLocation("/dashboard");
+    } catch {
+      // enroll shows toast on error
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const totalSteps = hasKidsCategory ? 5 : 4;
