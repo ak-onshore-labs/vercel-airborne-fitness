@@ -33,7 +33,15 @@ export default function Login() {
     setIsLoading(false);
     
     if (success) {
-      if (phone === '9999988888') {
+      // After login, the context has user data. Check if new (no memberships).
+      // We re-login to get the isNew flag from the API response directly
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone }),
+      });
+      const data = await res.json();
+      if (data.isNew) {
         setLocation("/enroll");
       } else {
         setLocation("/dashboard");
@@ -49,7 +57,6 @@ export default function Login() {
         transition={{ duration: 0.5 }}
         className="w-full max-w-sm flex flex-col items-center"
       >
-        {/* Logo Area */}
         <div className="mb-10 w-full flex justify-center">
            <img src={logo} alt="Airborne Aerial Fitness" className="h-24 object-contain" />
         </div>
@@ -97,11 +104,10 @@ export default function Login() {
                   {isLoading ? <Loader2 className="animate-spin" /> : "Get OTP"}
                 </Button>
                 
-                <div className="mt-6 p-3 bg-blue-50 rounded-lg border border-blue-100">
+                <div className="mt-6 p-3 bg-blue-50 rounded border border-blue-100">
                   <p className="text-[10px] text-blue-600 font-medium text-center">
-                    Demo Logins:<br/>
-                    New Member: 99999 88888<br/>
-                    Existing Member: 99999 77777
+                    Demo: Enter any 10-digit number.<br/>
+                    Pre-loaded member: 99999 77777
                   </p>
                 </div>
               </motion.form>
@@ -131,16 +137,16 @@ export default function Login() {
                     placeholder="• • • •" 
                     value={otp}
                     onChange={e => setOtp(e.target.value.replace(/\D/g, ''))}
-                    className="h-12 bg-gray-50 border-gray-200 text-gray-900 placeholder:text-gray-300 focus-visible:ring-airborne-teal text-center tracking-[1em] text-lg rounded-xl"
+                    className="h-12 bg-gray-50 border-gray-200 text-gray-900 placeholder:text-gray-300 focus-visible:ring-airborne-teal text-center tracking-[1em] text-lg rounded"
                     maxLength={6}
                     required
                   />
-                  <p className="text-xs text-center text-gray-400">Use 123456 for demo</p>
+                  <p className="text-xs text-center text-gray-400">Use any 4+ digit code for demo</p>
                 </div>
                 <Button 
                   data-testid="button-verify-otp"
                   type="submit" 
-                  className="w-full h-12 bg-airborne-teal hover:bg-airborne-deep text-white font-semibold rounded-xl shadow-md shadow-airborne-teal/20 transition-all group mt-2"
+                  className="w-full h-12 bg-airborne-teal hover:bg-airborne-deep text-white font-semibold rounded shadow-md shadow-airborne-teal/20 transition-all group mt-2"
                   disabled={isLoading || otp.length < 4}
                 >
                   {isLoading ? <Loader2 className="animate-spin" /> : (

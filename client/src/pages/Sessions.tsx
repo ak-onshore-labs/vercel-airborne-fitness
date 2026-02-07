@@ -1,42 +1,50 @@
 import { useMember, Booking } from "@/context/MemberContext";
 import MobileLayout from "@/components/layout/MobileLayout";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Calendar, Clock, MapPin, XCircle, AlertCircle } from "lucide-react";
-import { format, isBefore, subHours } from "date-fns";
+import { Calendar, Clock, MapPin, AlertCircle } from "lucide-react";
+import { isBefore, subHours, parse } from "date-fns";
 import { cn } from "@/lib/utils";
+import { useState } from "react";
 
 export default function Sessions() {
   const { bookedSessions, cancelBooking, leaveWaitlist } = useMember();
-  
+  const [activeTab, setActiveTab] = useState<"upcoming" | "past">("upcoming");
+
   const upcomingBookings = bookedSessions
     .filter(b => b.status !== "CANCELLED")
-    .sort((a, b) => a.fullStartTime.getTime() - b.fullStartTime.getTime());
+    .sort((a, b) => a.sessionDate.localeCompare(b.sessionDate) || a.startTime.localeCompare(b.startTime));
 
-  const isCancellationOpen = (startTime: Date) => {
-    return isBefore(new Date(), subHours(startTime, 1));
+  const isCancellationOpen = (sessionDate: string, startTime: string) => {
+    try {
+      const [h, m] = startTime.split(':').map(Number);
+      const dt = new Date(sessionDate + 'T00:00:00');
+      dt.setHours(h, m, 0, 0);
+      return isBefore(new Date(), subHours(dt, 1));
+    } catch {
+      return true;
+    }
   };
 
   const BookingCard = ({ booking }: { booking: Booking }) => {
-    const canCancel = isCancellationOpen(booking.fullStartTime);
+    const canCancel = isCancellationOpen(booking.sessionDate, booking.startTime);
     const isWaitlisted = booking.status === "WAITLISTED";
 
     return (
-      <div className="bg-white border border-gray-100 p-5 rounded shadow-sm space-y-4">
+      <div className="bg-white border border-gray-100 p-5 rounded shadow-sm space-y-4" data-testid={`card-booking-${booking.id}`}>
         <div className="flex justify-between items-start">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <h3 className="font-bold text-gray-900 capitalize">{booking.category}</h3>
+              <h3 className="font-bold text-gray-900 capitalize" data-testid={`text-booking-category-${booking.id}`}>{booking.category}</h3>
               <span className={cn(
                 "text-[10px] px-2 py-0.5 rounded-full font-bold uppercase",
                 isWaitlisted ? "bg-amber-50 text-amber-600 border border-amber-100" : "bg-green-50 text-green-600 border border-green-100"
-              )}>
+              )} data-testid={`badge-status-${booking.id}`}>
                 {isWaitlisted ? `Waitlist #${booking.waitlistPosition}` : "Confirmed"}
               </span>
             </div>
             <div className="space-y-1">
               <div className="flex items-center text-xs text-gray-500 gap-1.5">
-                <Calendar size={12} /> {format(booking.fullStartTime, "EEEE, dd MMM")}
+                <Calendar size={12} /> {booking.sessionDate}
               </div>
               <div className="flex items-center text-xs text-gray-500 gap-1.5">
                 <Clock size={12} /> {booking.startTime} - {booking.endTime}
@@ -66,6 +74,7 @@ export default function Sessions() {
               "text-xs font-semibold h-8 rounded px-4",
               canCancel ? "text-red-500 hover:text-red-600 hover:bg-red-50" : "text-gray-300"
             )}
+            data-testid={`button-cancel-${booking.id}`}
           >
             {isWaitlisted ? "Leave Waitlist" : "Cancel Booking"}
           </Button>
@@ -79,28 +88,26 @@ export default function Sessions() {
       <div className="p-6 pb-24">
         <h1 className="text-2xl font-bold text-gray-900 mb-6">My Sessions</h1>
         
-        <Tabs defaultValue="upcoming" className="w-full">
-          <TabsList className="w-full bg-gray-100 p-1 rounded mb-6">
-            <TabsTrigger value="upcoming" className="flex-1 rounded py-2 text-sm">Upcoming</TabsTrigger>
-            <TabsTrigger value="past" className="flex-1 rounded py-2 text-sm">Past</TabsTrigger>
-          </TabsList>
-          
-          <TabsContent value="upcoming" className="space-y-4">
+        <div className="flex p-1 bg-gray-100 rounded mb-6">
+          <button onClick={() => setActiveTab("upcoming")} className={cn("flex-1 py-2 text-xs font-bold rounded transition-all", activeTab === "upcoming" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500")} data-testid="tab-upcoming">Upcoming</button>
+          <button onClick={() => setActiveTab("past")} className={cn("flex-1 py-2 text-xs font-bold rounded transition-all", activeTab === "past" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500")} data-testid="tab-past">Past</button>
+        </div>
+
+        {activeTab === "upcoming" ? (
+          <div className="space-y-4">
             {upcomingBookings.length > 0 ? (
-              upcomingBookings.map(booking => (
-                <BookingCard key={booking.id} booking={booking} />
-              ))
+              upcomingBookings.map(booking => <BookingCard key={booking.id} booking={booking} />)
             ) : (
               <div className="text-center py-12 bg-gray-50 rounded border border-dashed border-gray-200">
                 <p className="text-gray-500 text-sm">No upcoming sessions.</p>
               </div>
             )}
-          </TabsContent>
-          
-          <TabsContent value="past" className="text-center py-12 text-gray-400 text-sm">
-            No past sessions history available in demo.
-          </TabsContent>
-        </Tabs>
+          </div>
+        ) : (
+          <div className="text-center py-12 text-gray-400 text-sm">
+            No past sessions history available.
+          </div>
+        )}
       </div>
     </MobileLayout>
   );

@@ -1,18 +1,18 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { MembershipPlan, ClassSession, ClassCategory } from '@/lib/mockData';
 import { useLocation } from 'wouter';
-import { isBefore, subHours } from 'date-fns';
 
 export interface MembershipDetails {
+  id: string;
   sessionsRemaining: number;
-  expiryDate: Date;
+  expiryDate: string;
   planName: string;
 }
 
 export type MembershipMap = Record<string, MembershipDetails>;
 
-interface UserProfile {
+export interface UserProfile {
+  id: string;
   name: string;
   phone: string;
   email?: string;
@@ -21,29 +21,22 @@ interface UserProfile {
 
 export interface SelectedPlan {
   category: string;
-  plan: MembershipPlan;
+  plan: { id: string; name: string; sessions: number; price: number; validityDays?: number };
 }
 
 export type BookingStatus = "BOOKED" | "WAITLISTED" | "CANCELLED";
 
 export interface Booking {
   id: string;
-  sessionId: string;
+  scheduleId: string;
+  sessionDate: string;
   status: BookingStatus;
-  createdAt: number;
+  createdAt: string;
   category: string;
-  branch: "Lower Parel" | "Mazgaon";
-  date: string; // YYYY-MM-DD
+  branch: string;
   startTime: string;
   endTime: string;
   waitlistPosition?: number;
-  fullStartTime: Date;
-}
-
-interface SessionInventory {
-  capacity: number;
-  bookedCount: number;
-  waitlistCount: number;
 }
 
 interface MemberContextType {
@@ -51,15 +44,16 @@ interface MemberContextType {
   bookedSessions: Booking[];
   selectedBranch: 'Lower Parel' | 'Mazgaon';
   setSelectedBranch: (branch: 'Lower Parel' | 'Mazgaon') => void;
-  sessionInventory: Record<string, SessionInventory>;
   login: (phone: string) => Promise<boolean>;
   logout: () => void;
-  enroll: (details: any, selectedPlans: SelectedPlan[]) => void;
+  enroll: (details: any, selectedPlans: SelectedPlan[], waiver?: any, kidInfo?: any) => Promise<void>;
   bookSession: (session: any, categoryName: string) => Promise<boolean>;
   joinWaitlist: (session: any, categoryName: string) => Promise<boolean>;
   cancelBooking: (bookingId: string) => Promise<void>;
   leaveWaitlist: (bookingId: string) => Promise<void>;
   hasMembershipFor: (categoryName: string) => boolean;
+  refreshBookings: () => Promise<void>;
+  getSessionCounts: (scheduleId: string, date: string) => Promise<{ bookedCount: number; waitlistCount: number }>;
 }
 
 const MemberContext = createContext<MemberContextType | undefined>(undefined);
@@ -68,188 +62,207 @@ export function MemberProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [bookedSessions, setBookedSessions] = useState<Booking[]>([]);
   const [selectedBranch, setSelectedBranch] = useState<'Lower Parel' | 'Mazgaon'>('Lower Parel');
-  const [sessionInventory, setSessionInventory] = useState<Record<string, SessionInventory>>({
-    "session-0-2": { capacity: 14, bookedCount: 14, waitlistCount: 2 }, // Seed full
-    "session-1-2": { capacity: 14, bookedCount: 14, waitlistCount: 0 }, // Seed full
-  });
-  
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
-  const getInventory = (sessionId: string): SessionInventory => {
-    return sessionInventory[sessionId] || { capacity: 14, bookedCount: 8, waitlistCount: 0 };
-  };
-
   const login = async (phone: string): Promise<boolean> => {
-    await new Promise(resolve => setTimeout(resolve, 800));
-    if (phone === '9999988888' || phone === '9999977777') {
-      setUser({
-        name: phone === '9999977777' ? "Sarah Jenkins" : "New Member",
-        phone,
-        memberships: phone === '9999977777' ? {
-          "Aerial Fitness": { sessionsRemaining: 14, expiryDate: new Date("2025-03-30"), planName: "3 Months (24 Sessions)" },
-          "Functional Training": { sessionsRemaining: 8, expiryDate: new Date("2025-03-21"), planName: "Monthly (8 Sessions)" }
-        } : {}
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone }),
       });
+      if (!res.ok) {
+        toast({ variant: "destructive", title: "Login Failed" });
+        return false;
+      }
+      const data = await res.json();
+      setUser({
+        id: data.member.id,
+        name: data.member.name,
+        phone: data.member.phone,
+        email: data.member.email,
+        memberships: data.memberships,
+      });
+
+      // Load bookings
+      const bookingsRes = await fetch(`/api/bookings/${data.member.id}`);
+      if (bookingsRes.ok) {
+        const bookingsData = await bookingsRes.json();
+        setBookedSessions(bookingsData.filter((b: any) => b.status !== "CANCELLED"));
+      }
+
       return true;
-    } 
-    toast({ variant: "destructive", title: "Access Denied", description: "Phone number not demo-enabled." });
-    return false;
+    } catch {
+      toast({ variant: "destructive", title: "Connection error" });
+      return false;
+    }
   };
 
   const logout = () => { setUser(null); setBookedSessions([]); };
 
-  const enroll = (details: any, selectedPlans: SelectedPlan[]) => {
+  const enroll = async (details: any, selectedPlans: SelectedPlan[], waiver?: any, kidInfo?: any) => {
     if (!user) return;
-    const newMemberships: MembershipMap = { ...user.memberships };
-    selectedPlans.forEach(({ category, plan }) => {
-      newMemberships[category] = {
-        sessionsRemaining: plan.sessions,
-        expiryDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * (plan.validityDays || 30)),
-        planName: plan.name
-      };
-    });
-    setUser({ ...user, name: details.name || user.name, email: details.email, memberships: newMemberships });
-    toast({ title: "Enrollment Successful!", description: `You are now a member.` });
+    try {
+      const res = await fetch('/api/enroll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          memberId: user.id,
+          personalDetails: {
+            name: details.name,
+            email: details.email,
+            dob: details.dob,
+            emergencyContactName: details.emergencyContactName,
+            emergencyContactPhone: details.emergencyContactPhone,
+            medicalConditions: details.medicalConditions,
+          },
+          plans: selectedPlans.map(sp => ({
+            category: sp.category,
+            planName: sp.plan.name,
+            sessions: sp.plan.sessions,
+            price: sp.plan.price,
+            validityDays: sp.plan.validityDays,
+          })),
+          waiver,
+          kidDetails: kidInfo,
+        }),
+      });
+      if (!res.ok) throw new Error('Enrollment failed');
+      const data = await res.json();
+      setUser(prev => prev ? { ...prev, name: details.name || prev.name, email: details.email, memberships: data.memberships } : null);
+      toast({ title: "Enrollment Successful!" });
+    } catch {
+      toast({ variant: "destructive", title: "Enrollment failed" });
+    }
   };
 
   const hasMembershipFor = (categoryName: string): boolean => !!user?.memberships[categoryName];
 
+  const refreshBookings = useCallback(async () => {
+    if (!user) return;
+    const res = await fetch(`/api/bookings/${user.id}`);
+    if (res.ok) {
+      const data = await res.json();
+      setBookedSessions(data.filter((b: any) => b.status !== "CANCELLED"));
+    }
+  }, [user]);
+
+  const getSessionCounts = async (scheduleId: string, date: string) => {
+    const res = await fetch(`/api/session-bookings?scheduleId=${scheduleId}&date=${date}`);
+    if (res.ok) return res.json();
+    return { bookedCount: 0, waitlistCount: 0 };
+  };
+
   const bookSession = async (session: any, categoryName: string) => {
-    if (!user || !hasMembershipFor(categoryName)) return false;
-    const inv = getInventory(session.id);
-    if (inv.bookedCount >= inv.capacity) return false;
+    if (!user) return false;
+    try {
+      const res = await fetch('/api/book', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          memberId: user.id,
+          scheduleId: session.scheduleId,
+          sessionDate: session.sessionDate,
+          category: categoryName,
+          branch: selectedBranch,
+          startTime: session.startTime,
+          endTime: session.endTime,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        toast({ variant: "destructive", title: "Booking Failed", description: err.message });
+        return false;
+      }
+      const booking = await res.json();
+      setBookedSessions(prev => [...prev, booking]);
+      
+      // Decrement local membership count
+      setUser(prev => {
+        if (!prev) return null;
+        const m = prev.memberships[categoryName];
+        if (!m) return prev;
+        return { ...prev, memberships: { ...prev.memberships, [categoryName]: { ...m, sessionsRemaining: m.sessionsRemaining - 1 } } };
+      });
 
-    const booking: Booking = {
-      id: Math.random().toString(36).substr(2, 9),
-      sessionId: session.id,
-      status: "BOOKED",
-      createdAt: Date.now(),
-      category: categoryName,
-      branch: selectedBranch,
-      date: session.startTime.toISOString().split('T')[0],
-      startTime: session.startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      endTime: session.endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      fullStartTime: session.startTime
-    };
-
-    setBookedSessions(prev => [...prev, booking]);
-    setSessionInventory(prev => ({
-      ...prev,
-      [session.id]: { ...getInventory(session.id), bookedCount: getInventory(session.id).bookedCount + 1 }
-    }));
-    
-    const membership = user.memberships[categoryName];
-    setUser({
-      ...user,
-      memberships: { ...user.memberships, [categoryName]: { ...membership, sessionsRemaining: membership.sessionsRemaining - 1 } }
-    });
-
-    toast({ title: "Booked successfully" });
-    return true;
+      toast({ title: "Booked successfully!" });
+      return true;
+    } catch {
+      toast({ variant: "destructive", title: "Booking error" });
+      return false;
+    }
   };
 
   const joinWaitlist = async (session: any, categoryName: string) => {
-    if (!user || !hasMembershipFor(categoryName)) return false;
-    const inv = getInventory(session.id);
-    const newWaitlistCount = inv.waitlistCount + 1;
-
-    const booking: Booking = {
-      id: Math.random().toString(36).substr(2, 9),
-      sessionId: session.id,
-      status: "WAITLISTED",
-      createdAt: Date.now(),
-      category: categoryName,
-      branch: selectedBranch,
-      date: session.startTime.toISOString().split('T')[0],
-      startTime: session.startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      endTime: session.endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      waitlistPosition: newWaitlistCount,
-      fullStartTime: session.startTime
-    };
-
-    setBookedSessions(prev => [...prev, booking]);
-    setSessionInventory(prev => ({
-      ...prev,
-      [session.id]: { ...getInventory(session.id), waitlistCount: newWaitlistCount }
-    }));
-
-    toast({ title: `Added to waitlist. Position #${newWaitlistCount}` });
-    return true;
-  };
-
-  const recomputeWaitlist = (sessionId: string, currentBookings: Booking[]) => {
-    let position = 1;
-    return currentBookings.map(b => {
-      if (b.sessionId === sessionId && b.status === "WAITLISTED") {
-        return { ...b, waitlistPosition: position++ };
+    if (!user) return false;
+    try {
+      const res = await fetch('/api/waitlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          memberId: user.id,
+          scheduleId: session.scheduleId,
+          sessionDate: session.sessionDate,
+          category: categoryName,
+          branch: selectedBranch,
+          startTime: session.startTime,
+          endTime: session.endTime,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        toast({ variant: "destructive", title: "Waitlist Failed", description: err.message });
+        return false;
       }
-      return b;
-    });
+      const booking = await res.json();
+      setBookedSessions(prev => [...prev, booking]);
+      toast({ title: `Added to waitlist. Position #${booking.waitlistPosition}` });
+      return true;
+    } catch {
+      toast({ variant: "destructive", title: "Waitlist error" });
+      return false;
+    }
   };
 
   const cancelBooking = async (bookingId: string) => {
-    const booking = bookedSessions.find(b => b.id === bookingId);
-    if (!booking) return;
-
-    const newBookings = bookedSessions.map(b => b.id === bookingId ? { ...b, status: "CANCELLED" as BookingStatus } : b);
-    const sessionId = booking.sessionId;
-    const inv = getInventory(sessionId);
-    
-    let updatedBookings = newBookings;
-    let newInv = { ...inv, bookedCount: Math.max(0, inv.bookedCount - 1) };
-
-    if (inv.waitlistCount > 0) {
-      const firstWaitlisted = updatedBookings
-        .filter(b => b.sessionId === sessionId && b.status === "WAITLISTED")
-        .sort((a, b) => a.createdAt - b.createdAt)[0];
-
-      if (firstWaitlisted) {
-        updatedBookings = updatedBookings.map(b => b.id === firstWaitlisted.id ? { ...b, status: "BOOKED" as BookingStatus, waitlistPosition: undefined } : b);
-        newInv.waitlistCount -= 1;
-        newInv.bookedCount += 1;
-        updatedBookings = recomputeWaitlist(sessionId, updatedBookings);
-        toast({ title: "Spot opened. Waitlist member promoted." });
-      }
-    }
-
-    setBookedSessions(updatedBookings);
-    setSessionInventory(prev => ({ ...prev, [sessionId]: newInv }));
-    
-    if (user && user.memberships[booking.category]) {
-      const membership = user.memberships[booking.category];
-      setUser({
-        ...user,
-        memberships: { ...user.memberships, [booking.category]: { ...membership, sessionsRemaining: membership.sessionsRemaining + 1 } }
+    if (!user) return;
+    try {
+      const res = await fetch('/api/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId, memberId: user.id }),
       });
-    }
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setBookedSessions(data.bookings);
+      
+      // Refresh memberships to get updated session count
+      const loginRes = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: user.phone }),
+      });
+      if (loginRes.ok) {
+        const loginData = await loginRes.json();
+        setUser(prev => prev ? { ...prev, memberships: loginData.memberships } : null);
+      }
 
-    toast({ title: "Booking cancelled" });
+      toast({ title: "Booking cancelled" });
+    } catch {
+      toast({ variant: "destructive", title: "Cancel failed" });
+    }
   };
 
   const leaveWaitlist = async (bookingId: string) => {
-    const booking = bookedSessions.find(b => b.id === bookingId);
-    if (!booking) return;
-
-    let updatedBookings = bookedSessions.map(b => b.id === bookingId ? { ...b, status: "CANCELLED" as BookingStatus } : b);
-    const sessionId = booking.sessionId;
-    const inv = getInventory(sessionId);
-
-    updatedBookings = recomputeWaitlist(sessionId, updatedBookings);
-    
-    setBookedSessions(updatedBookings);
-    setSessionInventory(prev => ({
-      ...prev,
-      [sessionId]: { ...getInventory(sessionId), waitlistCount: Math.max(0, inv.waitlistCount - 1) }
-    }));
-
-    toast({ title: "Removed from waitlist" });
+    await cancelBooking(bookingId);
   };
 
   return (
     <MemberContext.Provider value={{ 
-      user, bookedSessions, selectedBranch, setSelectedBranch, sessionInventory,
-      login, logout, enroll, bookSession, joinWaitlist, cancelBooking, leaveWaitlist, hasMembershipFor 
+      user, bookedSessions, selectedBranch, setSelectedBranch,
+      login, logout, enroll, bookSession, joinWaitlist, cancelBooking, leaveWaitlist, 
+      hasMembershipFor, refreshBookings, getSessionCounts
     }}>
       {children}
     </MemberContext.Provider>
