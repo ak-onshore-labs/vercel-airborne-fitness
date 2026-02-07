@@ -4,11 +4,13 @@ hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
 
 [nix]
 channel = "stable-24_05"
+packages = ["lsof", "psmisc"]
 
 [deployment]
-deploymentTarget = "static"
+deploymentTarget = "autoscale"
 build = ["npm", "run", "build"]
 publicDir = "dist/public"
+run = ["node", "./dist/index.cjs"]
 
 [[ports]]
 localPort = 5000
@@ -39,8 +41,14 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "npm run dev:client"
+args = "npm run dev"
 waitForPort = 5000
 
 [agent]
-mockupState = "MOCKUP"
+mockupState = "FULLSTACK"
+
+[userenv]
+
+[userenv.shared]
+DATABASE_URL = "postgresql://neondb_owner:npg_hHrXIpf8dn2x@ep-lucky-breeze-a11bfgpr-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+SESSION_SECRET = "airborne_super_secret_2026_!@#abcdefghijklmnopqrstuvwxyz"
