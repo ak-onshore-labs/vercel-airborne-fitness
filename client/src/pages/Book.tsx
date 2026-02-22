@@ -1,25 +1,20 @@
 import { useState, useEffect } from "react";
 import { useMember } from "@/context/MemberContext";
-import { format, isSameDay, addDays, startOfToday } from "date-fns";
+import { format, isSameDay, addDays, startOfToday, subMinutes } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useLocation } from "wouter";
 import MobileLayout from "@/components/layout/MobileLayout";
 import { Button } from "@/components/ui/button";
 import { Loader2, ArrowLeft } from "lucide-react";
 import { apiFetch } from "@/lib/api";
-
-interface ScheduleItem {
-  id: string;
-  classId: string;
-  category: string;
-  branch: string;
-  dayOfWeek: number;
-  startHour: number;
-  startMinute: number;
-  endHour: number;
-  endMinute: number;
-  capacity: number;
-}
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 interface SessionDisplay {
   scheduleId: string;
@@ -29,40 +24,20 @@ interface SessionDisplay {
   branch: string;
   startTime: string;
   endTime: string;
-  startDate: Date;
-  endDate: Date;
   capacity: number;
+}
+
+interface ClassTypeOption {
+  id: string;
+  name: string;
+  ageGroup?: string;
+  strengthLevel: number;
+  isActive: boolean;
 }
 
 function getNext7Days() {
   const today = startOfToday();
   return Array.from({ length: 7 }).map((_, i) => addDays(today, i));
-}
-
-function buildSessionsForDate(schedule: ScheduleItem[], date: Date, branch: string): SessionDisplay[] {
-  const dow = date.getDay();
-  return schedule
-    .filter(s => s.dayOfWeek === dow && s.branch === branch)
-    .map(s => {
-      const dateStr = format(date, 'yyyy-MM-dd');
-      const startDate = new Date(date);
-      startDate.setHours(s.startHour, s.startMinute, 0, 0);
-      const endDate = new Date(date);
-      endDate.setHours(s.endHour, s.endMinute, 0, 0);
-      return {
-        scheduleId: s.id,
-        sessionDate: dateStr,
-        classId: s.classId,
-        category: s.category,
-        branch: s.branch,
-        startTime: format(startDate, 'HH:mm'),
-        endTime: format(endDate, 'HH:mm'),
-        startDate,
-        endDate,
-        capacity: s.capacity,
-      };
-    })
-    .sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
 }
 
 export default function Book() {
@@ -73,29 +48,57 @@ export default function Book() {
 
   const dates = getNext7Days();
   const [selectedDate, setSelectedDate] = useState<Date>(dates[0]);
-  const [filter, setFilter] = useState<string>("All");
+  const [filter, setFilter] = useState<string>("My Classes");
   const [loadingId, setLoadingId] = useState<string | null>(null);
-  const [schedule, setSchedule] = useState<ScheduleItem[]>([]);
+  const [sessions, setSessions] = useState<SessionDisplay[]>([]);
   const [sessionCounts, setSessionCounts] = useState<Record<string, { bookedCount: number; waitlistCount: number }>>({});
   const [loadingSchedule, setLoadingSchedule] = useState(true);
+  const [classTypes, setClassTypes] = useState<ClassTypeOption[]>([]);
+  const [cancellationWindowMinutes, setCancellationWindowMinutes] = useState(60);
+  const [bookingConfirmOpen, setBookingConfirmOpen] = useState(false);
+  const [pendingSession, setPendingSession] = useState<SessionDisplay | null>(null);
+  const [pendingIsWaitlist, setPendingIsWaitlist] = useState(false);
 
-  const categories = ["All", "Aerial Fitness", "Pilates", "Aerial Hoop", "Functional", "Kids Aerial"];
+  const enrolledCategoryNames = user ? Object.keys(user.memberships) : [];
+  const filterChips = ["My Classes", "All", ...classTypes.map((t) => t.name)];
 
   useEffect(() => {
-    apiFetch<ScheduleItem[]>('/api/schedule')
+    apiFetch<{ cancellationWindowMinutes: number }>("/api/settings").then((r) => {
+      if (r.ok && typeof r.data?.cancellationWindowMinutes === "number") {
+        setCancellationWindowMinutes(r.data.cancellationWindowMinutes);
+      }
+    });
+    apiFetch<ClassTypeOption[]>("/api/class-types").then((r) => {
+      if (r.ok && Array.isArray(r.data)) setClassTypes(r.data);
+    });
+  }, []);
+
+  useEffect(() => {
+    setLoadingSchedule(true);
+    const dateStr = format(selectedDate, "yyyy-MM-dd");
+    apiFetch<{ sessions: SessionDisplay[] }>(
+      `/api/schedule?branch=${encodeURIComponent(selectedBranch)}&date=${encodeURIComponent(dateStr)}`
+    )
       .then((result) => {
-        if (result.ok && Array.isArray(result.data)) {
-          setSchedule(result.data);
+        if (result.ok && result.data?.sessions) {
+          setSessions(result.data.sessions);
+        } else {
+          setSessions([]);
         }
         setLoadingSchedule(false);
       })
-      .catch(() => setLoadingSchedule(false));
-  }, []);
+      .catch(() => {
+        setSessions([]);
+        setLoadingSchedule(false);
+      });
+  }, [selectedBranch, selectedDate]);
 
-  const sessions = buildSessionsForDate(schedule, selectedDate, selectedBranch);
-  const filteredSessions = sessions.filter(s =>
-    filter === "All" || s.classId.includes(filter.toLowerCase().replace(/ /g, '-'))
-  );
+  const filteredSessions =
+    filter === "My Classes"
+      ? sessions.filter((s) => enrolledCategoryNames.includes(s.category))
+      : filter === "All"
+        ? sessions
+        : sessions.filter((s) => s.category === filter);
 
   // Load counts for visible sessions
   useEffect(() => {
@@ -110,20 +113,58 @@ export default function Book() {
     });
   }, [filteredSessions.length, selectedDate, selectedBranch]);
 
-  const handleAction = async (session: SessionDisplay, isWaitlist: boolean) => {
-    const categoryName = session.category;
-    setLoadingId(session.scheduleId);
-    const sessionData = { scheduleId: session.scheduleId, sessionDate: session.sessionDate, startTime: session.startTime, endTime: session.endTime };
-    if (isWaitlist) {
+  const openBookingConfirm = (session: SessionDisplay, isWaitlist: boolean) => {
+    setPendingSession(session);
+    setPendingIsWaitlist(isWaitlist);
+    setBookingConfirmOpen(true);
+  };
+
+  const handleBookingConfirm = async () => {
+    if (!pendingSession) return;
+    const categoryName = pendingSession.category;
+    const sessionData = {
+      scheduleId: pendingSession.scheduleId,
+      sessionDate: pendingSession.sessionDate,
+      startTime: pendingSession.startTime,
+      endTime: pendingSession.endTime,
+    };
+    setBookingConfirmOpen(false);
+    setLoadingId(pendingSession.scheduleId);
+    if (pendingIsWaitlist) {
       await joinWaitlist(sessionData, categoryName);
     } else {
       await bookSession(sessionData, categoryName);
     }
-    // Refresh count
-    const counts = await getSessionCounts(session.scheduleId, session.sessionDate);
-    setSessionCounts(prev => ({ ...prev, [`${session.scheduleId}_${session.sessionDate}`]: counts }));
+    const counts = await getSessionCounts(pendingSession.scheduleId, pendingSession.sessionDate);
+    setSessionCounts((prev) => ({ ...prev, [`${pendingSession.scheduleId}_${pendingSession.sessionDate}`]: counts }));
+    setPendingSession(null);
     setLoadingId(null);
   };
+
+  const handleAction = (session: SessionDisplay, isWaitlist: boolean) => {
+    if (isWaitlist) {
+      setLoadingId(session.scheduleId);
+      joinWaitlist(
+        { scheduleId: session.scheduleId, sessionDate: session.sessionDate, startTime: session.startTime, endTime: session.endTime },
+        session.category
+      ).then(() => {
+        getSessionCounts(session.scheduleId, session.sessionDate).then((counts) =>
+          setSessionCounts((prev) => ({ ...prev, [`${session.scheduleId}_${session.sessionDate}`]: counts }))
+        );
+        setLoadingId(null);
+      });
+    } else {
+      openBookingConfirm(session, false);
+    }
+  };
+
+  const cutoffTimeForSession = (session: SessionDisplay) => {
+    const [h, m] = session.startTime.split(":").map(Number);
+    const classStart = new Date(session.sessionDate + "T00:00:00");
+    classStart.setHours(h, m, 0, 0);
+    const cutoff = subMinutes(classStart, cancellationWindowMinutes);
+    return format(cutoff, "MMM d, yyyy 'at' h:mm a");
+  }
 
   return (
     <MobileLayout>
@@ -155,10 +196,27 @@ export default function Book() {
         </div>
 
         <div className="flex gap-2 mb-6 overflow-x-auto pb-2 -mx-6 px-6 scrollbar-hide">
-            {categories.map(cat => (
-                <button key={cat} onClick={() => setFilter(cat)} data-testid={`button-filter-${cat}`} className={cn("px-4 py-2 rounded-full text-xs font-medium whitespace-nowrap transition-all border", filter === cat ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-500 border-gray-200")}>{cat}</button>
+            {filterChips.map((chip) => (
+                <button key={chip} onClick={() => setFilter(chip)} data-testid={`button-filter-${chip}`} className={cn("px-4 py-2 rounded-full text-xs font-medium whitespace-nowrap transition-all border", filter === chip ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-500 border-gray-200")}>{chip}</button>
             ))}
         </div>
+
+        <Dialog open={bookingConfirmOpen} onOpenChange={setBookingConfirmOpen}>
+          <DialogContent className="sm:max-w-md" onPointerDownOutside={(e) => e.preventDefault()}>
+            <DialogHeader>
+              <DialogTitle>Confirm Booking</DialogTitle>
+              <DialogDescription>
+                {pendingSession && (
+                  <>You will not be allowed to cancel this class past {cutoffTimeForSession(pendingSession)}</>
+                )}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button variant="outline" onClick={() => setBookingConfirmOpen(false)}>Cancel</Button>
+              <Button onClick={handleBookingConfirm}>Confirm Booking</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <div className="space-y-4">
         {loadingSchedule ? (
@@ -184,7 +242,7 @@ export default function Book() {
                     </div>
                     <div className="flex-1">
                         <div className="flex justify-between items-start mb-1">
-                          <h3 className="font-bold text-gray-900 capitalize text-base" data-testid={`text-class-${key}`}>{session.classId.replace(/-/g, ' ')}</h3>
+                          <h3 className="font-bold text-gray-900 text-base" data-testid={`text-class-${key}`}>{session.category}</h3>
                           <div className="flex flex-col items-end gap-1">
                             <span className="text-[10px] bg-teal-50 text-airborne-teal px-1 rounded">{selectedBranch}</span>
                             {isFull && !booking && <span className="text-[10px] font-bold text-red-500 px-1 bg-red-50 rounded">FULL</span>}

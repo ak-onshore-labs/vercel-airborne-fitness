@@ -1,7 +1,9 @@
+import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { connectDb } from "./db";
 
 const app = express();
 const httpServer = createServer(app);
@@ -60,6 +62,20 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  const dbUrl = process.env.MONGODB_URI || process.env.DATABASE_URL;
+  if (dbUrl) {
+    try {
+      await connectDb();
+      const match = dbUrl.match(/mongodb(\+srv)?:\/\/([^/]+)/);
+      const dbHost = match ? match[2] : "mongodb";
+      const label = process.env.APP_ENV || "default";
+      log(`DB: ${dbHost} (${label})`);
+    } catch (err) {
+      log(`DB connect failed: ${(err as Error).message}`, "express");
+      throw err;
+    }
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
@@ -86,19 +102,16 @@ app.use((req, res, next) => {
     await setupVite(httpServer, app);
   }
 
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || "5000", 10);
+  // Serve on PORT from env. In development default to 5001 so http://localhost:5001/ works.
+  const port = parseInt(process.env.PORT || (process.env.NODE_ENV === "development" ? "5001" : "5000"), 10);
+  const host = process.env.HOST || "127.0.0.1";
   httpServer.listen(
     {
       port,
-      host: "0.0.0.0",
-      reusePort: true,
+      host,
     },
     () => {
-      log(`serving on port ${port}`);
+      log(`serving on http://${host}:${port}`);
     },
   );
 })();

@@ -2,13 +2,34 @@ import { useMember, Booking } from "@/context/MemberContext";
 import MobileLayout from "@/components/layout/MobileLayout";
 import { Button } from "@/components/ui/button";
 import { Calendar, Clock, MapPin, AlertCircle } from "lucide-react";
-import { isBefore, subHours, parse } from "date-fns";
+import { isBefore, subMinutes } from "date-fns";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { apiFetch } from "@/lib/api";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 export default function Sessions() {
-  const { bookedSessions, cancelBooking, leaveWaitlist } = useMember();
+  const { bookedSessions, cancelBooking, leaveWaitlist, refreshBookings } = useMember();
   const [activeTab, setActiveTab] = useState<"upcoming" | "past">("upcoming");
+  const [cancellationWindowMinutes, setCancellationWindowMinutes] = useState(60);
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
+  const [bookingToCancel, setBookingToCancel] = useState<Booking | null>(null);
+  const [isWaitlisted, setIsWaitlisted] = useState(false);
+
+  useEffect(() => {
+    apiFetch<{ cancellationWindowMinutes: number }>("/api/settings").then((r) => {
+      if (r.ok && typeof r.data?.cancellationWindowMinutes === "number") {
+        setCancellationWindowMinutes(r.data.cancellationWindowMinutes);
+      }
+    });
+  }, []);
 
   const upcomingBookings = bookedSessions
     .filter(b => b.status !== "CANCELLED")
@@ -19,10 +40,28 @@ export default function Sessions() {
       const [h, m] = startTime.split(':').map(Number);
       const dt = new Date(sessionDate + 'T00:00:00');
       dt.setHours(h, m, 0, 0);
-      return isBefore(new Date(), subHours(dt, 1));
+      return isBefore(new Date(), subMinutes(dt, cancellationWindowMinutes));
     } catch {
       return true;
     }
+  };
+
+  const openCancelModal = (booking: Booking, waitlisted: boolean) => {
+    setBookingToCancel(booking);
+    setIsWaitlisted(waitlisted);
+    setCancelModalOpen(true);
+  };
+
+  const handleConfirmCancel = async () => {
+    if (!bookingToCancel) return;
+    if (isWaitlisted) {
+      await leaveWaitlist(bookingToCancel.id);
+    } else {
+      await cancelBooking(bookingToCancel.id);
+    }
+    await refreshBookings();
+    setCancelModalOpen(false);
+    setBookingToCancel(null);
   };
 
   const BookingCard = ({ booking }: { booking: Booking }) => {
@@ -69,7 +108,7 @@ export default function Sessions() {
             variant="ghost" 
             size="sm" 
             disabled={!canCancel}
-            onClick={() => isWaitlisted ? leaveWaitlist(booking.id) : cancelBooking(booking.id)}
+            onClick={() => canCancel && openCancelModal(booking, isWaitlisted)}
             className={cn(
               "text-xs font-semibold h-8 rounded px-4",
               canCancel ? "text-red-500 hover:text-red-600 hover:bg-red-50" : "text-gray-300"
@@ -85,6 +124,20 @@ export default function Sessions() {
 
   return (
     <MobileLayout>
+      <Dialog open={cancelModalOpen} onOpenChange={setCancelModalOpen}>
+        <DialogContent className="sm:max-w-md" onPointerDownOutside={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle>Cancel Class?</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to cancel? Your slot will be passed to another member in the waiting list and you won&apos;t be able to attend the class.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setCancelModalOpen(false)}>No</Button>
+            <Button variant="destructive" onClick={handleConfirmCancel}>Yes, Cancel Class</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <div className="p-6 pb-24">
         <h1 className="text-2xl font-bold text-gray-900 mb-6">My Sessions</h1>
         

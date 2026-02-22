@@ -1,13 +1,21 @@
-import { drizzle } from "drizzle-orm/node-postgres";
-import pg from "pg";
-import * as schema from "@shared/schema";
+import mongoose from "mongoose";
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL must be set.");
+const connectionString =
+  process.env.MONGODB_URI ||
+  // process.env.DATABASE_URL ||
+  (process.env.NODE_ENV !== "production"
+    ? "mongodb://localhost:27017/airborne_fitness"
+    : undefined);
+
+console.log("connectionString", connectionString);
+if (!connectionString) {
+  throw new Error("MONGODB_URI or DATABASE_URL must be set.");
 }
 
-export const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL,
-});
+export async function connectDb(): Promise<typeof mongoose> {
+  return mongoose.connect(connectionString);
+}
 
-export const db = drizzle(pool, { schema });
+export async function disconnectDb(): Promise<void> {
+  await mongoose.disconnect();
+}

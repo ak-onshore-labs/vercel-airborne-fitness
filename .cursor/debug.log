@@ -1,0 +1,3 @@
+{"location":"server/db.ts","message":"DB connection config","data":{"hasDatabaseUrl":false,"connectionHost":"localhost","hasConnectionString":true},"timestamp":1771164425954,"hypothesisId":"H1-H3"}
+{"location":"server/db.ts","message":"DB connection config","data":{"hasDatabaseUrl":false,"connectionHost":"localhost","hasConnectionString":true},"timestamp":1771164573429,"hypothesisId":"H1-H3"}
+{"location":"server/routes.ts","message":"seedDatabase failed","data":{"code":"ECONNREFUSED","message":""},"timestamp":1771164573444,"hypothesisId":"H4"}

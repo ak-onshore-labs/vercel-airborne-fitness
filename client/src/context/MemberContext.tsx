@@ -17,6 +17,10 @@ export interface UserProfile {
   name: string;
   phone: string;
   email?: string;
+  dob?: string | null;
+  emergencyContactName?: string | null;
+  emergencyContactPhone?: string | null;
+  medicalConditions?: string | null;
   memberships: MembershipMap;
 }
 
@@ -60,6 +64,7 @@ interface MemberContextType {
   hasMembershipFor: (categoryName: string) => boolean;
   refreshBookings: () => Promise<void>;
   getSessionCounts: (scheduleId: string, date: string) => Promise<{ bookedCount: number; waitlistCount: number }>;
+  updateProfile: (data: Partial<Pick<UserProfile, 'name' | 'email' | 'dob' | 'emergencyContactName' | 'emergencyContactPhone' | 'medicalConditions'>>) => Promise<boolean>;
 }
 
 const MemberContext = createContext<MemberContextType | undefined>(undefined);
@@ -87,6 +92,10 @@ export function MemberProvider({ children }: { children: ReactNode }) {
         name: member.name,
         phone: member.phone,
         email: member.email,
+        dob: member.dob ?? undefined,
+        emergencyContactName: member.emergencyContactName ?? undefined,
+        emergencyContactPhone: member.emergencyContactPhone ?? undefined,
+        medicalConditions: member.medicalConditions ?? undefined,
         memberships,
       });
 
@@ -134,7 +143,16 @@ export function MemberProvider({ children }: { children: ReactNode }) {
       toast({ variant: "destructive", title: "Enrollment failed", description: result.message });
       throw new Error(result.message);
     }
-    setUser(prev => prev ? { ...prev, name: details.name || prev.name, email: details.email, memberships: result.data.memberships } : null);
+    setUser(prev => prev ? {
+      ...prev,
+      name: details.name || prev.name,
+      email: details.email,
+      dob: details.dob ?? prev.dob,
+      emergencyContactName: details.emergencyContactName ?? prev.emergencyContactName,
+      emergencyContactPhone: details.emergencyContactPhone ?? prev.emergencyContactPhone,
+      medicalConditions: details.medicalConditions ?? prev.medicalConditions,
+      memberships: result.data.memberships,
+    } : null);
     toast({ title: "Enrollment Successful!" });
   };
 
@@ -233,11 +251,23 @@ export function MemberProvider({ children }: { children: ReactNode }) {
     await cancelBooking(bookingId);
   };
 
+  const updateProfile = async (data: Partial<Pick<UserProfile, 'name' | 'email' | 'dob' | 'emergencyContactName' | 'emergencyContactPhone' | 'medicalConditions'>>): Promise<boolean> => {
+    if (!user) return false;
+    const result = await apiFetch<UserProfile>(`/api/members/${user.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    if (!result.ok) return false;
+    const updated = result.data as Partial<UserProfile>;
+    setUser(prev => prev ? { ...prev, ...updated, memberships: prev.memberships } : null);
+    return true;
+  };
+
   return (
     <MemberContext.Provider value={{ 
       user, bookedSessions, selectedBranch, setSelectedBranch,
       login, logout, enroll, bookSession, joinWaitlist, cancelBooking, leaveWaitlist, 
-      hasMembershipFor, refreshBookings, getSessionCounts
+      hasMembershipFor, refreshBookings, getSessionCounts, updateProfile
     }}>
       {children}
     </MemberContext.Provider>

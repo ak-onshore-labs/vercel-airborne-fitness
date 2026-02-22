@@ -5,7 +5,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, ArrowRight } from "lucide-react";
-import logo from "@assets/image_1765022997002.png";
 
 export default function Login() {
   const { login } = useMember();
@@ -46,7 +45,7 @@ export default function Login() {
         className="w-full max-w-sm flex flex-col items-center"
       >
         <div className="mb-10 w-full flex justify-center">
-           <img src={logo} alt="Airborne Aerial Fitness" className="h-24 object-contain" />
+           <img src="/logo.png" alt="Airborne Aerial Fitness" className="h-24 object-contain" />
         </div>
 
         <div className="w-full bg-white p-8 rounded shadow-sm border border-gray-100">

@@ -10,7 +10,9 @@ import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
 import Book from "@/pages/Book";
 import Enroll from "@/pages/Enroll";
+import EnrollSuccess from "@/pages/EnrollSuccess";
 import Profile from "@/pages/Profile";
+import ProfileSettings from "@/pages/ProfileSettings";
 import Sessions from "@/pages/Sessions";
 
 function Router() {
@@ -21,8 +23,10 @@ function Router() {
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/book" component={Book} />
       <Route path="/enroll" component={Enroll} />
+      <Route path="/enroll/success" component={EnrollSuccess} />
       <Route path="/sessions" component={Sessions} />
       <Route path="/profile" component={Profile} />
+      <Route path="/profile/settings" component={ProfileSettings} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -1,102 +1,120 @@
-import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, timestamp, date, boolean, pgEnum } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod";
+/**
+ * Shared TypeScript types for Airborne Fitness.
+ * DB-agnostic: used by client and server; persistence uses MongoDB (Mongoose) on server.
+ */
 
-export const members = pgTable("members", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  phone: text("phone").notNull().unique(),
-  name: text("name").notNull().default("New Member"),
-  email: text("email"),
-  dob: text("dob"),
-  emergencyContactName: text("emergency_contact_name"),
-  emergencyContactPhone: text("emergency_contact_phone"),
-  medicalConditions: text("medical_conditions"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+// ----- Document types (match MongoDB/Mongoose shape; id is string from _id) -----
 
-export const memberships = pgTable("memberships", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  memberId: varchar("member_id").notNull().references(() => members.id),
-  category: text("category").notNull(),
-  planName: text("plan_name").notNull(),
-  sessionsTotal: integer("sessions_total").notNull(),
-  sessionsRemaining: integer("sessions_remaining").notNull(),
-  price: integer("price").notNull(),
-  expiryDate: timestamp("expiry_date").notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export interface Member {
+  id: string;
+  phone: string;
+  name: string;
+  email?: string | null;
+  dob?: string | null;
+  emergencyContactName?: string | null;
+  emergencyContactPhone?: string | null;
+  medicalConditions?: string | null;
+  createdAt?: Date | null;
+}
 
-export const classSchedule = pgTable("class_schedule", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  classId: text("class_id").notNull(),
-  category: text("category").notNull(),
-  branch: text("branch").notNull().default("Lower Parel"),
-  dayOfWeek: integer("day_of_week").notNull(), // 0=Sun, 6=Sat
-  startHour: integer("start_hour").notNull(),
-  startMinute: integer("start_minute").notNull().default(0),
-  endHour: integer("end_hour").notNull(),
-  endMinute: integer("end_minute").notNull().default(0),
-  capacity: integer("capacity").notNull().default(14),
-  isActive: boolean("is_active").notNull().default(true),
-});
+export interface ClassType {
+  id: string;
+  name: string;
+  ageGroup: string;
+  strengthLevel: number;
+  infoBullets: string[];
+  isActive: boolean;
+}
 
-export const bookingStatusEnum = pgEnum("booking_status", ["BOOKED", "WAITLISTED", "CANCELLED"]);
+export interface MembershipPlan {
+  id: string;
+  classTypeId: string;
+  name: string;
+  sessionsTotal: number;
+  validityDays: number;
+  price: number;
+  isActive: boolean;
+}
 
-export const bookings = pgTable("bookings", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  memberId: varchar("member_id").notNull().references(() => members.id),
-  sessionDate: text("session_date").notNull(), // YYYY-MM-DD
-  scheduleId: text("schedule_id").notNull(),
-  category: text("category").notNull(),
-  branch: text("branch").notNull(),
-  startTime: text("start_time").notNull(),
-  endTime: text("end_time").notNull(),
-  status: text("status").notNull().default("BOOKED"), // BOOKED | WAITLISTED | CANCELLED
-  waitlistPosition: integer("waitlist_position"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export interface ScheduleSlot {
+  id: string;
+  classTypeId: string;
+  branch: string;
+  dayOfWeek: number;
+  startHour: number;
+  startMinute: number;
+  endHour: number;
+  endMinute: number;
+  capacity: number;
+  isActive: boolean;
+  notes?: string | null;
+}
 
-export const waiverSignatures = pgTable("waiver_signatures", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  memberId: varchar("member_id").notNull().references(() => members.id),
-  signatureName: text("signature_name").notNull(),
-  agreedTerms: boolean("agreed_terms").notNull().default(false),
-  agreedAge: boolean("agreed_age").notNull().default(false),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export interface Membership {
+  id: string;
+  memberId: string;
+  category: string;
+  planName: string;
+  sessionsTotal: number;
+  sessionsRemaining: number;
+  price: number;
+  expiryDate: Date;
+  extensionRequestedAt?: Date | null;
+  extensionApprovedAt?: Date | null;
+  extensionApplied: boolean;
+  createdAt?: Date | null;
+}
 
-export const kidDetails = pgTable("kid_details", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  memberId: varchar("member_id").notNull().references(() => members.id),
-  kidName: text("kid_name").notNull(),
-  kidDob: text("kid_dob").notNull(),
-  kidGender: text("kid_gender").notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export type BookingStatus = "BOOKED" | "WAITLISTED" | "CANCELLED";
 
-// Insert schemas
-export const insertMemberSchema = createInsertSchema(members).omit({ id: true, createdAt: true });
-export const insertMembershipSchema = createInsertSchema(memberships).omit({ id: true, createdAt: true });
-export const insertBookingSchema = createInsertSchema(bookings).omit({ id: true, createdAt: true });
-export const insertClassScheduleSchema = createInsertSchema(classSchedule).omit({ id: true });
-export const insertWaiverSchema = createInsertSchema(waiverSignatures).omit({ id: true, createdAt: true });
-export const insertKidDetailsSchema = createInsertSchema(kidDetails).omit({ id: true, createdAt: true });
+export interface BookingRecord {
+  id: string;
+  memberId: string;
+  sessionDate: string;
+  scheduleId: string;
+  category: string;
+  branch: string;
+  startTime: string;
+  endTime: string;
+  status: BookingStatus;
+  waitlistPosition?: number | null;
+  createdAt?: Date | null;
+}
 
-// Types
-export type Member = typeof members.$inferSelect;
-export type InsertMember = z.infer<typeof insertMemberSchema>;
-export type Membership = typeof memberships.$inferSelect;
-export type InsertMembership = z.infer<typeof insertMembershipSchema>;
-export type ClassScheduleItem = typeof classSchedule.$inferSelect;
-export type InsertClassSchedule = z.infer<typeof insertClassScheduleSchema>;
-export type BookingRecord = typeof bookings.$inferSelect;
-export type InsertBooking = z.infer<typeof insertBookingSchema>;
-export type WaiverSignature = typeof waiverSignatures.$inferSelect;
-export type InsertWaiver = z.infer<typeof insertWaiverSchema>;
-export type KidDetail = typeof kidDetails.$inferSelect;
-export type InsertKidDetail = z.infer<typeof insertKidDetailsSchema>;
+export interface WaiverSignature {
+  id: string;
+  memberId: string;
+  signatureName: string;
+  agreedTerms: boolean;
+  agreedAge: boolean;
+  createdAt?: Date | null;
+}
 
-// Keep legacy types for backward compat
+export interface KidDetail {
+  id: string;
+  memberId: string;
+  kidName: string;
+  kidDob: string;
+  kidGender: string;
+  createdAt?: Date | null;
+}
+
+export interface AppSetting {
+  key: string;
+  value: string;
+}
+
+// ----- Insert / update types (omit id, optional timestamps) -----
+
+export type InsertMember = Omit<Member, "id" | "createdAt"> & { createdAt?: Date };
+export type InsertMembership = Omit<Membership, "id" | "createdAt"> & { createdAt?: Date };
+export type InsertBooking = Omit<BookingRecord, "id" | "createdAt"> & { createdAt?: Date };
+export type InsertClassType = Omit<ClassType, "id">;
+export type InsertMembershipPlan = Omit<MembershipPlan, "id">;
+export type InsertScheduleSlot = Omit<ScheduleSlot, "id">;
+export type InsertWaiver = Omit<WaiverSignature, "id" | "createdAt"> & { createdAt?: Date };
+export type InsertKidDetail = Omit<KidDetail, "id" | "createdAt"> & { createdAt?: Date };
+
+// Legacy aliases
 export type User = Member;
 export type InsertUser = InsertMember;

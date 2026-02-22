@@ -2,8 +2,9 @@ import { useMember } from "@/context/MemberContext";
 import MobileLayout from "@/components/layout/MobileLayout";
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
-import { User, LogOut, Settings, CreditCard, Bell, ChevronRight } from "lucide-react";
-import { format } from "date-fns";
+import { LogOut, Settings, ChevronRight } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { useState, useEffect } from "react";
 
 export default function Profile() {
   const { user, logout } = useMember();
@@ -20,18 +21,17 @@ export default function Profile() {
   }
 
   const hasMemberships = Object.keys(user.memberships).length > 0;
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem("airborne-dark-mode") === "true");
+
+  useEffect(() => {
+    localStorage.setItem("airborne-dark-mode", darkMode ? "true" : "false");
+  }, [darkMode]);
 
   return (
     <MobileLayout>
       <div className="p-6">
-        {/* Profile Header */}
-        <div className="flex flex-col items-center mb-8 pt-4">
-          <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center text-gray-400 mb-4 border-4 border-white shadow-sm">
-            <User size={32} />
-          </div>
-          <h1 className="text-xl font-bold text-gray-900">{user.name}</h1>
-          <p className="text-gray-500 text-sm font-medium">{user.phone}</p>
-        </div>
+        <h1 className="text-xl font-bold text-gray-900 mb-2">{user.name}</h1>
+        <p className="text-gray-500 text-sm font-medium mb-8">{user.phone}</p>
 
         {/* Memberships Section */}
         <div className="mb-8">
@@ -60,7 +60,7 @@ export default function Profile() {
 
         {/* Settings List */}
         <div className="space-y-3">
-          <button className="w-full flex items-center justify-between bg-white border border-gray-100 p-4 rounded-2xl hover:bg-gray-50 transition-colors group">
+          <button onClick={() => setLocation("/profile/settings")} className="w-full flex items-center justify-between bg-white border border-gray-100 p-4 rounded-2xl hover:bg-gray-50 transition-colors group">
             <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center">
                     <Settings size={16} />
@@ -69,26 +69,11 @@ export default function Profile() {
             </div>
             <ChevronRight size={16} className="text-gray-300 group-hover:text-gray-500" />
           </button>
-          
-          <button className="w-full flex items-center justify-between bg-white border border-gray-100 p-4 rounded-2xl hover:bg-gray-50 transition-colors group">
-            <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-purple-50 text-purple-500 flex items-center justify-center">
-                    <CreditCard size={16} />
-                </div>
-                <span className="text-sm font-medium text-gray-700">Payment Methods</span>
-            </div>
-            <ChevronRight size={16} className="text-gray-300 group-hover:text-gray-500" />
-          </button>
-          
-          <button className="w-full flex items-center justify-between bg-white border border-gray-100 p-4 rounded-2xl hover:bg-gray-50 transition-colors group">
-            <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-orange-50 text-orange-500 flex items-center justify-center">
-                    <Bell size={16} />
-                </div>
-                <span className="text-sm font-medium text-gray-700">Notifications</span>
-            </div>
-            <div className="w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">2</div>
-          </button>
+
+          <div className="w-full flex items-center justify-between bg-white border border-gray-100 p-4 rounded-2xl">
+            <span className="text-sm font-medium text-gray-700">Dark Mode</span>
+            <Switch checked={darkMode} onCheckedChange={setDarkMode} />
+          </div>
           
           <Button 
             variant="ghost" 

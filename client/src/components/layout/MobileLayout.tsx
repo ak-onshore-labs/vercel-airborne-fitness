@@ -1,7 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { Home, Calendar, User, Dumbbell } from "lucide-react";
 import { cn } from "@/lib/utils";
-import logo from "@assets/image_1765022997002.png";
 
 export default function MobileLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -20,7 +19,7 @@ export default function MobileLayout({ children }: { children: React.ReactNode }
       <div className="max-w-md mx-auto min-h-screen relative bg-white shadow-xl flex flex-col">
         {!isAuthPage && (
           <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-gray-100 px-6 h-16 flex items-center justify-center">
-            <img src={logo} alt="Airborne" className="h-10 object-contain" />
+            <img src="/logo.png" alt="Airborne" className="h-10 object-contain" />
           </header>
         )}
         <main className="flex-1 overflow-y-auto pb-24 scrollbar-hide">
