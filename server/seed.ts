@@ -1,5 +1,6 @@
 import { connectDb } from "./db";
 import {
+  UserModel,
   ClassTypeModel,
   MembershipPlanModel,
   ScheduleSlotModel,
@@ -266,40 +267,47 @@ export async function seedDatabase() {
 
   await ScheduleSlotModel.insertMany(slotRows);
 
-  const existingMember = await MemberModel.findOne({ phone: "9999977777" });
-  if (!existingMember) {
-    const member = await MemberModel.create({
-      phone: "9999977777",
+  const existingUser = await UserModel.findOne({ mobile: "9999977777" });
+  if (!existingUser) {
+    const user = await UserModel.create({
       name: "Sarah Jenkins",
-      email: "sarah@example.com",
+      mobile: "9999977777",
+      gender: "",
+      userRole: "ADMIN",
+    });
+    const userId = user._id.toString();
+    const member = await MemberModel.create({
+      userId,
+      memberType: "Adult",
     });
     const memberId = member._id.toString();
+
+    const aerialPlan = await MembershipPlanModel.findOne({ classTypeId: nameToId["Aerial Fitness"], name: "3 Months" });
+    const funcPlan = await MembershipPlanModel.findOne({ classTypeId: nameToId["Functional Training"], name: "Monthly" });
 
     const expiry1 = new Date();
     expiry1.setDate(expiry1.getDate() + 90);
     const expiry2 = new Date();
     expiry2.setDate(expiry2.getDate() + 30);
 
-    await MembershipModel.insertMany([
-      {
+    if (aerialPlan) {
+      await MembershipModel.create({
         memberId,
-        category: "Aerial Fitness",
-        planName: "3 Months",
-        sessionsTotal: 24,
+        membershipPlanId: aerialPlan._id.toString(),
         sessionsRemaining: 14,
-        price: 15500,
         expiryDate: expiry1,
-      },
-      {
+        carryForward: 0,
+      });
+    }
+    if (funcPlan) {
+      await MembershipModel.create({
         memberId,
-        category: "Functional Training",
-        planName: "Monthly",
-        sessionsTotal: 12,
+        membershipPlanId: funcPlan._id.toString(),
         sessionsRemaining: 8,
-        price: 5000,
         expiryDate: expiry2,
-      },
-    ]);
+        carryForward: 0,
+      });
+    }
   }
 
   await AppSettingModel.findByIdAndUpdate(

@@ -14,12 +14,14 @@ import EnrollSuccess from "@/pages/EnrollSuccess";
 import Profile from "@/pages/Profile";
 import ProfileSettings from "@/pages/ProfileSettings";
 import Sessions from "@/pages/Sessions";
+import { AdminApp } from "@/admin";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Login} />
       <Route path="/login" component={Login} />
+      <Route path="/admin" component={AdminApp} />
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/book" component={Book} />
       <Route path="/enroll" component={Enroll} />

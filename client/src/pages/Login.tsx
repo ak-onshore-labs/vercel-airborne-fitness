@@ -1,14 +1,17 @@
 import { useState } from "react";
-import { useMember } from "@/context/MemberContext";
+import { useMember, type VerifyOtpPayload } from "@/context/MemberContext";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, ArrowRight } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { apiFetch } from "@/lib/api";
 
 export default function Login() {
-  const { login } = useMember();
+  const { loginWithPayload } = useMember();
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const [step, setStep] = useState<"phone" | "otp">("phone");
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
@@ -18,19 +21,43 @@ export default function Login() {
     e.preventDefault();
     if (phone.length < 10) return;
     setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 800)); 
+    const res = await apiFetch<{ success: boolean }>("/api/auth/send-otp", {
+      method: "POST",
+      body: JSON.stringify({ phone: `+91${phone}` }),
+    });
     setIsLoading(false);
+    if (!res.ok) {
+      toast({ variant: "destructive", title: "Send OTP failed", description: res.message });
+      return;
+    }
     setStep("otp");
+    toast({ title: "OTP sent to your number" });
   };
 
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (otp.length < 4) return;
     setIsLoading(true);
-
-    const { success, isNew } = await login(phone);
+    const res = await apiFetch<{ success: boolean; token: string; user: VerifyOtpPayload["user"]; members: VerifyOtpPayload["members"]; memberships: VerifyOtpPayload["memberships"]; isNew: boolean }>(
+      "/api/auth/verify-otp",
+      {
+        method: "POST",
+        body: JSON.stringify({ phone: `+91${phone}`, code: otp }),
+      }
+    );
+    if (!res.ok) {
+      setIsLoading(false);
+      toast({ variant: "destructive", title: "Verification failed", description: res.message });
+      return;
+    }
+    const { success, isNew } = await loginWithPayload({
+      token: res.data!.token,
+      user: res.data!.user,
+      members: res.data!.members,
+      memberships: res.data!.memberships,
+      isNew: res.data!.isNew,
+    });
     setIsLoading(false);
-
     if (success) {
       setLocation(isNew ? "/enroll" : "/dashboard");
     }
@@ -91,12 +118,6 @@ export default function Login() {
                   {isLoading ? <Loader2 className="animate-spin" /> : "Get OTP"}
                 </Button>
                 
-                <div className="mt-6 p-3 bg-blue-50 rounded border border-blue-100">
-                  <p className="text-[10px] text-blue-600 font-medium text-center">
-                    Demo: Enter any 10-digit number.<br/>
-                    Pre-loaded member: 99999 77777
-                  </p>
-                </div>
               </motion.form>
             ) : (
               <motion.form
@@ -128,7 +149,7 @@ export default function Login() {
                     maxLength={6}
                     required
                   />
-                  <p className="text-xs text-center text-gray-400">Use any 4+ digit code for demo</p>
+                  <p className="text-xs text-center text-gray-400">Enter the 6-digit code sent via SMS</p>
                 </div>
                 <Button 
                   data-testid="button-verify-otp"

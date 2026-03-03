@@ -1,16 +1,17 @@
 import mongoose from "mongoose";
-import type { BookingRecord } from "@shared/schema";
+import type { BookingRecord, BookingStatus } from "@shared/schema";
 
 const bookingSchema = new mongoose.Schema<BookingRecord & { _id: mongoose.Types.ObjectId }>(
   {
     memberId: { type: String, required: true, ref: "Member" },
+    scheduleId: { type: String, required: true, ref: "ScheduleSlot" },
     sessionDate: { type: String, required: true },
-    scheduleId: { type: String, required: true },
-    category: { type: String, required: true },
-    branch: { type: String, required: true },
-    startTime: { type: String, required: true },
-    endTime: { type: String, required: true },
-    status: { type: String, required: true, default: "BOOKED", enum: ["BOOKED", "WAITLISTED", "CANCELLED"] },
+    status: {
+      type: String,
+      required: true,
+      default: "BOOKED",
+      enum: ["BOOKED", "CANCELLED", "ATTENDED", "ABSENT"] as BookingStatus[],
+    },
     waitlistPosition: { type: Number, default: null },
   },
   { timestamps: true }

@@ -1,12 +1,14 @@
 import mongoose from "mongoose";
-import type { Member } from "@shared/schema";
+import type { Member, MemberType } from "@shared/schema";
 
 const memberSchema = new mongoose.Schema<Member & { _id: mongoose.Types.ObjectId }>(
   {
-    phone: { type: String, required: true, unique: true },
-    name: { type: String, required: true, default: "" },
-    email: { type: String, default: null },
+    userId: { type: String, required: true, ref: "User" },
+    memberType: { type: String, required: true, enum: ["Kid", "Adult"] as MemberType[] },
+    name: { type: String, default: null },
     dob: { type: String, default: null },
+    gender: { type: String, default: null },
+    email: { type: String, default: null },
     emergencyContactName: { type: String, default: null },
     emergencyContactPhone: { type: String, default: null },
     medicalConditions: { type: String, default: null },

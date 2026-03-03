@@ -2,8 +2,9 @@ import type { Express, Request, Response } from "express";
 import { type Server } from "http";
 import { storage } from "./storage";
 import { seedDatabase } from "./seed";
-import { asyncHandler } from "./middleware";
+import { asyncHandler, requireAuth } from "./middleware";
 import { registerAdminRoutes } from "./routes/admin";
+import { registerAuthRoutes } from "./routes/auth";
 import { registerManageSessionRoutes } from "./routes/manage-session";
 import { registerMembershipRoutes } from "./routes/membership";
 import { registerMembershipPlansRoutes } from "./routes/membership-plans";
@@ -13,7 +14,6 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // Seed only when explicitly requested (dev/staging: set SEED_ON_START=true; or run npm run seed).
   if (process.env.SEED_ON_START === "true") {
     try {
       await seedDatabase();
@@ -66,37 +66,11 @@ export async function registerRoutes(
     });
   }
 
-  // --- AUTH / LOGIN ---
-  app.post("/api/login", asyncHandler(async (req: Request, res: Response) => {
-    const { phone } = req.body;
-    if (!phone || typeof phone !== "string") {
-      return res.status(400).json({ message: "Phone number required" });
-    }
-
-    let member = await storage.getMemberByPhone(phone);
-    const isNew = !member;
-
-    if (!member) {
-      member = await storage.createMember({ phone, name: "" });
-    }
-
-    const membershipList = await storage.getMemberMemberships(member.id);
-    const membershipMap: Record<string, any> = {};
-    for (const m of membershipList) {
-      membershipMap[m.category] = {
-        id: m.id,
-        sessionsRemaining: m.sessionsRemaining,
-        expiryDate: m.expiryDate,
-        planName: m.planName,
-      };
-    }
-
-    res.json({ member, memberships: membershipMap, isNew: isNew || membershipList.length === 0 });
-  }));
-
-  // --- Register split route modules ---
+  registerAuthRoutes(app);
   registerMasterDataRoutes(app);
   registerMembershipPlansRoutes(app);
+
+  // Protected routes (require JWT)
   registerMembershipRoutes(app);
   registerManageSessionRoutes(app);
   registerAdminRoutes(app);

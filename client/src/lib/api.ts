@@ -1,18 +1,34 @@
+const TOKEN_KEY = "airborne_token";
+
+export function getStoredToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setStoredToken(token: string | null): void {
+  if (typeof window === "undefined") return;
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+}
+
 /**
- * Safe API client for fetching JSON. Handles non-JSON responses (e.g. HTML error pages)
- * and network errors gracefully.
+ * Safe API client for fetching JSON. Adds Authorization: Bearer <token> when token is present.
  */
 export async function apiFetch<T = unknown>(
   url: string,
   options?: RequestInit
 ): Promise<{ data: T; ok: true } | { data: null; ok: false; status: number; message: string }> {
   try {
+    const token = getStoredToken();
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...(options?.headers as Record<string, string>),
+    };
+    if (token) headers.Authorization = `Bearer ${token}`;
+
     const res = await fetch(url, {
       ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
+      headers,
     });
 
     const contentType = res.headers.get("content-type");

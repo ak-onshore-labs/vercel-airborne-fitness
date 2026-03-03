@@ -1,4 +1,6 @@
 import type {
+  User,
+  InsertUser,
   Member,
   InsertMember,
   Membership,
@@ -8,11 +10,13 @@ import type {
   BookingRecord,
   InsertBooking,
   InsertWaiver,
-  InsertKidDetail,
   ClassType,
+  InsertClassType,
   MembershipPlan,
+  InsertMembershipPlan,
 } from "@shared/schema";
 import {
+  UserModel,
   MemberModel,
   ClassTypeModel,
   MembershipPlanModel,
@@ -20,9 +24,9 @@ import {
   MembershipModel,
   BookingModel,
   WaiverSignatureModel,
-  KidDetailModel,
   AppSettingModel,
 } from "./models";
+import mongoose from "mongoose";
 import type { Document } from "mongoose";
 
 function pad2(n: number): string {
@@ -33,7 +37,6 @@ function slug(name: string): string {
   return name.toLowerCase().replace(/\s+&\s+/g, "-").replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
 }
 
-/** Normalize Mongoose doc to API shape with `id` instead of `_id` */
 function toApi<T>(doc: Document | null): T | null {
   if (!doc) return null;
   const obj = doc.toObject() as Record<string, unknown>;
@@ -51,7 +54,12 @@ export interface ScheduleSlotWithCategory extends ScheduleSlot {
 }
 
 export interface IStorage {
-  getMemberByPhone(phone: string): Promise<Member | undefined>;
+  getUserByMobile(mobile: string): Promise<User | undefined>;
+  getUser(id: string): Promise<User | undefined>;
+  createUser(user: InsertUser): Promise<User>;
+  updateUser(id: string, data: Partial<InsertUser>): Promise<User | undefined>;
+
+  getMembersByUserId(userId: string): Promise<Member[]>;
   getMember(id: string): Promise<Member | undefined>;
   createMember(member: InsertMember): Promise<Member>;
   updateMember(id: string, data: Partial<InsertMember>): Promise<Member | undefined>;
@@ -63,8 +71,10 @@ export interface IStorage {
   updateMembershipSessions(id: string, sessionsRemaining: number): Promise<void>;
 
   getClassTypes(): Promise<Array<{ id: string; name: string; ageGroup: string; strengthLevel: number; infoBullets: string[]; isActive: boolean }>>;
+  createClassType(item: InsertClassType): Promise<ClassType>;
   getMembershipPlansGroupedByClassType(): Promise<Record<string, Array<{ id: string; name: string; sessions: number; price: number; validityDays: number }>>>;
   getMembershipPlansByClassType(classTypeId: string): Promise<Array<{ id: string; name: string; sessions: number; price: number; validityDays: number }>>;
+  createMembershipPlan(plan: InsertMembershipPlan): Promise<MembershipPlan>;
   getSchedule(): Promise<ScheduleSlotWithCategory[]>;
   getScheduleForBranchAndDate(branch: string, date: string): Promise<Array<{ scheduleId: string; sessionDate: string; classId: string; category: string; branch: string; startTime: string; endTime: string; capacity: number }>>;
   getScheduleSlot(id: string): Promise<ScheduleSlotWithCategory | undefined>;
@@ -75,19 +85,78 @@ export interface IStorage {
 
   getBookingsForMember(memberId: string): Promise<BookingRecord[]>;
   getBookingsForSession(scheduleId: string, sessionDate: string): Promise<BookingRecord[]>;
+  getUpcomingSessionsByBranch(
+    branch: string,
+    fromDate: string,
+    days: number
+  ): Promise<Array<{ date: string; sessions: Array<{ scheduleId: string; sessionDate: string; startTime: string; endTime: string; category: string; bookingCount: number; capacity: number }> }>>;
+  getBranches(): Promise<string[]>;
   createBooking(booking: InsertBooking): Promise<BookingRecord>;
   updateBookingStatus(id: string, status: string, waitlistPosition?: number): Promise<void>;
 
   createWaiver(waiver: InsertWaiver): Promise<void>;
-  createKidDetail(detail: InsertKidDetail): Promise<void>;
 
   getAppSetting(key: string): Promise<string | null>;
+
+  listUsers(params: { page: number; limit: number; name?: string }): Promise<{ items: User[]; total: number }>;
+  listScheduleSlots(params: {
+    page: number;
+    limit: number;
+    classTypeName?: string;
+    branch?: string;
+    dayOfWeek?: number;
+    startTime?: string;
+  }): Promise<{ items: (ScheduleSlotWithCategory & { startTime: string; endTime: string })[]; total: number }>;
+  listClassTypes(params: { page: number; limit: number }): Promise<{ items: ClassType[]; total: number }>;
+  listMembershipPlans(params: {
+    page: number;
+    limit: number;
+    classTypeName?: string;
+    planName?: string;
+  }): Promise<{ items: (MembershipPlan & { classTypeName: string })[]; total: number }>;
+  listMembers(params: {
+    page: number;
+    limit: number;
+    phone?: string;
+    name?: string;
+    email?: string;
+  }): Promise<{ items: (Member & { mobile?: string })[]; total: number }>;
+  listBookings(params: {
+    page: number;
+    limit: number;
+    sessionDate?: string;
+    memberMobile?: string;
+    classTypeName?: string;
+  }): Promise<{
+    items: (BookingRecord & { memberMobile?: string; classTypeName?: string; startTime?: string; endTime?: string; branch?: string })[];
+    total: number;
+  }>;
 }
 
 export class MongoStorage implements IStorage {
-  async getMemberByPhone(phone: string): Promise<Member | undefined> {
-    const doc = await MemberModel.findOne({ phone });
-    return toApi<Member>(doc) ?? undefined;
+  async getUserByMobile(mobile: string): Promise<User | undefined> {
+    const doc = await UserModel.findOne({ mobile });
+    return toApi<User>(doc) ?? undefined;
+  }
+
+  async getUser(id: string): Promise<User | undefined> {
+    const doc = await UserModel.findById(id);
+    return toApi<User>(doc) ?? undefined;
+  }
+
+  async createUser(user: InsertUser): Promise<User> {
+    const doc = await UserModel.create(user);
+    return toApi<User>(doc)!;
+  }
+
+  async updateUser(id: string, data: Partial<InsertUser>): Promise<User | undefined> {
+    const doc = await UserModel.findByIdAndUpdate(id, { $set: data }, { new: true });
+    return toApi<User>(doc) ?? undefined;
+  }
+
+  async getMembersByUserId(userId: string): Promise<Member[]> {
+    const docs = await MemberModel.find({ userId }).sort({ createdAt: 1 });
+    return toApiList<Member>(docs);
   }
 
   async getMember(id: string): Promise<Member | undefined> {
@@ -141,6 +210,11 @@ export class MongoStorage implements IStorage {
     }));
   }
 
+  async createClassType(item: InsertClassType): Promise<ClassType> {
+    const doc = await ClassTypeModel.create(item);
+    return toApi<ClassType>(doc)!;
+  }
+
   async getMembershipPlansGroupedByClassType(): Promise<Record<string, Array<{ id: string; name: string; sessions: number; price: number; validityDays: number }>>> {
     const planDocs = await MembershipPlanModel.find({ isActive: true });
     const plans = toApiList<MembershipPlan>(planDocs);
@@ -171,6 +245,11 @@ export class MongoStorage implements IStorage {
       price: p.price,
       validityDays: p.validityDays,
     }));
+  }
+
+  async createMembershipPlan(plan: InsertMembershipPlan): Promise<MembershipPlan> {
+    const doc = await MembershipPlanModel.create(plan);
+    return toApi<MembershipPlan>(doc)!;
   }
 
   async getScheduleForBranchAndDate(
@@ -261,6 +340,48 @@ export class MongoStorage implements IStorage {
     return toApiList<BookingRecord>(docs);
   }
 
+  async getUpcomingSessionsByBranch(
+    branch: string,
+    fromDate: string,
+    days: number
+  ): Promise<Array<{ date: string; sessions: Array<{ scheduleId: string; sessionDate: string; startTime: string; endTime: string; category: string; bookingCount: number; capacity: number }> }>> {
+    const types = await ClassTypeModel.find({});
+    const typeMap: Record<string, string> = {};
+    for (const t of types) typeMap[(t as any)._id.toString()] = t.name;
+    const result: Array<{ date: string; sessions: Array<{ scheduleId: string; sessionDate: string; startTime: string; endTime: string; category: string; bookingCount: number; capacity: number }> }> = [];
+    for (let i = 0; i < days; i++) {
+      const d = new Date(fromDate + "T12:00:00");
+      d.setDate(d.getDate() + i);
+      const dateStr = d.toISOString().slice(0, 10);
+      const dayOfWeek = d.getDay();
+      const slots = await ScheduleSlotModel.find({ branch, dayOfWeek }).sort({ startHour: 1, startMinute: 1 });
+      const sessions: Array<{ scheduleId: string; sessionDate: string; startTime: string; endTime: string; category: string; bookingCount: number; capacity: number }> = [];
+      for (const slot of slots) {
+        const sid = (slot as any)._id.toString();
+        const category = typeMap[slot.classTypeId] ?? "";
+        const startTime = `${pad2(slot.startHour)}:${pad2(slot.startMinute)}`;
+        const endTime = `${pad2(slot.endHour)}:${pad2(slot.endMinute)}`;
+        const bookings = await BookingModel.find({ scheduleId: sid, sessionDate: dateStr, status: { $in: ["BOOKED", "ATTENDED"] } });
+        sessions.push({
+          scheduleId: sid,
+          sessionDate: dateStr,
+          startTime,
+          endTime,
+          category,
+          bookingCount: bookings.length,
+          capacity: slot.capacity,
+        });
+      }
+      result.push({ date: dateStr, sessions });
+    }
+    return result;
+  }
+
+  async getBranches(): Promise<string[]> {
+    const branches = await ScheduleSlotModel.distinct("branch");
+    return (branches as string[]).sort();
+  }
+
   async createBooking(booking: InsertBooking): Promise<BookingRecord> {
     const doc = await BookingModel.create(booking);
     return toApi<BookingRecord>(doc)!;
@@ -276,13 +397,221 @@ export class MongoStorage implements IStorage {
     await WaiverSignatureModel.create(waiver);
   }
 
-  async createKidDetail(detail: InsertKidDetail): Promise<void> {
-    await KidDetailModel.create(detail);
-  }
-
   async getAppSetting(key: string): Promise<string | null> {
     const doc = await AppSettingModel.findById(key);
     return doc?.value ?? null;
+  }
+
+  async listUsers(params: { page: number; limit: number; name?: string }): Promise<{ items: User[]; total: number }> {
+    const { page, limit, name } = params;
+    const filter: Record<string, unknown> = {};
+    if (name && name.trim()) {
+      filter.name = { $regex: name.trim(), $options: "i" };
+    }
+    const [docs, total] = await Promise.all([
+      UserModel.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).exec(),
+      UserModel.countDocuments(filter),
+    ]);
+    return { items: toApiList<User>(docs), total };
+  }
+
+  async listScheduleSlots(params: {
+    page: number;
+    limit: number;
+    classTypeName?: string;
+    branch?: string;
+    dayOfWeek?: number;
+    startTime?: string;
+  }): Promise<{ items: (ScheduleSlotWithCategory & { startTime: string; endTime: string })[]; total: number }> {
+    const { page, limit, classTypeName, branch, dayOfWeek, startTime } = params;
+    const filter: Record<string, unknown> = {};
+    if (branch?.trim()) filter.branch = { $regex: branch.trim(), $options: "i" };
+    if (dayOfWeek !== undefined && dayOfWeek !== null) filter.dayOfWeek = dayOfWeek;
+    if (classTypeName?.trim()) {
+      const ct = await ClassTypeModel.findOne({ name: new RegExp(classTypeName.trim(), "i") });
+      if (ct) filter.classTypeId = (ct as any)._id.toString();
+    }
+    const slots = await ScheduleSlotModel.find(filter).sort({ dayOfWeek: 1, startHour: 1, startMinute: 1 });
+    const types = await ClassTypeModel.find({});
+    const typeMap: Record<string, string> = {};
+    for (const t of types) typeMap[(t as any)._id.toString()] = t.name;
+
+    let list = toApiList<ScheduleSlot>(slots).map((s) => ({
+      ...s,
+      category: typeMap[s.classTypeId] ?? "",
+      classId: slug(typeMap[s.classTypeId] ?? ""),
+      startTime: `${pad2(s.startHour)}:${pad2(s.startMinute)}`,
+      endTime: `${pad2(s.endHour)}:${pad2(s.endMinute)}`,
+    }));
+
+    if (startTime?.trim()) {
+      const [h, m] = startTime.trim().split(/[:\s]/).map(Number);
+      const mins = (h ?? 0) * 60 + (m ?? 0);
+      list = list.filter((s) => s.startHour * 60 + s.startMinute === mins || (s.startHour * 60 + s.startMinute >= mins && (s.endHour * 60 + s.endMinute) > mins));
+    }
+
+    const total = list.length;
+    list = list.slice((page - 1) * limit, (page - 1) * limit + limit);
+    return { items: list, total };
+  }
+
+  async listClassTypes(params: { page: number; limit: number }): Promise<{ items: ClassType[]; total: number }> {
+    const { page, limit } = params;
+    const [docs, total] = await Promise.all([
+      ClassTypeModel.find({}).sort({ name: 1 }).skip((page - 1) * limit).limit(limit).exec(),
+      ClassTypeModel.countDocuments({}),
+    ]);
+    return { items: toApiList<ClassType>(docs), total };
+  }
+
+  async listMembershipPlans(params: {
+    page: number;
+    limit: number;
+    classTypeName?: string;
+    planName?: string;
+  }): Promise<{ items: (MembershipPlan & { classTypeName: string })[]; total: number }> {
+    const { page, limit, classTypeName, planName } = params;
+    const filter: Record<string, unknown> = {};
+    if (planName?.trim()) filter.name = { $regex: planName.trim(), $options: "i" };
+    if (classTypeName?.trim()) {
+      const ct = await ClassTypeModel.findOne({ name: new RegExp(classTypeName.trim(), "i") });
+      if (ct) filter.classTypeId = (ct as any)._id.toString();
+    }
+    const [planDocs, total] = await Promise.all([
+      MembershipPlanModel.find(filter).sort({ classTypeId: 1, name: 1 }).skip((page - 1) * limit).limit(limit).exec(),
+      MembershipPlanModel.countDocuments(filter),
+    ]);
+    const plans = toApiList<MembershipPlan>(planDocs);
+    const typeIds = Array.from(new Set(plans.map((p) => p.classTypeId)));
+    const types = await ClassTypeModel.find({ _id: { $in: typeIds.map((id) => new mongoose.Types.ObjectId(id)) } });
+    const typeMap: Record<string, string> = {};
+    for (const t of types) typeMap[(t as any)._id.toString()] = t.name;
+    const items = plans.map((p) => ({ ...p, classTypeName: typeMap[p.classTypeId] ?? p.classTypeId }));
+    return { items, total };
+  }
+
+  async listMembers(params: {
+    page: number;
+    limit: number;
+    phone?: string;
+    name?: string;
+    email?: string;
+  }): Promise<{ items: (Member & { mobile?: string })[]; total: number }> {
+    const { page, limit, phone, name, email } = params;
+    const andConditions: Record<string, unknown>[] = [];
+    if (phone?.trim()) {
+      const phoneUsers = await UserModel.find({ mobile: { $regex: phone.trim(), $options: "i" } }).select("_id");
+      const phoneUserIds = phoneUsers.map((u) => (u as any)._id.toString());
+      if (phoneUserIds.length === 0) return { items: [], total: 0 };
+      andConditions.push({ userId: { $in: phoneUserIds } });
+    }
+    if (name?.trim()) {
+      const nameUsers = await UserModel.find({ name: { $regex: name.trim(), $options: "i" } }).select("_id");
+      const nameUserIds = nameUsers.map((u) => (u as any)._id.toString());
+      andConditions.push({
+        $or: [
+          { name: { $regex: name.trim(), $options: "i" } },
+          ...(nameUserIds.length > 0 ? [{ userId: { $in: nameUserIds } }] : []),
+        ],
+      });
+    }
+    if (email?.trim()) {
+      andConditions.push({ email: { $regex: email.trim(), $options: "i" } });
+    }
+    const filter = andConditions.length > 0 ? { $and: andConditions } : {};
+    const [memberDocs, total] = await Promise.all([
+      MemberModel.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).exec(),
+      MemberModel.countDocuments(filter),
+    ]);
+    const members = toApiList<Member>(memberDocs);
+    const uIds = Array.from(new Set(members.map((m) => m.userId)));
+    const users = await UserModel.find({ _id: { $in: uIds.map((id) => new mongoose.Types.ObjectId(id)) } });
+    const userMap: Record<string, string> = {};
+    for (const u of users) userMap[(u as any)._id.toString()] = u.mobile;
+    const items = members.map((m) => ({ ...m, mobile: userMap[m.userId] }));
+    return { items, total };
+  }
+
+  async listBookings(params: {
+    page: number;
+    limit: number;
+    sessionDate?: string;
+    memberMobile?: string;
+    classTypeName?: string;
+  }): Promise<{
+    items: (BookingRecord & { memberMobile?: string; classTypeName?: string; startTime?: string; endTime?: string; branch?: string })[];
+    total: number;
+  }> {
+    const { page, limit, sessionDate, memberMobile, classTypeName } = params;
+    let memberIds: string[] | null = null;
+    if (memberMobile?.trim()) {
+      const user = await UserModel.findOne({ mobile: { $regex: memberMobile.trim(), $options: "i" } });
+      if (!user) return { items: [], total: 0 };
+      const members = await MemberModel.find({ userId: (user as any)._id.toString() }).select("_id");
+      memberIds = members.map((m) => (m as any)._id.toString());
+      if (memberIds.length === 0) return { items: [], total: 0 };
+    }
+    const filter: Record<string, unknown> = {};
+    if (memberIds) filter.memberId = { $in: memberIds };
+    if (sessionDate?.trim()) filter.sessionDate = sessionDate.trim();
+    let slotIds: string[] | null = null;
+    if (classTypeName?.trim()) {
+      const ct = await ClassTypeModel.findOne({ name: new RegExp(classTypeName.trim(), "i") });
+      if (ct) {
+        const slots = await ScheduleSlotModel.find({ classTypeId: (ct as any)._id.toString() });
+        slotIds = slots.map((s) => (s as any)._id.toString());
+        if (slotIds.length === 0) return { items: [], total: 0 };
+        filter.scheduleId = { $in: slotIds };
+      }
+    }
+    const [bookingDocs, total] = await Promise.all([
+      BookingModel.find(filter).sort({ sessionDate: -1, createdAt: -1 }).skip((page - 1) * limit).limit(limit).exec(),
+      BookingModel.countDocuments(filter),
+    ]);
+    const bookings = toApiList<BookingRecord>(bookingDocs);
+    const scheduleIds = Array.from(new Set(bookings.map((b) => b.scheduleId)));
+    const memberIdsFromBookings = Array.from(new Set(bookings.map((b) => b.memberId)));
+    const [slots, members] = await Promise.all([
+      ScheduleSlotModel.find({ _id: { $in: scheduleIds.map((id) => new mongoose.Types.ObjectId(id)) } }),
+      MemberModel.find({ _id: { $in: memberIdsFromBookings.map((id) => new mongoose.Types.ObjectId(id)) } }),
+    ]);
+    const slotMap: Record<string, { classTypeId: string; branch: string; startHour: number; startMinute: number; endHour: number; endMinute: number }> = {};
+    for (const s of slots) {
+      const id = (s as any)._id.toString();
+      slotMap[id] = {
+        classTypeId: s.classTypeId,
+        branch: s.branch,
+        startHour: s.startHour,
+        startMinute: s.startMinute,
+        endHour: s.endHour,
+        endMinute: s.endMinute,
+      };
+    }
+    const memberMap: Record<string, string> = {};
+    for (const m of members) memberMap[(m as any)._id.toString()] = m.userId;
+    const userIds = Array.from(new Set(Object.values(memberMap)));
+    const users = await UserModel.find({ _id: { $in: userIds.map((id) => new mongoose.Types.ObjectId(id)) } });
+    const userMap: Record<string, string> = {};
+    for (const u of users) userMap[(u as any)._id.toString()] = u.mobile;
+    const classTypeIds = Array.from(new Set(Object.values(slotMap).map((s) => s.classTypeId)));
+    const types = await ClassTypeModel.find({ _id: { $in: classTypeIds.map((id) => new mongoose.Types.ObjectId(id)) } });
+    const typeMap: Record<string, string> = {};
+    for (const t of types) typeMap[(t as any)._id.toString()] = t.name;
+    const items = bookings.map((b) => {
+      const slot = slotMap[b.scheduleId];
+      const ctName = slot ? typeMap[slot.classTypeId] : "";
+      const startTime = slot ? `${pad2(slot.startHour)}:${pad2(slot.startMinute)}` : "";
+      const endTime = slot ? `${pad2(slot.endHour)}:${pad2(slot.endMinute)}` : "";
+      return {
+        ...b,
+        memberMobile: memberMap[b.memberId] ? userMap[memberMap[b.memberId]] : "",
+        classTypeName: ctName,
+        startTime,
+        endTime,
+        branch: slot?.branch,
+      };
+    });
+    return { items, total };
   }
 }
 

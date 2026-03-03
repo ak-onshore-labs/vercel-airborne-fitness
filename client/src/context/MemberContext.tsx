@@ -1,13 +1,13 @@
-import React, { createContext, useContext, useState, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useCallback, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useLocation } from 'wouter';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, setStoredToken, getStoredToken } from '@/lib/api';
 
 export interface MembershipDetails {
   id: string;
   sessionsRemaining: number;
   expiryDate: string;
-  planName: string;
+  planName?: string;
 }
 
 export type MembershipMap = Record<string, MembershipDetails>;
@@ -29,7 +29,7 @@ export interface SelectedPlan {
   plan: { id: string; name: string; sessions: number; price: number; validityDays?: number };
 }
 
-export type BookingStatus = "BOOKED" | "WAITLISTED" | "CANCELLED";
+export type BookingStatus = "BOOKED" | "CANCELLED" | "ATTENDED" | "ABSENT";
 
 export interface Booking {
   id: string;
@@ -49,12 +49,21 @@ export interface LoginResult {
   isNew?: boolean;
 }
 
+export interface VerifyOtpPayload {
+  token: string;
+  user: { id: string; name: string; mobile: string; gender: string };
+  members: Array<{ id: string; userId: string; memberType: string; name?: string | null; dob?: string | null; gender?: string | null; email?: string | null; emergencyContactName?: string | null; emergencyContactPhone?: string | null; medicalConditions?: string | null }>;
+  memberships: MembershipMap;
+  isNew: boolean;
+}
+
 interface MemberContextType {
   user: UserProfile | null;
   bookedSessions: Booking[];
   selectedBranch: 'Lower Parel' | 'Mazgaon';
   setSelectedBranch: (branch: 'Lower Parel' | 'Mazgaon') => void;
   login: (phone: string) => Promise<LoginResult>;
+  loginWithPayload: (payload: VerifyOtpPayload) => Promise<LoginResult>;
   logout: () => void;
   enroll: (details: any, selectedPlans: SelectedPlan[], waiver?: any, kidInfo?: any) => Promise<void>;
   bookSession: (session: any, categoryName: string) => Promise<boolean>;
@@ -76,35 +85,32 @@ export function MemberProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
-  const login = async (phone: string): Promise<LoginResult> => {
+  const login = async (_phone: string): Promise<LoginResult> => {
+    toast({ variant: "destructive", title: "Use OTP to sign in" });
+    return { success: false };
+  };
+
+  const loginWithPayload = async (payload: VerifyOtpPayload): Promise<LoginResult> => {
     try {
-      const result = await apiFetch<{ member: UserProfile; memberships: MembershipMap; isNew: boolean }>('/api/login', {
-        method: 'POST',
-        body: JSON.stringify({ phone }),
-      });
-      if (!result.ok) {
-        toast({ variant: "destructive", title: "Login Failed", description: result.message });
-        return { success: false };
-      }
-      const { member, memberships, isNew } = result.data;
+      setStoredToken(payload.token);
+      const { user: apiUser, members, memberships, isNew } = payload;
+      const primaryMember = members[0];
+      const memberId = primaryMember?.id ?? apiUser.id;
       setUser({
-        id: member.id,
-        name: member.name,
-        phone: member.phone,
-        email: member.email,
-        dob: member.dob ?? undefined,
-        emergencyContactName: member.emergencyContactName ?? undefined,
-        emergencyContactPhone: member.emergencyContactPhone ?? undefined,
-        medicalConditions: member.medicalConditions ?? undefined,
+        id: memberId,
+        name: (apiUser.name || primaryMember?.name) ?? "",
+        phone: apiUser.mobile,
+        email: primaryMember?.email ?? undefined,
+        dob: primaryMember?.dob ?? undefined,
+        emergencyContactName: primaryMember?.emergencyContactName ?? undefined,
+        emergencyContactPhone: primaryMember?.emergencyContactPhone ?? undefined,
+        medicalConditions: primaryMember?.medicalConditions ?? undefined,
         memberships,
       });
-
-      // Load bookings
-      const bookingsResult = await apiFetch<Booking[]>(`/api/bookings/${member.id}`);
+      const bookingsResult = await apiFetch<Booking[]>(`/api/bookings/${memberId}`);
       if (bookingsResult.ok && Array.isArray(bookingsResult.data)) {
         setBookedSessions(bookingsResult.data.filter((b) => b.status !== "CANCELLED"));
       }
-
       return { success: true, isNew };
     } catch {
       toast({ variant: "destructive", title: "Connection error" });
@@ -112,7 +118,26 @@ export function MemberProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = () => { setUser(null); setBookedSessions([]); };
+  const logout = () => {
+    setStoredToken(null);
+    setUser(null);
+    setBookedSessions([]);
+  };
+
+  useEffect(() => {
+    const token = getStoredToken();
+    if (token) {
+      apiFetch<Omit<VerifyOtpPayload, 'token'>>('/api/auth/me').then((result) => {
+        if (result.ok) {
+          loginWithPayload({ token, ...result.data });
+        } else {
+          logout();
+        }
+      });
+    } else {
+      logout();
+    }
+  }, []);
 
   const enroll = async (details: any, selectedPlans: SelectedPlan[], waiver?: any, kidInfo?: any) => {
     if (!user) return;
@@ -130,6 +155,7 @@ export function MemberProvider({ children }: { children: ReactNode }) {
         },
         plans: selectedPlans.map(sp => ({
           category: sp.category,
+          planId: sp.plan.id,
           planName: sp.plan.name,
           sessions: sp.plan.sessions,
           price: sp.plan.price,
@@ -174,7 +200,7 @@ export function MemberProvider({ children }: { children: ReactNode }) {
     return { bookedCount: 0, waitlistCount: 0 };
   };
 
-  const bookSession = async (session: any, categoryName: string) => {
+  const bookSession = async (session: any, _categoryName: string) => {
     if (!user) return false;
     const result = await apiFetch<Booking>('/api/book', {
       method: 'POST',
@@ -182,10 +208,6 @@ export function MemberProvider({ children }: { children: ReactNode }) {
         memberId: user.id,
         scheduleId: session.scheduleId,
         sessionDate: session.sessionDate,
-        category: categoryName,
-        branch: selectedBranch,
-        startTime: session.startTime,
-        endTime: session.endTime,
       }),
     });
     if (!result.ok) {
@@ -193,37 +215,22 @@ export function MemberProvider({ children }: { children: ReactNode }) {
       return false;
     }
     setBookedSessions(prev => [...prev, result.data]);
-    setUser(prev => {
-      if (!prev) return null;
-      const m = prev.memberships[categoryName];
-      if (!m) return prev;
-      return { ...prev, memberships: { ...prev.memberships, [categoryName]: { ...m, sessionsRemaining: m.sessionsRemaining - 1 } } };
-    });
+    const cat = result.data.category;
+    if (cat) {
+      setUser(prev => {
+        if (!prev) return null;
+        const m = prev.memberships[cat];
+        if (!m) return prev;
+        return { ...prev, memberships: { ...prev.memberships, [cat]: { ...m, sessionsRemaining: m.sessionsRemaining - 1 } } };
+      });
+    }
     toast({ title: "Booked successfully!" });
     return true;
   };
 
-  const joinWaitlist = async (session: any, categoryName: string) => {
-    if (!user) return false;
-    const result = await apiFetch<Booking>('/api/waitlist', {
-      method: 'POST',
-      body: JSON.stringify({
-        memberId: user.id,
-        scheduleId: session.scheduleId,
-        sessionDate: session.sessionDate,
-        category: categoryName,
-        branch: selectedBranch,
-        startTime: session.startTime,
-        endTime: session.endTime,
-      }),
-    });
-    if (!result.ok) {
-      toast({ variant: "destructive", title: "Waitlist Failed", description: result.message });
-      return false;
-    }
-    setBookedSessions(prev => [...prev, result.data]);
-    toast({ title: `Added to waitlist. Position #${result.data.waitlistPosition}` });
-    return true;
+  const joinWaitlist = async (_session: any, _categoryName: string) => {
+    toast({ variant: "destructive", title: "Waitlist not available" });
+    return false;
   };
 
   const cancelBooking = async (bookingId: string) => {
@@ -237,13 +244,6 @@ export function MemberProvider({ children }: { children: ReactNode }) {
       return;
     }
     setBookedSessions(result.data.bookings);
-    const loginResult = await apiFetch<{ memberships: MembershipMap }>('/api/login', {
-      method: 'POST',
-      body: JSON.stringify({ phone: user.phone }),
-    });
-    if (loginResult.ok) {
-      setUser(prev => prev ? { ...prev, memberships: loginResult.data.memberships } : null);
-    }
     toast({ title: "Booking cancelled" });
   };
 
@@ -266,7 +266,7 @@ export function MemberProvider({ children }: { children: ReactNode }) {
   return (
     <MemberContext.Provider value={{ 
       user, bookedSessions, selectedBranch, setSelectedBranch,
-      login, logout, enroll, bookSession, joinWaitlist, cancelBooking, leaveWaitlist, 
+      login, loginWithPayload, logout, enroll, bookSession, joinWaitlist, cancelBooking, leaveWaitlist, 
       hasMembershipFor, refreshBookings, getSessionCounts, updateProfile
     }}>
       {children}

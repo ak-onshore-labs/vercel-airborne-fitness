@@ -3,7 +3,7 @@ import type { WaiverSignature } from "@shared/schema";
 
 const waiverSignatureSchema = new mongoose.Schema<WaiverSignature & { _id: mongoose.Types.ObjectId }>(
   {
-    memberId: { type: String, required: true, ref: "Member" },
+    userId: { type: String, required: true, ref: "User" },
     signatureName: { type: String, required: true },
     agreedTerms: { type: Boolean, default: false },
     agreedAge: { type: Boolean, default: false },

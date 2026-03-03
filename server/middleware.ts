@@ -1,4 +1,14 @@
 import type { Request, Response, NextFunction } from "express";
+import { verifyToken, type JwtPayload } from "./lib/jwt";
+import { storage } from "./storage";
+
+declare global {
+  namespace Express {
+    interface Request {
+      auth?: JwtPayload;
+    }
+  }
+}
 
 /** Wraps async route handlers to catch errors and pass to Express error handler */
 export function asyncHandler(
@@ -9,21 +19,41 @@ export function asyncHandler(
   };
 }
 
-const ADMIN_PHONES = (process.env.ADMIN_ALLOWLIST_PHONES || "")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
-
-/** Admin-only: require X-Admin-Phone header to be in ADMIN_ALLOWLIST_PHONES (comma-separated). */
-export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
-  const phone = (req.headers["x-admin-phone"] as string)?.trim();
-  if (!phone) {
-    res.status(401).json({ message: "Missing X-Admin-Phone header" });
+/** Require valid JWT in Authorization: Bearer <token>. Sets req.auth = { userId, mobile }. */
+export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+  const header = req.headers.authorization;
+  const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
+  if (!token) {
+    res.status(401).json({ message: "Authorization required" });
     return;
   }
-  if (ADMIN_PHONES.length === 0 || !ADMIN_PHONES.includes(phone)) {
+  const payload = verifyToken(token);
+  if (!payload) {
+    res.status(401).json({ message: "Invalid or expired token" });
+    return;
+  }
+  req.auth = payload;
+  next();
+}
+
+/** Admin-only: require valid JWT and user.userRole === "ADMIN". */
+export async function requireAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const header = req.headers.authorization;
+  const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
+  if (!token) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const payload = verifyToken(token);
+  if (!payload) {
+    res.status(401).json({ message: "Invalid or expired token" });
+    return;
+  }
+  const user = await storage.getUser(payload.userId);
+  if (!user || user.userRole !== "ADMIN") {
     res.status(403).json({ message: "Forbidden" });
     return;
   }
+  req.auth = payload;
   next();
 }
