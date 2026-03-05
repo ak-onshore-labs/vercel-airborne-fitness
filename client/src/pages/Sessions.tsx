@@ -1,10 +1,10 @@
+import { useState, useEffect } from "react";
 import { useMember, Booking } from "@/context/MemberContext";
 import MobileLayout from "@/components/layout/MobileLayout";
 import { Button } from "@/components/ui/button";
-import { Calendar, Clock, MapPin, AlertCircle } from "lucide-react";
+import { Calendar, Clock, MapPin, AlertCircle, Loader2 } from "lucide-react";
 import { isBefore, subMinutes } from "date-fns";
 import { cn } from "@/lib/utils";
-import { useState, useEffect } from "react";
 import { apiFetch } from "@/lib/api";
 import {
   Dialog,
@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog";
 
 export default function Sessions() {
-  const { bookedSessions, cancelBooking, leaveWaitlist, refreshBookings } = useMember();
+  const { user, bookedSessions, cancelBooking, leaveWaitlist, refreshBookings } = useMember();
   const [activeTab, setActiveTab] = useState<"upcoming" | "past">("upcoming");
   const [cancellationWindowMinutes, setCancellationWindowMinutes] = useState(60);
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
@@ -63,6 +63,10 @@ export default function Sessions() {
     setCancelModalOpen(false);
     setBookingToCancel(null);
   };
+
+  if (!user) {
+    return <div className="flex items-center justify-center h-full">Loading... <Loader2 size={16} /></div>;
+  }
 
   const BookingCard = ({ booking }: { booking: Booking }) => {
     const canCancel = isCancellationOpen(booking.sessionDate, booking.startTime);

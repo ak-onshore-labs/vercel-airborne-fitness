@@ -13,7 +13,14 @@ if (!connectionString) {
 }
 
 export async function connectDb(): Promise<typeof mongoose> {
-  return mongoose.connect(connectionString);
+  await mongoose.connect(connectionString);
+  // Drop obsolete unique index on members.phone if present (schema no longer has phone; multiple nulls would violate unique).
+  const db = mongoose.connection.db;
+  if (db) {
+    const coll = db.collection("members");
+    await coll.dropIndex("phone_1").catch(() => {});
+  }
+  return mongoose;
 }
 
 export async function disconnectDb(): Promise<void> {

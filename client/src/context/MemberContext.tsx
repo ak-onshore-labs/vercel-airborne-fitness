@@ -130,7 +130,7 @@ export function MemberProvider({ children }: { children: ReactNode }) {
       apiFetch<Omit<VerifyOtpPayload, 'token'>>('/api/auth/me').then((result) => {
         if (result.ok) {
           loginWithPayload({ token, ...result.data });
-        } else {
+        } else if (result.status === 401) {
           logout();
         }
       });

@@ -1,9 +1,16 @@
 import { useLocation } from "wouter";
 import MobileLayout from "@/components/layout/MobileLayout";
 import { Button } from "@/components/ui/button";
+import { useMember } from "@/context/MemberContext";
+import { Loader2 } from "lucide-react";
 
 export default function EnrollSuccess() {
+  const { user } = useMember();
   const [, setLocation] = useLocation();
+
+  if (!user) {
+    return <div className="flex items-center justify-center h-full">Loading... <Loader2 size={16} /></div>;
+  }
 
   return (
     <MobileLayout>

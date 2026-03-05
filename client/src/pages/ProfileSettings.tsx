@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Loader2 } from "lucide-react";
 
 export default function ProfileSettings() {
   const { user, updateProfile } = useMember();
@@ -35,8 +35,7 @@ export default function ProfileSettings() {
   }, [user?.id]);
 
   if (!user) {
-    setLocation("/login");
-    return null;
+    return <div className="flex items-center justify-center h-full">Loading... <Loader2 size={16} /></div>;
   }
 
   const handleSubmit = async (e: React.FormEvent) => {

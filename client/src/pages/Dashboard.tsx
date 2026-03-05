@@ -3,15 +3,14 @@ import MobileLayout from "@/components/layout/MobileLayout";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
 import { format } from "date-fns";
-import { Calendar, CheckCircle2, PlusCircle } from "lucide-react";
+import { Calendar, CheckCircle2, PlusCircle, Loader2 } from "lucide-react";
 
 export default function Dashboard() {
   const { user, bookedSessions } = useMember();
   const [, setLocation] = useLocation();
 
   if (!user) {
-    setLocation("/login");
-    return null;
+    return <div className="flex items-center justify-center h-full">Loading... <Loader2 size={16} /></div>;
   }
 
   const activeMemberships = Object.keys(user.memberships);

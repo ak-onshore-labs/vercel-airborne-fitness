@@ -166,6 +166,10 @@ export default function Book() {
     return format(cutoff, "MMM d, yyyy 'at' h:mm a");
   }
 
+  if (!user) {
+    return <div className="flex items-center justify-center h-full">Loading... <Loader2 size={16} /></div>;
+  }
+
   return (
     <MobileLayout>
       <div className="p-6 pb-24">

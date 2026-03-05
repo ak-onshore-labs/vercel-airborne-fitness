@@ -2,13 +2,18 @@ import { useMember } from "@/context/MemberContext";
 import MobileLayout from "@/components/layout/MobileLayout";
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
-import { LogOut, Settings, ChevronRight } from "lucide-react";
+import { LogOut, Settings, ChevronRight, Loader2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useState, useEffect } from "react";
 
 export default function Profile() {
   const { user, logout } = useMember();
   const [, setLocation] = useLocation();
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem("airborne-dark-mode") === "true");
+
+  useEffect(() => {
+    localStorage.setItem("airborne-dark-mode", darkMode ? "true" : "false");
+  }, [darkMode]);
 
   const handleLogout = () => {
     logout();
@@ -16,16 +21,10 @@ export default function Profile() {
   };
 
   if (!user) {
-    setLocation("/login");
-    return null;
+    return <div className="flex items-center justify-center h-full">Loading... <Loader2 size={16} /></div>;
   }
 
   const hasMemberships = Object.keys(user.memberships).length > 0;
-  const [darkMode, setDarkMode] = useState(() => localStorage.getItem("airborne-dark-mode") === "true");
-
-  useEffect(() => {
-    localStorage.setItem("airborne-dark-mode", darkMode ? "true" : "false");
-  }, [darkMode]);
 
   return (
     <MobileLayout>

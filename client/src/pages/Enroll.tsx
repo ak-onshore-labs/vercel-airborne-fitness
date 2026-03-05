@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLocation } from "wouter";
-import { X, Calendar, Info } from "lucide-react";
+import { X, Calendar, Info, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import MobileLayout from "@/components/layout/MobileLayout";
 import { apiFetch } from "@/lib/api";
@@ -530,6 +530,10 @@ export default function Enroll() {
   };
 
   const totalSteps = hasKidsCategory ? 5 : 4;
+
+  if (!user) {
+    return <div className="flex items-center justify-center h-full">Loading... <Loader2 size={16} /></div>;
+  }
 
   return (
     <MobileLayout>
