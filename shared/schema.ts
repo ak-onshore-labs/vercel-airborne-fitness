@@ -84,7 +84,7 @@ export interface Membership {
   createdAt?: Date | null;
 }
 
-export type BookingStatus = "BOOKED" | "CANCELLED" | "ATTENDED" | "ABSENT";
+export type BookingStatus = "BOOKED" | "CANCELLED" | "ATTENDED" | "ABSENT" | "WAITLIST";
 
 /** Booking: member + schedule occurrence (sessionDate) + status. category/branch/times derived from slot. */
 export interface BookingRecord {

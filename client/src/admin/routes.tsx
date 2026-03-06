@@ -6,6 +6,7 @@ import AdminSchedule from "./pages/AdminSchedule";
 import AdminClassTypes from "./pages/AdminClassTypes";
 import AdminPlans from "./pages/AdminPlans";
 import AdminMembers from "./pages/AdminMembers";
+import AdminMemberships from "./pages/AdminMemberships";
 import AdminBookings from "./pages/AdminBookings";
 import AdminSettings from "./pages/AdminSettings";
 
@@ -16,6 +17,7 @@ export const ADMIN_SECTION_COMPONENTS: Record<AdminSection, ComponentType> = {
   "class-types": AdminClassTypes,
   plans: AdminPlans,
   members: AdminMembers,
+  memberships: AdminMemberships,
   bookings: AdminBookings,
   settings: AdminSettings,
 };

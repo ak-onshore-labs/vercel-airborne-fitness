@@ -7,6 +7,7 @@ export const ADMIN_MENU: { id: AdminSection; label: string }[] = [
   { id: "class-types", label: "Class Types" },
   { id: "plans", label: "Plans" },
   { id: "members", label: "Members" },
+  { id: "memberships", label: "Memberships" },
   { id: "bookings", label: "Bookings" },
   { id: "settings", label: "Settings" },
 ];
@@ -22,6 +23,7 @@ export function hashToSection(hash: string): AdminSection {
     "class-types",
     "plans",
     "members",
+    "memberships",
     "bookings",
     "settings",
   ];

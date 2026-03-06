@@ -13,11 +13,15 @@ async function getCategoryForSlot(scheduleId: string): Promise<string> {
   return slot?.category ?? "";
 }
 
-/** Find a membership for this member that matches the slot's class type (via plan) */
+/** Find a membership for this member that matches the slot's class type (via plan). Only considers active memberships (expiry in future, sessions remaining > 0). */
 async function findMembershipForSlot(memberId: string, scheduleId: string): Promise<{ id: string; sessionsRemaining: number } | null> {
   const slot = await storage.getScheduleSlot(scheduleId);
   if (!slot) return null;
-  const memberships = await storage.getMemberMemberships(memberId);
+  const all = await storage.getMemberMemberships(memberId);
+  const now = new Date();
+  const memberships = all.filter(
+    (m) => new Date(m.expiryDate) > now && m.sessionsRemaining > 0
+  );
   const plans = await MembershipPlanModel.find({ classTypeId: slot.classTypeId });
   const planIds = new Set(plans.map((p: any) => String(p._id)));
   const m = memberships.find(m => planIds.has(m.membershipPlanId));
@@ -63,8 +67,58 @@ export function registerManageSessionRoutes(app: Express): void {
     if (!scheduleId || !date) return res.status(400).json({ message: "Missing params" });
     const result = await storage.getBookingsForSession(scheduleId as string, date as string);
     const booked = result.filter(b => b.status === "BOOKED").length;
-    res.json({ bookedCount: booked, waitlistCount: 0 });
+    const waitlistCount = result.filter(b => b.status === "WAITLIST").length;
+    res.json({ bookedCount: booked, waitlistCount });
   }));
+
+  app.post(
+    "/api/join-waitlist",
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      const { memberId, scheduleId, sessionDate } = req.body;
+      if (!memberId || !scheduleId || !sessionDate) {
+        return res.status(400).json({ message: "Missing booking data" });
+      }
+
+      const slot = await storage.getScheduleSlot(scheduleId);
+      if (!slot) return res.status(400).json({ message: "Invalid schedule slot" });
+
+      const existingBookings = await storage.getBookingsForSession(scheduleId, sessionDate);
+      const alreadyBooked = existingBookings.find(b => b.memberId === memberId && b.status !== "CANCELLED");
+      if (alreadyBooked) {
+        return res.status(409).json({ message: "Already on this session or waitlist", booking: alreadyBooked });
+      }
+
+      const membership = await findMembershipForSlot(memberId, scheduleId);
+      if (!membership || membership.sessionsRemaining <= 0) {
+        return res.status(400).json({ message: "No sessions remaining for this class" });
+      }
+
+      const waitlistBookings = existingBookings.filter(b => b.status === "WAITLIST").sort(
+        (a, b) => (a.waitlistPosition ?? 999) - (b.waitlistPosition ?? 999)
+      );
+      const nextPosition = waitlistBookings.length === 0
+        ? 1
+        : Math.max(0, ...waitlistBookings.map(b => b.waitlistPosition ?? 0)) + 1;
+
+      const booking = await storage.createBooking({
+        memberId,
+        scheduleId,
+        sessionDate,
+        status: "WAITLIST",
+        waitlistPosition: nextPosition,
+      });
+
+      const pad2 = (n: number) => String(n).padStart(2, "0");
+      res.json({
+        ...booking,
+        category: slot.category,
+        branch: slot.branch,
+        startTime: `${pad2(slot.startHour)}:${pad2(slot.startMinute)}`,
+        endTime: `${pad2(slot.endHour)}:${pad2(slot.endMinute)}`,
+      });
+    })
+  );
 
   app.post(
     "/api/book",
@@ -95,7 +149,7 @@ export function registerManageSessionRoutes(app: Express): void {
         return res.status(400).json({ message: "Session is full" });
       }
 
-      await storage.updateMembershipSessions(membership.id, membership.sessionsRemaining - 1);
+      await storage.incrementMembershipSessions(membership.id, -1);
 
       const booking = await storage.createBooking({
         memberId,
@@ -143,7 +197,24 @@ export function registerManageSessionRoutes(app: Express): void {
       if (booking.status === "BOOKED") {
         const membership = await findMembershipForSlot(memberId, booking.scheduleId);
         if (membership) {
-          await storage.updateMembershipSessions(membership.id, membership.sessionsRemaining + 1);
+          await storage.incrementMembershipSessions(membership.id, 1);
+        }
+
+        const sessionBookings = await storage.getBookingsForSession(booking.scheduleId, booking.sessionDate);
+        const waitlist = sessionBookings
+          .filter(b => b.status === "WAITLIST")
+          .sort((a, b) => (a.waitlistPosition ?? 999) - (b.waitlistPosition ?? 999));
+        if (waitlist.length > 0) {
+          const first = waitlist[0];
+          const firstMembership = await findMembershipForSlot(first.memberId, booking.scheduleId);
+          if (firstMembership && firstMembership.sessionsRemaining > 0) {
+            await storage.updateBookingStatus(first.id, "BOOKED", null);
+            await storage.incrementMembershipSessions(firstMembership.id, -1);
+            const remaining = waitlist.slice(1);
+            for (let i = 0; i < remaining.length; i++) {
+              await storage.updateBookingStatus(remaining[i].id, "WAITLIST", i + 1);
+            }
+          }
         }
       }
 

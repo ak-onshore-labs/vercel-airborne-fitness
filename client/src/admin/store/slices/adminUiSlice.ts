@@ -7,6 +7,7 @@ export type AdminSection =
   | "class-types"
   | "plans"
   | "members"
+  | "memberships"
   | "bookings"
   | "settings";
 

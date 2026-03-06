@@ -69,6 +69,7 @@ export interface IStorage {
   createMembership(membership: InsertMembership): Promise<Membership>;
   updateMembership(id: string, data: Partial<InsertMembership>): Promise<Membership | undefined>;
   updateMembershipSessions(id: string, sessionsRemaining: number): Promise<void>;
+  incrementMembershipSessions(id: string, delta: number): Promise<void>;
 
   getClassTypes(): Promise<Array<{ id: string; name: string; ageGroup: string; strengthLevel: number; infoBullets: string[]; isActive: boolean }>>;
   createClassType(item: InsertClassType): Promise<ClassType>;
@@ -79,6 +80,16 @@ export interface IStorage {
   getScheduleForBranchAndDate(branch: string, date: string): Promise<Array<{ scheduleId: string; sessionDate: string; classId: string; category: string; branch: string; startTime: string; endTime: string; capacity: number }>>;
   getScheduleSlot(id: string): Promise<ScheduleSlotWithCategory | undefined>;
   createScheduleSlot(item: InsertScheduleSlot): Promise<ScheduleSlot>;
+  findOverlappingScheduleSlots(params: {
+    classTypeId: string;
+    branch: string;
+    dayOfWeek: number;
+    startHour: number;
+    startMinute: number;
+    endHour: number;
+    endMinute: number;
+    excludeId?: string;
+  }): Promise<ScheduleSlot[]>;
   updateClassType(id: string, data: Partial<Pick<ClassType, "name" | "ageGroup" | "strengthLevel" | "infoBullets" | "isActive">>): Promise<ClassType | undefined>;
   updateMembershipPlan(id: string, data: Partial<Pick<MembershipPlan, "name" | "sessionsTotal" | "validityDays" | "price" | "isActive">>): Promise<MembershipPlan | undefined>;
   updateScheduleSlot(id: string, data: Partial<Pick<ScheduleSlot, "branch" | "dayOfWeek" | "startHour" | "startMinute" | "endHour" | "endMinute" | "capacity" | "isActive" | "notes">>): Promise<ScheduleSlot | undefined>;
@@ -92,11 +103,12 @@ export interface IStorage {
   ): Promise<Array<{ date: string; sessions: Array<{ scheduleId: string; sessionDate: string; startTime: string; endTime: string; category: string; bookingCount: number; capacity: number }> }>>;
   getBranches(): Promise<string[]>;
   createBooking(booking: InsertBooking): Promise<BookingRecord>;
-  updateBookingStatus(id: string, status: string, waitlistPosition?: number): Promise<void>;
+  updateBookingStatus(id: string, status: string, waitlistPosition?: number | null): Promise<void>;
 
   createWaiver(waiver: InsertWaiver): Promise<void>;
 
   getAppSetting(key: string): Promise<string | null>;
+  setAppSetting(key: string, value: string): Promise<void>;
 
   listUsers(params: { page: number; limit: number; name?: string }): Promise<{ items: User[]; total: number }>;
   listScheduleSlots(params: {
@@ -121,6 +133,16 @@ export interface IStorage {
     name?: string;
     email?: string;
   }): Promise<{ items: (Member & { mobile?: string })[]; total: number }>;
+  listMemberships(params: {
+    page: number;
+    limit: number;
+    memberId?: string;
+    membershipPlanId?: string;
+    memberMobile?: string;
+  }): Promise<{
+    items: (Membership & { memberName?: string; planName?: string; classTypeName?: string })[];
+    total: number;
+  }>;
   listBookings(params: {
     page: number;
     limit: number;
@@ -195,7 +217,14 @@ export class MongoStorage implements IStorage {
   }
 
   async updateMembershipSessions(id: string, sessionsRemaining: number): Promise<void> {
-    await MembershipModel.updateOne({ _id: id }, { $set: { sessionsRemaining } });
+    await MembershipModel.updateOne({ _id: new mongoose.Types.ObjectId(id) }, { $set: { sessionsRemaining } });
+  }
+
+  async incrementMembershipSessions(id: string, delta: number): Promise<void> {
+    await MembershipModel.updateOne(
+      { _id: new mongoose.Types.ObjectId(id) },
+      { $inc: { sessionsRemaining: delta } }
+    );
   }
 
   async getClassTypes(): Promise<Array<{ id: string; name: string; ageGroup: string; strengthLevel: number; infoBullets: string[]; isActive: boolean }>> {
@@ -306,6 +335,34 @@ export class MongoStorage implements IStorage {
     return toApi<ScheduleSlot>(doc)!;
   }
 
+  async findOverlappingScheduleSlots(params: {
+    classTypeId: string;
+    branch: string;
+    dayOfWeek: number;
+    startHour: number;
+    startMinute: number;
+    endHour: number;
+    endMinute: number;
+    excludeId?: string;
+  }): Promise<ScheduleSlot[]> {
+    const { classTypeId, branch, dayOfWeek, startHour, startMinute, endHour, endMinute, excludeId } = params;
+    const filter: Record<string, unknown> = {
+      classTypeId,
+      branch,
+      dayOfWeek,
+    };
+    if (excludeId) filter._id = { $ne: new mongoose.Types.ObjectId(excludeId) };
+    const docs = await ScheduleSlotModel.find(filter);
+    const startMins = startHour * 60 + startMinute;
+    const endMins = endHour * 60 + endMinute;
+    const overlapping = docs.filter((d) => {
+      const dStart = d.startHour * 60 + (d.startMinute ?? 0);
+      const dEnd = d.endHour * 60 + (d.endMinute ?? 0);
+      return startMins < dEnd && dStart < endMins;
+    });
+    return toApiList<ScheduleSlot>(overlapping);
+  }
+
   async updateClassType(
     id: string,
     data: Partial<Pick<ClassType, "name" | "ageGroup" | "strengthLevel" | "infoBullets" | "isActive">>
@@ -387,10 +444,10 @@ export class MongoStorage implements IStorage {
     return toApi<BookingRecord>(doc)!;
   }
 
-  async updateBookingStatus(id: string, status: string, waitlistPosition?: number): Promise<void> {
+  async updateBookingStatus(id: string, status: string, waitlistPosition?: number | null): Promise<void> {
     const update: Record<string, unknown> = { status };
     if (waitlistPosition !== undefined) update.waitlistPosition = waitlistPosition;
-    await BookingModel.updateOne({ _id: id }, { $set: update });
+    await BookingModel.updateOne({ _id: new mongoose.Types.ObjectId(id) }, { $set: update });
   }
 
   async createWaiver(waiver: InsertWaiver): Promise<void> {
@@ -400,6 +457,10 @@ export class MongoStorage implements IStorage {
   async getAppSetting(key: string): Promise<string | null> {
     const doc = await AppSettingModel.findById(key);
     return doc?.value ?? null;
+  }
+
+  async setAppSetting(key: string, value: string): Promise<void> {
+    await AppSettingModel.findByIdAndUpdate(key, { $set: { value } }, { upsert: true });
   }
 
   async listUsers(params: { page: number; limit: number; name?: string }): Promise<{ items: User[]; total: number }> {
@@ -530,6 +591,68 @@ export class MongoStorage implements IStorage {
     for (const u of users) userMap[(u as any)._id.toString()] = u.mobile;
     const items = members.map((m) => ({ ...m, mobile: userMap[m.userId] }));
     return { items, total };
+  }
+
+  async listMemberships(params: {
+    page: number;
+    limit: number;
+    memberId?: string;
+    membershipPlanId?: string;
+    memberMobile?: string;
+  }): Promise<{
+    items: (Membership & { memberName?: string; planName?: string; classTypeName?: string })[];
+    total: number;
+  }> {
+    const { page, limit, memberId, membershipPlanId, memberMobile } = params;
+    const filter: Record<string, unknown> = {};
+    if (memberId?.trim()) filter.memberId = memberId.trim();
+    if (membershipPlanId?.trim()) filter.membershipPlanId = membershipPlanId.trim();
+    if (memberMobile?.trim()) {
+      const mobileNorm = memberMobile.trim().replace(/\D/g, "");
+      if (mobileNorm.length > 0) {
+        const userDocs = await UserModel.find({
+          mobile: { $regex: mobileNorm },
+        }).select("_id");
+        const userIds = userDocs.map((u) => (u as any)._id.toString());
+        if (userIds.length === 0) return { items: [], total: 0 };
+        const memberDocs = await MemberModel.find({ userId: { $in: userIds } }).select("_id");
+        const memberIds = memberDocs.map((m) => (m as any)._id.toString());
+        if (memberIds.length === 0) return { items: [], total: 0 };
+        filter.memberId = { $in: memberIds };
+      }
+    }
+    const [docs, total] = await Promise.all([
+      MembershipModel.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).exec(),
+      MembershipModel.countDocuments(filter),
+    ]);
+    const items = toApiList<Membership>(docs);
+    const memberIds = Array.from(new Set(items.map((m) => m.memberId)));
+    const planIds = Array.from(new Set(items.map((m) => m.membershipPlanId)));
+    const [memberDocs, planDocs] = await Promise.all([
+      MemberModel.find({ _id: { $in: memberIds.map((id) => new mongoose.Types.ObjectId(id)) } }),
+      MembershipPlanModel.find({ _id: { $in: planIds.map((id) => new mongoose.Types.ObjectId(id)) } }),
+    ]);
+    const memberMap: Record<string, string> = {};
+    for (const m of memberDocs) {
+      const id = (m as any)._id.toString();
+      memberMap[id] = m.name ?? "";
+    }
+    const planMap: Record<string, { name: string; classTypeId: string }> = {};
+    for (const p of planDocs) {
+      const id = (p as any)._id.toString();
+      planMap[id] = { name: p.name, classTypeId: p.classTypeId };
+    }
+    const classTypeIds = Array.from(new Set(Object.values(planMap).map((x) => x.classTypeId)));
+    const typeDocs = await ClassTypeModel.find({ _id: { $in: classTypeIds.map((id) => new mongoose.Types.ObjectId(id)) } });
+    const typeMap: Record<string, string> = {};
+    for (const t of typeDocs) typeMap[(t as any)._id.toString()] = t.name;
+    const enriched = items.map((m) => ({
+      ...m,
+      memberName: memberMap[m.memberId],
+      planName: planMap[m.membershipPlanId]?.name,
+      classTypeName: planMap[m.membershipPlanId] ? typeMap[planMap[m.membershipPlanId].classTypeId] : undefined,
+    }));
+    return { items: enriched, total };
   }
 
   async listBookings(params: {

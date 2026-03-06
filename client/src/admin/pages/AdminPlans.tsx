@@ -172,12 +172,17 @@ export default function AdminPlans() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Input
-          placeholder="Class type name"
-          value={classTypeName}
-          onChange={(e) => setClassTypeName(e.target.value)}
-          className="max-w-[180px]"
-        />
+        <Select value={classTypeName || "all"} onValueChange={(v) => setClassTypeName(v === "all" ? "" : v)}>
+          <SelectTrigger className="w-[200px]">
+            <SelectValue placeholder="Class type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Any class type</SelectItem>
+            {classTypes.map((ct) => (
+              <SelectItem key={ct.id} value={ct.name}>{ct.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Input
           placeholder="Plan name"
           value={planName}

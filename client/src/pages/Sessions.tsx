@@ -70,7 +70,7 @@ export default function Sessions() {
 
   const BookingCard = ({ booking }: { booking: Booking }) => {
     const canCancel = isCancellationOpen(booking.sessionDate, booking.startTime);
-    const isWaitlisted = booking.status === "WAITLISTED";
+    const isWaitlisted = booking.status === "WAITLIST";
 
     return (
       <div className="bg-white border border-gray-100 p-5 rounded shadow-sm space-y-4" data-testid={`card-booking-${booking.id}`}>

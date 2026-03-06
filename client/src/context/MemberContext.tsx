@@ -29,7 +29,7 @@ export interface SelectedPlan {
   plan: { id: string; name: string; sessions: number; price: number; validityDays?: number };
 }
 
-export type BookingStatus = "BOOKED" | "CANCELLED" | "ATTENDED" | "ABSENT";
+export type BookingStatus = "BOOKED" | "CANCELLED" | "ATTENDED" | "ABSENT" | "WAITLIST";
 
 export interface Booking {
   id: string;
@@ -228,9 +228,23 @@ export function MemberProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
-  const joinWaitlist = async (_session: any, _categoryName: string) => {
-    toast({ variant: "destructive", title: "Waitlist not available" });
-    return false;
+  const joinWaitlist = async (session: any, _categoryName: string) => {
+    if (!user) return false;
+    const result = await apiFetch<Booking>('/api/join-waitlist', {
+      method: 'POST',
+      body: JSON.stringify({
+        memberId: user.id,
+        scheduleId: session.scheduleId,
+        sessionDate: session.sessionDate,
+      }),
+    });
+    if (!result.ok) {
+      toast({ variant: "destructive", title: "Join waitlist failed", description: result.message });
+      return false;
+    }
+    setBookedSessions(prev => [...prev, result.data]);
+    toast({ title: "Added to waitlist!" });
+    return true;
   };
 
   const cancelBooking = async (bookingId: string) => {

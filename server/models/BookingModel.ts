@@ -10,7 +10,7 @@ const bookingSchema = new mongoose.Schema<BookingRecord & { _id: mongoose.Types.
       type: String,
       required: true,
       default: "BOOKED",
-      enum: ["BOOKED", "CANCELLED", "ATTENDED", "ABSENT"] as BookingStatus[],
+      enum: ["BOOKED", "CANCELLED", "ATTENDED", "ABSENT", "WAITLIST"] as BookingStatus[],
     },
     waitlistPosition: { type: Number, default: null },
   },

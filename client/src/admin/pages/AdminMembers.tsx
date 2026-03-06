@@ -48,6 +48,19 @@ export default function AdminMembers() {
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
+  const [addOpen, setAddOpen] = useState(false);
+  const [addName, setAddName] = useState("");
+  const [addMobile, setAddMobile] = useState("");
+  const [addGender, setAddGender] = useState<"Male" | "Female">("Male");
+  const [addUserRole, setAddUserRole] = useState<"MEMBER" | "STAFF" | "ADMIN">("MEMBER");
+  const [addMemberType, setAddMemberType] = useState<"Adult" | "Kid">("Adult");
+  const [addMemberName, setAddMemberName] = useState("");
+  const [addMemberEmail, setAddMemberEmail] = useState("");
+  const [addMemberDob, setAddMemberDob] = useState("");
+  const [addMemberGender, setAddMemberGender] = useState("");
+  const [addSubmitting, setAddSubmitting] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+
   const fetchMembers = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -64,6 +77,65 @@ export default function AdminMembers() {
   useEffect(() => {
     fetchMembers();
   }, [fetchMembers]);
+
+  const openAdd = () => {
+    setAddName("");
+    setAddMobile("");
+    setAddGender("Male");
+    setAddUserRole("MEMBER");
+    setAddMemberType("Adult");
+    setAddMemberName("");
+    setAddMemberEmail("");
+    setAddMemberDob("");
+    setAddMemberGender("");
+    setAddError(null);
+    setAddOpen(true);
+  };
+
+  const closeAdd = () => {
+    setAddOpen(false);
+    setAddError(null);
+  };
+
+  const submitAdd = async () => {
+    const name = addName.trim();
+    const mobile = addMobile.replace(/\D/g, "");
+    if (!name) {
+      setAddError("Name is required");
+      return;
+    }
+    if (addGender !== "Male" && addGender !== "Female") {
+      setAddError("Gender must be Male or Female");
+      return;
+    }
+    if (mobile.length < 10) {
+      setAddError("Valid phone number required (at least 10 digits)");
+      return;
+    }
+    setAddSubmitting(true);
+    setAddError(null);
+    const res = await adminApiFetch<MemberItem>("/api/admin/members", {
+      method: "POST",
+      body: JSON.stringify({
+        name,
+        mobile,
+        gender: addGender,
+        userRole: addUserRole,
+        memberType: addMemberType,
+        memberName: addMemberName.trim() || undefined,
+        memberEmail: addMemberEmail.trim() || undefined,
+        memberDob: addMemberDob.trim() || undefined,
+        memberGender: addMemberGender.trim() || undefined,
+      }),
+    });
+    setAddSubmitting(false);
+    if (res.ok) {
+      closeAdd();
+      fetchMembers();
+    } else {
+      setAddError(res.message);
+    }
+  };
 
   const onSearch = () => {
     setSearchPhone(phone.trim());
@@ -103,7 +175,10 @@ export default function AdminMembers() {
 
   return (
     <div className="p-6 space-y-4">
-      <h1 className="text-2xl font-semibold">Members</h1>
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="text-2xl font-semibold">Members</h1>
+        <Button onClick={openAdd}>Create member</Button>
+      </div>
 
       <div className="flex flex-wrap items-center gap-2">
         <Input
@@ -128,6 +203,116 @@ export default function AdminMembers() {
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
+
+      <Dialog open={addOpen} onOpenChange={(open) => !open && closeAdd()}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create member</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-muted-foreground">This will create a new user (login identity) and a member profile.</p>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="add-name">Name</Label>
+              <Input
+                id="add-name"
+                placeholder="Full name"
+                value={addName}
+                onChange={(e) => setAddName(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="add-mobile">Mobile (phone number)</Label>
+              <Input
+                id="add-mobile"
+                type="tel"
+                placeholder="10+ digits"
+                value={addMobile}
+                onChange={(e) => setAddMobile(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Gender</Label>
+              <select
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                value={addGender}
+                onChange={(e) => setAddGender(e.target.value as "Male" | "Female")}
+              >
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+              </select>
+            </div>
+            <div className="grid gap-2">
+              <Label>User role</Label>
+              <select
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                value={addUserRole}
+                onChange={(e) => setAddUserRole(e.target.value as "MEMBER" | "STAFF" | "ADMIN")}
+              >
+                <option value="MEMBER">Member</option>
+                <option value="STAFF">Staff</option>
+                <option value="ADMIN">Admin</option>
+              </select>
+            </div>
+            <div className="grid gap-2">
+              <Label>Member type</Label>
+              <select
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                value={addMemberType}
+                onChange={(e) => setAddMemberType(e.target.value as "Adult" | "Kid")}
+              >
+                <option value="Adult">Adult</option>
+                <option value="Kid">Kid</option>
+              </select>
+            </div>
+            {addMemberType === "Kid" && (
+              <>
+                <div className="grid gap-2">
+                  <Label htmlFor="add-member-name">Kid&apos;s name</Label>
+                  <Input
+                    id="add-member-name"
+                    placeholder="Child's name"
+                    value={addMemberName}
+                    onChange={(e) => setAddMemberName(e.target.value)}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="add-member-dob">Kid&apos;s date of birth</Label>
+                  <Input
+                    id="add-member-dob"
+                    type="date"
+                    value={addMemberDob}
+                    onChange={(e) => setAddMemberDob(e.target.value)}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="add-member-gender">Kid&apos;s gender</Label>
+                  <Input
+                    id="add-member-gender"
+                    placeholder="Optional"
+                    value={addMemberGender}
+                    onChange={(e) => setAddMemberGender(e.target.value)}
+                  />
+                </div>
+              </>
+            )}
+            <div className="grid gap-2">
+              <Label htmlFor="add-member-email">Email (optional)</Label>
+              <Input
+                id="add-member-email"
+                type="email"
+                placeholder="Member email"
+                value={addMemberEmail}
+                onChange={(e) => setAddMemberEmail(e.target.value)}
+              />
+            </div>
+          </div>
+          {addError && <p className="text-sm text-destructive">{addError}</p>}
+          <DialogFooter>
+            <Button variant="outline" onClick={closeAdd} disabled={addSubmitting}>Cancel</Button>
+            <Button onClick={submitAdd} disabled={addSubmitting}>{addSubmitting ? "Creating…" : "Create"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={editOpen} onOpenChange={(open) => !open && closeEdit()}>
         <DialogContent className="sm:max-w-md">

@@ -50,6 +50,7 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
     return;
   }
   const user = await storage.getUser(payload.userId);
+  console.log("user", user);
   if (!user || user.userRole !== "ADMIN") {
     res.status(403).json({ message: "Forbidden" });
     return;
