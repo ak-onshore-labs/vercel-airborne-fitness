@@ -36,7 +36,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   next();
 }
 
-/** Admin-only: require valid JWT and user.userRole === "ADMIN". */
+/** Admin-only: require valid JWT and user.userRole in ["ADMIN","STAFF"]. */
 export async function requireAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
   const header = req.headers.authorization;
   const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
@@ -50,8 +50,7 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
     return;
   }
   const user = await storage.getUser(payload.userId);
-  console.log("user", user);
-  if (!user || user.userRole !== "ADMIN") {
+  if (!user || (user.userRole !== "ADMIN" && user.userRole !== "STAFF")) {
     res.status(403).json({ message: "Forbidden" });
     return;
   }

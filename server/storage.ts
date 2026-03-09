@@ -14,6 +14,8 @@ import type {
   InsertClassType,
   MembershipPlan,
   InsertMembershipPlan,
+  Transaction,
+  InsertTransaction,
 } from "@shared/schema";
 import {
   UserModel,
@@ -25,6 +27,7 @@ import {
   BookingModel,
   WaiverSignatureModel,
   AppSettingModel,
+  TransactionModel,
 } from "./models";
 import mongoose from "mongoose";
 import type { Document } from "mongoose";
@@ -106,6 +109,11 @@ export interface IStorage {
   updateBookingStatus(id: string, status: string, waitlistPosition?: number | null): Promise<void>;
 
   createWaiver(waiver: InsertWaiver): Promise<void>;
+
+  createTransaction(transaction: InsertTransaction): Promise<Transaction>;
+  getTransactionById(id: string): Promise<Transaction | undefined>;
+  updateTransaction(id: string, data: Partial<Pick<Transaction, "status" | "paymentId" | "signature">>): Promise<Transaction | undefined>;
+  getTransactionByOrderId(orderId: string): Promise<Transaction | undefined>;
 
   getAppSetting(key: string): Promise<string | null>;
   setAppSetting(key: string, value: string): Promise<void>;
@@ -452,6 +460,28 @@ export class MongoStorage implements IStorage {
 
   async createWaiver(waiver: InsertWaiver): Promise<void> {
     await WaiverSignatureModel.create(waiver);
+  }
+
+  async createTransaction(transaction: InsertTransaction): Promise<Transaction> {
+    const doc = await TransactionModel.create(transaction);
+    return toApi<Transaction>(doc)!;
+  }
+
+  async getTransactionById(id: string): Promise<Transaction | undefined> {
+    if (!mongoose.Types.ObjectId.isValid(id)) return undefined;
+    const doc = await TransactionModel.findById(id);
+    return toApi<Transaction>(doc) ?? undefined;
+  }
+
+  async updateTransaction(id: string, data: Partial<Pick<Transaction, "status" | "paymentId" | "signature">>): Promise<Transaction | undefined> {
+    if (!mongoose.Types.ObjectId.isValid(id)) return undefined;
+    const doc = await TransactionModel.findByIdAndUpdate(id, { $set: data }, { new: true });
+    return toApi<Transaction>(doc) ?? undefined;
+  }
+
+  async getTransactionByOrderId(orderId: string): Promise<Transaction | undefined> {
+    const doc = await TransactionModel.findOne({ orderId });
+    return toApi<Transaction>(doc) ?? undefined;
   }
 
   async getAppSetting(key: string): Promise<string | null> {

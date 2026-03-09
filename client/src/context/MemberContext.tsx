@@ -22,6 +22,7 @@ export interface UserProfile {
   emergencyContactPhone?: string | null;
   medicalConditions?: string | null;
   memberships: MembershipMap;
+  userRole?: "ADMIN" | "STAFF" | "MEMBER";
 }
 
 export interface SelectedPlan {
@@ -51,7 +52,7 @@ export interface LoginResult {
 
 export interface VerifyOtpPayload {
   token: string;
-  user: { id: string; name: string; mobile: string; gender: string };
+  user: { id: string; name: string; mobile: string; gender: string; userRole?: string };
   members: Array<{ id: string; userId: string; memberType: string; name?: string | null; dob?: string | null; gender?: string | null; email?: string | null; emergencyContactName?: string | null; emergencyContactPhone?: string | null; medicalConditions?: string | null }>;
   memberships: MembershipMap;
   isNew: boolean;
@@ -65,7 +66,7 @@ interface MemberContextType {
   login: (phone: string) => Promise<LoginResult>;
   loginWithPayload: (payload: VerifyOtpPayload) => Promise<LoginResult>;
   logout: () => void;
-  enroll: (details: any, selectedPlans: SelectedPlan[], waiver?: any, kidInfo?: any) => Promise<void>;
+  enroll: (details: any, selectedPlans: SelectedPlan[], waiver?: any, kidInfo?: any, transactionId?: string) => Promise<void>;
   bookSession: (session: any, categoryName: string) => Promise<boolean>;
   joinWaitlist: (session: any, categoryName: string) => Promise<boolean>;
   cancelBooking: (bookingId: string) => Promise<void>;
@@ -106,6 +107,7 @@ export function MemberProvider({ children }: { children: ReactNode }) {
         emergencyContactPhone: primaryMember?.emergencyContactPhone ?? undefined,
         medicalConditions: primaryMember?.medicalConditions ?? undefined,
         memberships,
+        userRole: ((apiUser as { userRole?: string }).userRole === "ADMIN" || (apiUser as { userRole?: string }).userRole === "STAFF" ? (apiUser as { userRole?: string }).userRole : "MEMBER") as "ADMIN" | "STAFF" | "MEMBER",
       });
       const bookingsResult = await apiFetch<Booking[]>(`/api/bookings/${memberId}`);
       if (bookingsResult.ok && Array.isArray(bookingsResult.data)) {
@@ -139,7 +141,7 @@ export function MemberProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const enroll = async (details: any, selectedPlans: SelectedPlan[], waiver?: any, kidInfo?: any) => {
+  const enroll = async (details: any, selectedPlans: SelectedPlan[], waiver?: any, kidInfo?: any, transactionId?: string) => {
     if (!user) return;
     const result = await apiFetch<{ memberships: MembershipMap }>('/api/enroll', {
       method: 'POST',
@@ -163,6 +165,7 @@ export function MemberProvider({ children }: { children: ReactNode }) {
         })),
         waiver,
         kidDetails: kidInfo,
+        ...(transactionId && { transactionId }),
       }),
     });
     if (!result.ok) {

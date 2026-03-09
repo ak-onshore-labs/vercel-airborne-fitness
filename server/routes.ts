@@ -9,6 +9,7 @@ import { registerManageSessionRoutes } from "./routes/manage-session";
 import { registerMembershipRoutes } from "./routes/membership";
 import { registerMembershipPlansRoutes } from "./routes/membership-plans";
 import { registerMasterDataRoutes } from "./routes/master-data";
+import { registerPaymentRoutes } from "./routes/payments";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -69,6 +70,7 @@ export async function registerRoutes(
   registerAuthRoutes(app);
   registerMasterDataRoutes(app);
   registerMembershipPlansRoutes(app);
+  registerPaymentRoutes(app);
 
   // Protected routes (require JWT)
   registerMembershipRoutes(app);

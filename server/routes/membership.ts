@@ -7,10 +7,13 @@ export function registerMembershipRoutes(app: Express): void {
   app.patch(
     "/api/members/:id",
     requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
+    asyncHandler(async (req: Request, res: Response): Promise<void> => {
       const { id } = req.params;
       const updated = await storage.updateMember(id, req.body);
-      if (!updated) return res.status(404).json({ message: "Member not found" });
+      if (!updated) {
+        res.status(404).json({ message: "Member not found" });
+        return;
+      }
       res.json(updated);
     })
   );
@@ -18,18 +21,42 @@ export function registerMembershipRoutes(app: Express): void {
   app.post(
     "/api/enroll",
     requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
+    asyncHandler(async (req: Request, res: Response): Promise<void> => {
       const auth = req.auth!;
-      const { memberId, personalDetails, plans, waiver, kidDetails: kidInfo } = req.body;
+      const { memberId, personalDetails, plans, waiver, kidDetails: kidInfo, transactionId } = req.body;
 
-      if (!memberId) return res.status(400).json({ message: "memberId required" });
+      if (!memberId) {
+        res.status(400).json({ message: "memberId required" });
+        return;
+      }
       if (!plans || !Array.isArray(plans) || plans.length === 0) {
-        return res.status(400).json({ message: "Select at least one plan", fields: ["plans"] });
+        res.status(400).json({ message: "Select at least one plan", fields: ["plans"] });
+        return;
+      }
+
+      // Require successful payment: verify transaction is SUCCESS and belongs to user
+      if (!transactionId) {
+        res.status(400).json({ message: "Payment required. Complete payment to enroll.", fields: ["transactionId"] });
+        return;
+      }
+      const transaction = await storage.getTransactionById(transactionId);
+      if (!transaction) {
+        res.status(400).json({ message: "Invalid payment transaction", fields: ["transactionId"] });
+        return;
+      }
+      if (transaction.userId !== auth.userId) {
+        res.status(403).json({ message: "Transaction does not belong to you" });
+        return;
+      }
+      if (transaction.status !== "SUCCESS") {
+        res.status(400).json({ message: "Payment not completed", fields: ["transactionId"] });
+        return;
       }
 
       const errFields: string[] = [];
       if (!personalDetails || typeof personalDetails !== "object") {
-        return res.status(400).json({ message: "Personal details required", fields: ["personalDetails"] });
+        res.status(400).json({ message: "Personal details required", fields: ["personalDetails"] });
+        return;
       }
       const pd = personalDetails;
       if (typeof pd.name !== "string" || pd.name.trim().length < 2) errFields.push("name");
@@ -42,7 +69,8 @@ export function registerMembershipRoutes(app: Express): void {
       if (typeof pd.emergencyContactName !== "string" || pd.emergencyContactName.trim().length < 2) errFields.push("emergencyContactName");
       if (typeof pd.emergencyContactPhone !== "string" || !/^\d{10}$/.test(pd.emergencyContactPhone.replace(/\s/g, ""))) errFields.push("emergencyContactPhone");
       if (errFields.length > 0) {
-        return res.status(400).json({ message: "Invalid or missing required fields", fields: errFields });
+        res.status(400).json({ message: "Invalid or missing required fields", fields: errFields });
+        return;
       }
 
       const classTypes = await storage.getClassTypes();
@@ -51,27 +79,34 @@ export function registerMembershipRoutes(app: Express): void {
       const hasKidsPlan = plans.some((p: { category: string }) => nameToAgeGroup[p.category] === "Kids");
       if (hasKidsPlan) {
         if (!kidInfo || typeof kidInfo !== "object") {
-          return res.status(400).json({ message: "Kid details required for kids class", fields: ["kidDetails"] });
+          res.status(400).json({ message: "Kid details required for kids class", fields: ["kidDetails"] });
+          return;
         }
         if (typeof kidInfo.name !== "string" || kidInfo.name.trim().length < 2) {
-          return res.status(400).json({ message: "Kid name required (min 2 characters)", fields: ["kidDetails.name"] });
+          res.status(400).json({ message: "Kid name required (min 2 characters)", fields: ["kidDetails.name"] });
+          return;
         }
         if (typeof kidInfo.dob !== "string" || !kidInfo.dob.trim()) {
-          return res.status(400).json({ message: "Kid date of birth required", fields: ["kidDetails.dob"] });
+          res.status(400).json({ message: "Kid date of birth required", fields: ["kidDetails.dob"] });
+          return;
         }
         if (typeof kidInfo.gender !== "string" || !kidInfo.gender.trim()) {
-          return res.status(400).json({ message: "Kid gender required", fields: ["kidDetails.gender"] });
+          res.status(400).json({ message: "Kid gender required", fields: ["kidDetails.gender"] });
+          return;
         }
       }
 
       if (!waiver || typeof waiver !== "object") {
-        return res.status(400).json({ message: "Waiver acceptance required", fields: ["waiver"] });
+        res.status(400).json({ message: "Waiver acceptance required", fields: ["waiver"] });
+        return;
       }
       if (waiver.agreedTerms !== true) {
-        return res.status(400).json({ message: "You must agree to the waiver terms", fields: ["waiver.agreedTerms"] });
+        res.status(400).json({ message: "You must agree to the waiver terms", fields: ["waiver.agreedTerms"] });
+        return;
       }
       if (typeof waiver.signatureName !== "string" || waiver.signatureName.trim().length < 2) {
-        return res.status(400).json({ message: "Full name (signature) required", fields: ["waiver.signatureName"] });
+        res.status(400).json({ message: "Full name (signature) required", fields: ["waiver.signatureName"] });
+        return;
       }
 
       await storage.updateMember(memberId, {
@@ -160,11 +195,17 @@ export function registerMembershipRoutes(app: Express): void {
   app.post(
     "/api/memberships/:id/request-extension",
     requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
+    asyncHandler(async (req: Request, res: Response): Promise<void> => {
       const { id } = req.params;
       const membership = await storage.getMembershipById(id);
-      if (!membership) return res.status(404).json({ message: "Membership not found" });
-      if (membership.extensionRequestedAt) return res.status(400).json({ message: "Extension already requested" });
+      if (!membership) {
+        res.status(404).json({ message: "Membership not found" });
+        return;
+      }
+      if (membership.extensionRequestedAt) {
+        res.status(400).json({ message: "Extension already requested" });
+        return;
+      }
       await storage.updateMembership(id, { extensionRequestedAt: new Date() });
       res.json({ ok: true, message: "Extension requested" });
     })
@@ -173,12 +214,21 @@ export function registerMembershipRoutes(app: Express): void {
   app.post(
     "/api/memberships/:id/approve-extension",
     requireAuth,
-    asyncHandler(async (req: Request, res: Response) => {
+    asyncHandler(async (req: Request, res: Response): Promise<void> => {
       const { id } = req.params;
       const membership = await storage.getMembershipById(id);
-      if (!membership) return res.status(404).json({ message: "Membership not found" });
-      if (!membership.extensionRequestedAt) return res.status(400).json({ message: "Extension not requested" });
-      if (membership.extensionApplied) return res.status(400).json({ message: "Extension already applied" });
+      if (!membership) {
+        res.status(404).json({ message: "Membership not found" });
+        return;
+      }
+      if (!membership.extensionRequestedAt) {
+        res.status(400).json({ message: "Extension not requested" });
+        return;
+      }
+      if (membership.extensionApplied) {
+        res.status(400).json({ message: "Extension already applied" });
+        return;
+      }
       const newExpiry = new Date(membership.expiryDate);
       newExpiry.setDate(newExpiry.getDate() + 7);
       await storage.updateMembership(id, {

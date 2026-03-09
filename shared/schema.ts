@@ -112,6 +112,23 @@ export interface AppSetting {
   value: string;
 }
 
+export type TransactionStatus = "CREATED" | "PENDING" | "SUCCESS" | "FAILED";
+
+export interface Transaction {
+  id: string;
+  orderId: string;
+  paymentId?: string | null;
+  signature?: string | null;
+  userId: string;
+  amount: number;
+  currency: string;
+  status: TransactionStatus;
+  receipt: string;
+  metadata?: Record<string, unknown> | null;
+  createdAt?: Date | null;
+  updatedAt?: Date | null;
+}
+
 // ----- Insert / update types -----
 
 export type InsertUser = Omit<User, "id" | "createdAt"> & { createdAt?: Date };
@@ -122,3 +139,4 @@ export type InsertClassType = Omit<ClassType, "id">;
 export type InsertMembershipPlan = Omit<MembershipPlan, "id">;
 export type InsertScheduleSlot = Omit<ScheduleSlot, "id">;
 export type InsertWaiver = Omit<WaiverSignature, "id" | "createdAt"> & { createdAt?: Date };
+export type InsertTransaction = Omit<Transaction, "id" | "createdAt" | "updatedAt"> & { createdAt?: Date; updatedAt?: Date };

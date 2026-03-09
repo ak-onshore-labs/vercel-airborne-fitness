@@ -73,35 +73,35 @@ export default function Sessions() {
     const isWaitlisted = booking.status === "WAITLIST";
 
     return (
-      <div className="bg-white border border-gray-100 p-5 rounded shadow-sm space-y-4" data-testid={`card-booking-${booking.id}`}>
+      <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-5 rounded shadow-sm space-y-4" data-testid={`card-booking-${booking.id}`}>
         <div className="flex justify-between items-start">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <h3 className="font-bold text-gray-900 capitalize" data-testid={`text-booking-category-${booking.id}`}>{booking.category}</h3>
+              <h3 className="font-bold text-gray-900 dark:text-gray-100 capitalize" data-testid={`text-booking-category-${booking.id}`}>{booking.category}</h3>
               <span className={cn(
                 "text-[10px] px-2 py-0.5 rounded-full font-bold uppercase",
-                isWaitlisted ? "bg-amber-50 text-amber-600 border border-amber-100" : "bg-green-50 text-green-600 border border-green-100"
+                isWaitlisted ? "bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-800" : "bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 border border-green-100 dark:border-green-800"
               )} data-testid={`badge-status-${booking.id}`}>
                 {isWaitlisted ? `Waitlist #${booking.waitlistPosition}` : "Confirmed"}
               </span>
             </div>
             <div className="space-y-1">
-              <div className="flex items-center text-xs text-gray-500 gap-1.5">
+              <div className="flex items-center text-xs text-gray-500 dark:text-gray-400 gap-1.5">
                 <Calendar size={12} /> {booking.sessionDate}
               </div>
-              <div className="flex items-center text-xs text-gray-500 gap-1.5">
+              <div className="flex items-center text-xs text-gray-500 dark:text-gray-400 gap-1.5">
                 <Clock size={12} /> {booking.startTime} - {booking.endTime}
               </div>
-              <div className="flex items-center text-xs text-gray-500 gap-1.5">
+              <div className="flex items-center text-xs text-gray-500 dark:text-gray-400 gap-1.5">
                 <MapPin size={12} /> {booking.branch}
               </div>
             </div>
           </div>
         </div>
 
-        <div className="pt-2 border-t border-gray-50 flex justify-between items-center">
+        <div className="pt-2 border-t border-gray-50 dark:border-gray-700 flex justify-between items-center">
           {!canCancel ? (
-            <span className="text-[10px] font-bold text-red-400 flex items-center gap-1">
+            <span className="text-[10px] font-bold text-red-400 dark:text-red-500 flex items-center gap-1">
               <AlertCircle size={12} /> Cancellation closed
             </span>
           ) : (
@@ -115,7 +115,7 @@ export default function Sessions() {
             onClick={() => canCancel && openCancelModal(booking, isWaitlisted)}
             className={cn(
               "text-xs font-semibold h-8 rounded px-4",
-              canCancel ? "text-red-500 hover:text-red-600 hover:bg-red-50" : "text-gray-300"
+              canCancel ? "text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20" : "text-gray-300 dark:text-gray-600"
             )}
             data-testid={`button-cancel-${booking.id}`}
           >
@@ -143,11 +143,11 @@ export default function Sessions() {
         </DialogContent>
       </Dialog>
       <div className="p-6 pb-24">
-        <h1 className="text-2xl font-bold text-gray-900 mb-6">My Sessions</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6">My Sessions</h1>
         
-        <div className="flex p-1 bg-gray-100 rounded mb-6">
-          <button onClick={() => setActiveTab("upcoming")} className={cn("flex-1 py-2 text-xs font-bold rounded transition-all", activeTab === "upcoming" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500")} data-testid="tab-upcoming">Upcoming</button>
-          <button onClick={() => setActiveTab("past")} className={cn("flex-1 py-2 text-xs font-bold rounded transition-all", activeTab === "past" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500")} data-testid="tab-past">Past</button>
+        <div className="flex p-1 bg-gray-100 dark:bg-gray-700 rounded mb-6">
+          <button onClick={() => setActiveTab("upcoming")} className={cn("flex-1 py-2 text-xs font-bold rounded transition-all", activeTab === "upcoming" ? "bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 shadow-sm" : "text-gray-500 dark:text-gray-400")} data-testid="tab-upcoming">Upcoming</button>
+          <button onClick={() => setActiveTab("past")} className={cn("flex-1 py-2 text-xs font-bold rounded transition-all", activeTab === "past" ? "bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 shadow-sm" : "text-gray-500 dark:text-gray-400")} data-testid="tab-past">Past</button>
         </div>
 
         {activeTab === "upcoming" ? (
@@ -155,13 +155,13 @@ export default function Sessions() {
             {upcomingBookings.length > 0 ? (
               upcomingBookings.map(booking => <BookingCard key={booking.id} booking={booking} />)
             ) : (
-              <div className="text-center py-12 bg-gray-50 rounded border border-dashed border-gray-200">
-                <p className="text-gray-500 text-sm">No upcoming sessions.</p>
+              <div className="text-center py-12 bg-gray-50 dark:bg-gray-800/50 rounded border border-dashed border-gray-200 dark:border-gray-600">
+                <p className="text-gray-500 dark:text-gray-400 text-sm">No upcoming sessions.</p>
               </div>
             )}
           </div>
         ) : (
-          <div className="text-center py-12 text-gray-400 text-sm">
+          <div className="text-center py-12 text-gray-400 dark:text-gray-500 text-sm">
             No past sessions history available.
           </div>
         )}

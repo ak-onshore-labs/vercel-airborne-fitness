@@ -174,16 +174,16 @@ export default function Book() {
     <MobileLayout>
       <div className="p-6 pb-24">
         {fromEnroll && (
-          <Button variant="ghost" size="sm" onClick={() => window.history.back()} className="mb-4 -ml-2 text-airborne-teal">
+          <Button variant="ghost" size="sm" onClick={() => window.history.back()} className="mb-4 -ml-2 text-airborne-teal dark:text-airborne-teal">
             <ArrowLeft size={16} className="mr-2" /> Back to Enrollment
           </Button>
         )}
         
         <div className="flex justify-between items-center mb-6">
-             <h1 className="text-2xl font-bold text-gray-900">Book Class</h1>
-             <div className="flex items-center gap-2 bg-gray-100 p-1 rounded">
-               <button onClick={() => setSelectedBranch('Lower Parel')} data-testid="button-branch-lp" className={cn("px-3 py-1 text-xs font-medium rounded", selectedBranch === 'Lower Parel' ? "bg-white shadow-sm text-gray-900" : "text-gray-500")}>Lower Parel</button>
-               <button onClick={() => setSelectedBranch('Mazgaon')} data-testid="button-branch-maz" className={cn("px-3 py-1 text-xs font-medium rounded", selectedBranch === 'Mazgaon' ? "bg-white shadow-sm text-gray-900" : "text-gray-500")}>Mazgaon</button>
+             <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Book Class</h1>
+             <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-700 p-1 rounded">
+               <button onClick={() => setSelectedBranch('Lower Parel')} data-testid="button-branch-lp" className={cn("px-3 py-1 text-xs font-medium rounded", selectedBranch === 'Lower Parel' ? "bg-white dark:bg-gray-600 shadow-sm text-gray-900 dark:text-gray-100" : "text-gray-500 dark:text-gray-400")}>Lower Parel</button>
+               <button onClick={() => setSelectedBranch('Mazgaon')} data-testid="button-branch-maz" className={cn("px-3 py-1 text-xs font-medium rounded", selectedBranch === 'Mazgaon' ? "bg-white dark:bg-gray-600 shadow-sm text-gray-900 dark:text-gray-100" : "text-gray-500 dark:text-gray-400")}>Mazgaon</button>
              </div>
         </div>
 
@@ -191,7 +191,7 @@ export default function Book() {
         {dates.map((d, i) => {
             const isSelected = isSameDay(d, selectedDate);
             return (
-            <button key={i} onClick={() => setSelectedDate(d)} data-testid={`button-date-${format(d, 'yyyy-MM-dd')}`} className={cn("flex flex-col items-center justify-center min-w-[70px] h-20 rounded border transition-all", isSelected ? "bg-airborne-teal border-airborne-teal text-white shadow-md shadow-teal-100" : "bg-white border-gray-100 text-gray-400 hover:border-gray-200")}>
+            <button key={i} onClick={() => setSelectedDate(d)} data-testid={`button-date-${format(d, 'yyyy-MM-dd')}`} className={cn("flex flex-col items-center justify-center min-w-[70px] h-20 rounded border transition-all", isSelected ? "bg-airborne-teal border-airborne-teal text-white shadow-md shadow-teal-100 dark:shadow-teal-900/30" : "bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:border-gray-200 dark:hover:border-gray-600")}>
                 <span className="text-[10px] font-bold uppercase tracking-wider">{format(d, 'EEE')}</span>
                 <span className="text-2xl font-bold">{format(d, 'd')}</span>
             </button>
@@ -201,7 +201,7 @@ export default function Book() {
 
         <div className="flex gap-2 mb-6 overflow-x-auto pb-2 -mx-6 px-6 scrollbar-hide">
             {filterChips.map((chip) => (
-                <button key={chip} onClick={() => setFilter(chip)} data-testid={`button-filter-${chip}`} className={cn("px-4 py-2 rounded-full text-xs font-medium whitespace-nowrap transition-all border", filter === chip ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-500 border-gray-200")}>{chip}</button>
+                <button key={chip} onClick={() => setFilter(chip)} data-testid={`button-filter-${chip}`} className={cn("px-4 py-2 rounded-full text-xs font-medium whitespace-nowrap transition-all border", filter === chip ? "bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 border-gray-900 dark:border-gray-100" : "bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-600")}>{chip}</button>
             ))}
         </div>
 
@@ -224,10 +224,10 @@ export default function Book() {
 
         <div className="space-y-4">
         {loadingSchedule ? (
-          <div className="text-center py-12"><Loader2 className="animate-spin mx-auto text-gray-400" /></div>
+          <div className="text-center py-12"><Loader2 className="animate-spin mx-auto text-gray-400 dark:text-gray-500" /></div>
         ) : filteredSessions.length === 0 ? (
-            <div className="text-center py-12 bg-gray-50 rounded border border-dashed border-gray-200">
-                <p className="text-gray-500 text-sm">No classes found.</p>
+            <div className="text-center py-12 bg-gray-50 dark:bg-gray-800/50 rounded border border-dashed border-gray-200 dark:border-gray-600">
+                <p className="text-gray-500 dark:text-gray-400 text-sm">No classes found.</p>
             </div>
         ) : (
             filteredSessions.map(session => {
@@ -239,30 +239,30 @@ export default function Book() {
             const hasMembership = !!user?.memberships[session.category];
             
             return (
-                <div key={key} className="bg-white border border-gray-100 rounded p-5 flex gap-5 shadow-sm hover:shadow-md transition-shadow" data-testid={`card-session-${key}`}>
-                    <div className="flex flex-col items-center justify-center w-16 border-r border-gray-100 pr-5 text-center">
-                        <span className="text-lg font-bold text-gray-900">{session.startTime}</span>
-                        <span className="text-[10px] font-medium text-gray-400 uppercase">{session.endTime}</span>
+                <div key={key} className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded p-5 flex gap-5 shadow-sm hover:shadow-md transition-shadow" data-testid={`card-session-${key}`}>
+                    <div className="flex flex-col items-center justify-center w-16 border-r border-gray-100 dark:border-gray-600 pr-5 text-center">
+                        <span className="text-lg font-bold text-gray-900 dark:text-gray-100">{session.startTime}</span>
+                        <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase">{session.endTime}</span>
                     </div>
                     <div className="flex-1">
                         <div className="flex justify-between items-start mb-1">
-                          <h3 className="font-bold text-gray-900 text-base" data-testid={`text-class-${key}`}>{session.category}</h3>
+                          <h3 className="font-bold text-gray-900 dark:text-gray-100 text-base" data-testid={`text-class-${key}`}>{session.category}</h3>
                           <div className="flex flex-col items-end gap-1">
-                            <span className="text-[10px] bg-teal-50 text-airborne-teal px-1 rounded">{selectedBranch}</span>
-                            {isFull && !booking && <span className="text-[10px] font-bold text-red-500 px-1 bg-red-50 rounded">FULL</span>}
+                            <span className="text-[10px] bg-teal-50 dark:bg-teal-900/40 text-airborne-teal px-1 rounded">{selectedBranch}</span>
+                            {isFull && !booking && <span className="text-[10px] font-bold text-red-500 dark:text-red-400 px-1 bg-red-50 dark:bg-red-900/30 rounded">FULL</span>}
                           </div>
                         </div>
                         <div className="flex justify-between items-center mt-4">
-                        <span className={cn("text-xs font-medium px-2 py-1 rounded-md", slotsLeft > 0 ? "text-gray-400 bg-gray-50" : "text-red-500 bg-red-50")} data-testid={`text-slots-${key}`}>
+                        <span className={cn("text-xs font-medium px-2 py-1 rounded-md", slotsLeft > 0 ? "text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-700" : "text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/30")} data-testid={`text-slots-${key}`}>
                           {slotsLeft > 0 ? `${slotsLeft} slots left` : "0 slots left"}
                         </span>
                         
                         {booking ? (
-                          <Button disabled size="sm" className={cn("h-9 border shadow-none font-semibold", booking.status === "BOOKED" ? "bg-green-50 text-green-600 border-green-100" : "bg-amber-50 text-amber-600 border-amber-100")} data-testid={`button-status-${key}`}>
+                          <Button disabled size="sm" className={cn("h-9 border shadow-none font-semibold", booking.status === "BOOKED" ? "bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 border-green-100 dark:border-green-800" : "bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-800")} data-testid={`button-status-${key}`}>
                             {booking.status === "BOOKED" ? "Booked" : `Waitlisted (#${booking.waitlistPosition})`}
                           </Button>
                         ) : !hasMembership ? (
-                             <Button size="sm" onClick={() => setLocation('/enroll')} className="h-9 bg-gray-900 text-white text-xs px-5 rounded" data-testid={`button-enroll-${key}`}>Enroll</Button>
+                             <Button size="sm" onClick={() => setLocation('/enroll')} className="h-9 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-xs px-5 rounded" data-testid={`button-enroll-${key}`}>Enroll</Button>
                         ) : (
                             <Button size="sm" onClick={() => handleAction(session, isFull)} disabled={loadingId === session.scheduleId} className={cn("h-9 text-white text-xs px-5 rounded", isFull ? "bg-amber-500" : "bg-airborne-teal")} data-testid={`button-book-${key}`}>
                             {loadingId === session.scheduleId ? <Loader2 className="animate-spin h-3 w-3" /> : isFull ? `Join Waitlist (${counts.waitlistCount})` : "Book Class"}

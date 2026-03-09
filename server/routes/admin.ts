@@ -395,11 +395,13 @@ export function registerAdminRoutes(app: Express): void {
     "/api/admin/memberships",
     requireAdminAsync,
     asyncHandler(async (req: Request, res: Response) => {
+      const auth = req.auth!;
       const body = req.body as Record<string, unknown>;
       const memberId = typeof body.memberId === "string" ? body.memberId.trim() : "";
       const membershipPlanId = typeof body.membershipPlanId === "string" ? body.membershipPlanId.trim() : "";
       const sessionsOverride = typeof body.sessionsRemaining === "number" ? body.sessionsRemaining : typeof body.sessionsRemaining === "string" ? parseInt(String(body.sessionsRemaining), 10) : undefined;
       const validityDaysOverride = typeof body.validityDays === "number" ? body.validityDays : typeof body.validityDays === "string" ? parseInt(String(body.validityDays), 10) : undefined;
+      const paymentMode = typeof body.paymentMode === "string" ? body.paymentMode.trim() : "";
 
       if (!memberId) {
         res.status(400).json({ message: "Member is required" });
@@ -438,6 +440,41 @@ export function registerAdminRoutes(app: Express): void {
         carryForward: 0,
         extensionApplied: false,
       });
+
+      // Optional: record a cash transaction for admin-created memberships
+      if (paymentMode.toLowerCase() === "cash") {
+        const subtotalInr = typeof (planDoc as any).price === "number" ? (planDoc as any).price : 0;
+        const gstPercent = 18;
+        const gstInr = subtotalInr * (gstPercent / 100);
+        const totalInr = subtotalInr + gstInr;
+        const totalPaise = Math.round(totalInr * 100);
+        const idSuffix = String(membership.id).slice(-8);
+        const receipt = `cash_${idSuffix}`.slice(0, 40);
+        const orderId = `cash_${membership.id}`;
+        await storage.createTransaction({
+          orderId,
+          userId: member.userId,
+          amount: totalPaise,
+          currency: "INR",
+          status: "SUCCESS",
+          receipt,
+          paymentId: null,
+          signature: null,
+          metadata: {
+            mode: "Cash",
+            gstPercent,
+            subtotalInr,
+            gstInr,
+            totalInr,
+            memberId,
+            membershipId: membership.id,
+            membershipPlanId,
+            planName: (planDoc as any).name,
+            classTypeId: (planDoc as any).classTypeId,
+            createdByUserId: auth.userId,
+          },
+        });
+      }
       res.status(201).json(membership);
     })
   );

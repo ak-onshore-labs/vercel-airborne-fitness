@@ -7,4 +7,5 @@ export { MembershipModel } from "./MembershipModel";
 export { BookingModel } from "./BookingModel";
 export { WaiverSignatureModel } from "./WaiverSignatureModel";
 export { AppSettingModel } from "./AppSettingModel";
+export { TransactionModel } from "./TransactionModel";
 export { toDoc, toDocRequired } from "./helpers";

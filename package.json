@@ -6,6 +6,7 @@
   "scripts": {
     "dev:client": "vite dev --port 5000",
     "dev": "cross-env PORT=5001 DOTENV_CONFIG_PATH=.env NODE_ENV=development nodemon --exec tsx server/index.ts --ext ts,js --watch server --watch shared",
+    "dev:debug": "cross-env PORT=5001 DOTENV_CONFIG_PATH=.env NODE_ENV=development nodemon --exec \"node --inspect=9229 --enable-source-maps --import tsx\" server/index.ts --ext ts,js --watch server --watch shared",
     "dev:once": "cross-env PORT=5001 DOTENV_CONFIG_PATH=.env NODE_ENV=development tsx server/index.ts",
     "dev:local": "cross-env PORT=5001 DOTENV_CONFIG_PATH=.env NODE_ENV=development tsx server/index.ts",
     "dev:staging": "cross-env PORT=5001 DOTENV_CONFIG_PATH=.env.staging NODE_ENV=development tsx server/index.ts",

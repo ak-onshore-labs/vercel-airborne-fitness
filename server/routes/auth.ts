@@ -3,30 +3,24 @@ import { asyncHandler, requireAuth } from "../middleware";
 import { storage } from "../storage";
 import { signToken } from "../lib/jwt";
 
-const TWILIO_VERIFY_BASE = "https://verify.twilio.com/v2";
+const MSG91_SEND_OTP_URL = "https://api.msg91.com/api/sendotp.php";
+const MSG91_VERIFY_OTP_URL = "https://control.msg91.com/api/v5/otp/verify";
 
-function getTwilioAuth(): string {
-  const sid = process.env.TWILIO_ACCOUNT_SID;
-  const token = process.env.TWILIO_AUTH_TOKEN;
-  if (!sid || !token) {
-    throw new Error("TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN must be set");
+function getMsg91Auth(): string {
+  const key = process.env.MSG_API_KEY;
+  if (!key || !key.trim()) {
+    throw new Error("MSG_API_KEY must be set");
   }
-  return Buffer.from(`${sid}:${token}`).toString("base64");
-}
-
-function getVerifyServiceSid(): string {
-  const sid = process.env.TWILIO_VERIFY_SERVICE_SID;
-  if (!sid) throw new Error("TWILIO_VERIFY_SERVICE_SID must be set");
-  return sid;
+  return key.trim();
 }
 
 const digitsOnly = (s: string) => s.replace(/\D/g, "");
 
-function toE164(phone: string): string {
+function toMsg91Mobile(phone: string): string {
   const d = digitsOnly(phone);
-  if (d.length === 10) return `+91${d}`;
-  if (d.length >= 10 && d.startsWith("91")) return `+${d}`;
-  return phone.startsWith("+") ? phone : `+${d}`;
+  if (d.length === 10) return `91${d}`;
+  if (d.length >= 10 && d.startsWith("91")) return d.slice(0, 12);
+  return d.slice(-12);
 }
 
 function toTenDigits(phone: string): string {
@@ -45,31 +39,25 @@ export function registerAuthRoutes(app: Express): void {
       }
 
       try {
-        const to = toE164(phone);
-        const serviceSid = getVerifyServiceSid();
-        const auth = getTwilioAuth();
-        const url = `${TWILIO_VERIFY_BASE}/Services/${serviceSid}/Verifications`;
+        const authKey = getMsg91Auth();
+        const mobile = toMsg91Mobile(phone);
+        const url = `${MSG91_SEND_OTP_URL}?authkey=${encodeURIComponent(authKey)}&mobile=${encodeURIComponent(mobile)}&sender=MSGIND`;
 
-        const form = new URLSearchParams();
-        form.set("To", to);
-        form.set("Channel", "sms");
+        const msgRes = await fetch(url, { method: "GET" });
+        const text = await msgRes.text();
+        let data: { type?: string; message?: string };
+        try {
+          data = JSON.parse(text) as { type?: string; message?: string };
+        } catch {
+          data = {};
+        }
 
-        const twilioRes = await fetch(url, {
-          method: "POST",
-          headers: {
-            Authorization: `Basic ${auth}`,
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: form.toString(),
-        });
-
-        const data = (await twilioRes.json()) as { status?: string; message?: string };
-        if (!twilioRes.ok) {
+        if (!msgRes.ok || data.type !== "success") {
           res.status(200).json({ success: false, message: "Unable to send OTP. Please try again later." });
           return;
         }
 
-        res.json({ success: true, status: data.status ?? "pending" });
+        res.json({ success: true, status: "pending" });
       } catch {
         res.status(200).json({ success: false, message: "Unable to send OTP. Please try again later." });
       }
@@ -94,36 +82,30 @@ export function registerAuthRoutes(app: Express): void {
       let approved = codeTrimmed === DEFAULT_OTP;
 
       if (!approved) {
-        const to = toE164(phone);
-        const serviceSid = getVerifyServiceSid();
-        const auth = getTwilioAuth();
-        const url = `${TWILIO_VERIFY_BASE}/Services/${serviceSid}/VerificationCheck`;
+        const authKey = getMsg91Auth();
+        const mobile = toMsg91Mobile(phone);
+        const verifyUrl = `${MSG91_VERIFY_OTP_URL}?mobile=${encodeURIComponent(mobile)}&otp=${encodeURIComponent(codeTrimmed)}`;
 
-        const form = new URLSearchParams();
-        form.set("To", to);
-        form.set("Code", codeTrimmed);
-
-        const twilioRes = await fetch(url, {
-          method: "POST",
+        const msgRes = await fetch(verifyUrl, {
+          method: "GET",
           headers: {
-            Authorization: `Basic ${auth}`,
-            "Content-Type": "application/x-www-form-urlencoded",
+            accept: "application/json",
+            authkey: authKey,
           },
-          body: form.toString(),
         });
 
-        const data = (await twilioRes.json()) as { status?: string; valid?: boolean; message?: string };
-        if (!twilioRes.ok) {
-          const isNotFound = twilioRes.status === 404;
-          const msg = isNotFound
-            ? "This code has already been used, has expired, or too many attempts were made. Please request a new code."
-            : "Verification failed. Please try again.";
-          const status = isNotFound ? 400 : (twilioRes.status >= 400 && twilioRes.status < 500 ? twilioRes.status : 502);
+        const data = (await msgRes.json()) as { type?: string; message?: string };
+        if (!msgRes.ok) {
+          const msg =
+            msgRes.status === 404 || data.message?.toLowerCase().includes("expired") || data.message?.toLowerCase().includes("invalid")
+              ? "This code has already been used, has expired, or too many attempts were made. Please request a new code."
+              : "Verification failed. Please try again.";
+          const status = msgRes.status >= 400 && msgRes.status < 500 ? msgRes.status : 502;
           res.status(status).json({ message: msg });
           return;
         }
 
-        approved = data.status === "approved" && data.valid === true;
+        approved = data.type === "success";
       }
 
       if (!approved) {

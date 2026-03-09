@@ -20,7 +20,7 @@ async function findMembershipForSlot(memberId: string, scheduleId: string): Prom
   const all = await storage.getMemberMemberships(memberId);
   const now = new Date();
   const memberships = all.filter(
-    (m) => new Date(m.expiryDate) > now && m.sessionsRemaining > 0
+    (m) => new Date(m.expiryDate) > now && m.sessionsRemaining >= 0
   );
   const plans = await MembershipPlanModel.find({ classTypeId: slot.classTypeId });
   const planIds = new Set(plans.map((p: any) => String(p._id)));
@@ -172,9 +172,21 @@ export function registerManageSessionRoutes(app: Express): void {
     "/api/cancel",
     requireAuth,
     asyncHandler(async (req: Request, res: Response) => {
+      const auth = req.auth!;
       const { bookingId, memberId } = req.body;
       if (!bookingId) return res.status(400).json({ message: "Missing bookingId" });
       if (!memberId) return res.status(400).json({ message: "Missing memberId" });
+
+      const requester = await storage.getUser(auth.userId);
+      if (!requester) return res.status(403).json({ message: "User not found" });
+
+      const isAdminOrStaff = requester.userRole === "ADMIN" || requester.userRole === "STAFF";
+
+      const member = await storage.getMember(memberId);
+      if (!member) return res.status(404).json({ message: "Member not found" });
+      if (!isAdminOrStaff && member.userId !== auth.userId) {
+        return res.status(403).json({ message: "Not allowed to cancel this booking" });
+      }
 
       const memberBookings = await storage.getBookingsForMember(memberId);
       const booking = memberBookings.find(b => b.id === bookingId);
@@ -193,7 +205,6 @@ export function registerManageSessionRoutes(app: Express): void {
       }
 
       await storage.updateBookingStatus(bookingId, "CANCELLED");
-
       if (booking.status === "BOOKED") {
         const membership = await findMembershipForSlot(memberId, booking.scheduleId);
         if (membership) {
@@ -215,6 +226,14 @@ export function registerManageSessionRoutes(app: Express): void {
               await storage.updateBookingStatus(remaining[i].id, "WAITLIST", i + 1);
             }
           }
+        }
+      } else if (booking.status === "WAITLIST") {
+        const sessionBookings = await storage.getBookingsForSession(booking.scheduleId, booking.sessionDate);
+        const waitlist = sessionBookings
+          .filter(b => b.status === "WAITLIST")
+          .sort((a, b) => (a.waitlistPosition ?? 999) - (b.waitlistPosition ?? 999));
+        for (let i = 0; i < waitlist.length; i++) {
+          await storage.updateBookingStatus(waitlist[i].id, "WAITLIST", i + 1);
         }
       }
 
