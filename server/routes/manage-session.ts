@@ -3,8 +3,17 @@ import { storage } from "../storage";
 import { asyncHandler, requireAuth } from "../middleware";
 import { MembershipPlanModel } from "../models";
 
+const MEMBER_BOOKING_CUTOFF_MINUTES = 5;
+
 function pad2(n: number) {
   return String(n).padStart(2, "0");
+}
+
+/** Session is bookable by members only until 5 minutes after start. Returns false if now > sessionStart + 5 min. */
+function isWithinMemberBookingWindow(sessionDate: string, startHour: number, startMinute: number): boolean {
+  const sessionStart = new Date(`${sessionDate}T${pad2(startHour)}:${pad2(startMinute)}:00`);
+  const cutoffMs = sessionStart.getTime() + MEMBER_BOOKING_CUTOFF_MINUTES * 60 * 1000;
+  return Date.now() <= cutoffMs;
 }
 
 /** Resolve category (class type name) for a slot */
@@ -83,6 +92,10 @@ export function registerManageSessionRoutes(app: Express): void {
       const slot = await storage.getScheduleSlot(scheduleId);
       if (!slot) return res.status(400).json({ message: "Invalid schedule slot" });
 
+      if (!isWithinMemberBookingWindow(sessionDate, slot.startHour, slot.startMinute)) {
+        return res.status(400).json({ message: "This session is no longer available for booking." });
+      }
+
       const existingBookings = await storage.getBookingsForSession(scheduleId, sessionDate);
       const alreadyBooked = existingBookings.find(b => b.memberId === memberId && b.status !== "CANCELLED");
       if (alreadyBooked) {
@@ -131,6 +144,11 @@ export function registerManageSessionRoutes(app: Express): void {
 
       const slot = await storage.getScheduleSlot(scheduleId);
       if (!slot) return res.status(400).json({ message: "Invalid schedule slot" });
+
+      if (!isWithinMemberBookingWindow(sessionDate, slot.startHour, slot.startMinute)) {
+        return res.status(400).json({ message: "This session is no longer available for booking." });
+      }
+
       const capacity = slot.capacity;
       const existingBookings = await storage.getBookingsForSession(scheduleId, sessionDate);
       const bookedCount = existingBookings.filter(b => b.status === "BOOKED").length;
@@ -254,16 +272,17 @@ export function registerManageSessionRoutes(app: Express): void {
         const list = await storage.getBookingsForMember(id);
         all.push(...list);
       }
-      const now = new Date();
+      const nowMs = Date.now();
       const upcoming: typeof all = [];
       const past: typeof all = [];
       for (const b of all) {
         if (b.status === "CANCELLED") continue;
         const slot = await storage.getScheduleSlot(b.scheduleId);
         const startTime = slot ? `${pad2(slot.startHour)}:${pad2(slot.startMinute)}` : "00:00";
-        const dt = new Date(`${b.sessionDate}T${startTime}`);
+        const sessionStart = new Date(`${b.sessionDate}T${startTime}`);
+        const cutoffMs = sessionStart.getTime() + MEMBER_BOOKING_CUTOFF_MINUTES * 60 * 1000;
         const enriched = { ...b, startTime, endTime: slot ? `${pad2(slot.endHour)}:${pad2(slot.endMinute)}` : "", category: slot?.category ?? "", branch: slot?.branch ?? "" };
-        if (dt >= now) upcoming.push(enriched as any);
+        if (nowMs <= cutoffMs) upcoming.push(enriched as any);
         else past.push(enriched as any);
       }
       upcoming.sort((a, b) => a.sessionDate.localeCompare(b.sessionDate) || (a as any).startTime.localeCompare((b as any).startTime));

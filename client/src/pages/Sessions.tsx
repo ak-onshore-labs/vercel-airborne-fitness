@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import { useMember, Booking } from "@/context/MemberContext";
 import MobileLayout from "@/components/layout/MobileLayout";
+import { HeroWithAccent } from "@/components/HeroWithAccent";
 import { Button } from "@/components/ui/button";
 import { Calendar, Clock, MapPin, AlertCircle, Loader2 } from "lucide-react";
-import { isBefore, subMinutes } from "date-fns";
+import { isBefore, subMinutes, addMinutes } from "date-fns";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
 import {
@@ -14,6 +15,7 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { formatTime12h } from "@/lib/formatTime";
 
 export default function Sessions() {
   const { user, bookedSessions, cancelBooking, leaveWaitlist, refreshBookings } = useMember();
@@ -31,9 +33,22 @@ export default function Sessions() {
     });
   }, []);
 
-  const upcomingBookings = bookedSessions
-    .filter(b => b.status !== "CANCELLED")
-    .sort((a, b) => a.sessionDate.localeCompare(b.sessionDate) || a.startTime.localeCompare(b.startTime));
+  const MEMBER_BOOKING_CUTOFF_MINUTES = 5;
+
+  const now = new Date();
+  const upcomingBookings: Booking[] = [];
+  const pastBookings: Booking[] = [];
+  for (const b of bookedSessions) {
+    if (b.status === "CANCELLED") continue;
+    const [h, m] = (b.startTime || "00:00").split(":").map(Number);
+    const sessionStart = new Date(b.sessionDate + "T00:00:00");
+    sessionStart.setHours(h, m, 0, 0);
+    const cutoff = addMinutes(sessionStart, MEMBER_BOOKING_CUTOFF_MINUTES);
+    if (now <= cutoff) upcomingBookings.push(b);
+    else pastBookings.push(b);
+  }
+  upcomingBookings.sort((a, b) => a.sessionDate.localeCompare(b.sessionDate) || a.startTime.localeCompare(b.startTime));
+  pastBookings.sort((a, b) => b.sessionDate.localeCompare(a.sessionDate) || b.startTime.localeCompare(a.startTime));
 
   const isCancellationOpen = (sessionDate: string, startTime: string) => {
     try {
@@ -73,7 +88,7 @@ export default function Sessions() {
     const isWaitlisted = booking.status === "WAITLIST";
 
     return (
-      <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-5 rounded shadow-sm space-y-4" data-testid={`card-booking-${booking.id}`}>
+      <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 border-l-2 border-l-airborne-teal dark:border-l-teal-400 p-5 rounded shadow-sm space-y-4 transition-shadow duration-200 hover:shadow-md" data-testid={`card-booking-${booking.id}`}>
         <div className="flex justify-between items-start">
           <div>
             <div className="flex items-center gap-2 mb-1">
@@ -90,7 +105,7 @@ export default function Sessions() {
                 <Calendar size={12} /> {booking.sessionDate}
               </div>
               <div className="flex items-center text-xs text-gray-500 dark:text-gray-400 gap-1.5">
-                <Clock size={12} /> {booking.startTime} - {booking.endTime}
+                <Clock size={12} /> {formatTime12h(booking.startTime)} - {formatTime12h(booking.endTime)}
               </div>
               <div className="flex items-center text-xs text-gray-500 dark:text-gray-400 gap-1.5">
                 <MapPin size={12} /> {booking.branch}
@@ -143,11 +158,13 @@ export default function Sessions() {
         </DialogContent>
       </Dialog>
       <div className="p-6 pb-24">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6">My Sessions</h1>
-        
+        <HeroWithAccent>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">My Sessions</h1>
+        </HeroWithAccent>
+
         <div className="flex p-1 bg-gray-100 dark:bg-gray-700 rounded mb-6">
-          <button onClick={() => setActiveTab("upcoming")} className={cn("flex-1 py-2 text-xs font-bold rounded transition-all", activeTab === "upcoming" ? "bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 shadow-sm" : "text-gray-500 dark:text-gray-400")} data-testid="tab-upcoming">Upcoming</button>
-          <button onClick={() => setActiveTab("past")} className={cn("flex-1 py-2 text-xs font-bold rounded transition-all", activeTab === "past" ? "bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 shadow-sm" : "text-gray-500 dark:text-gray-400")} data-testid="tab-past">Past</button>
+          <button onClick={() => setActiveTab("upcoming")} className={cn("flex-1 py-2 text-xs font-bold rounded transition-all", activeTab === "upcoming" ? "bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 shadow-sm border-b-2 border-airborne-teal dark:border-teal-400" : "text-gray-500 dark:text-gray-400")} data-testid="tab-upcoming">Upcoming</button>
+          <button onClick={() => setActiveTab("past")} className={cn("flex-1 py-2 text-xs font-bold rounded transition-all", activeTab === "past" ? "bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 shadow-sm border-b-2 border-airborne-teal dark:border-teal-400" : "text-gray-500 dark:text-gray-400")} data-testid="tab-past">Past</button>
         </div>
 
         {activeTab === "upcoming" ? (
@@ -161,8 +178,14 @@ export default function Sessions() {
             )}
           </div>
         ) : (
-          <div className="text-center py-12 text-gray-400 dark:text-gray-500 text-sm">
-            No past sessions history available.
+          <div className="space-y-4">
+            {pastBookings.length > 0 ? (
+              pastBookings.map(booking => <BookingCard key={booking.id} booking={booking} />)
+            ) : (
+              <div className="text-center py-12 bg-gray-50 dark:bg-gray-800/50 rounded border border-dashed border-gray-200 dark:border-gray-600">
+                <p className="text-gray-500 dark:text-gray-400 text-sm">No past sessions.</p>
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -10,8 +10,26 @@ import { cn } from "@/lib/utils";
 import MobileLayout from "@/components/layout/MobileLayout";
 import { apiFetch } from "@/lib/api";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { format, isSameDay, addDays, startOfToday } from "date-fns";
+import { formatTime12h } from "@/lib/formatTime";
 import filledBicep from "@assets/filled_bicep.svg";
 import blackBicep from "@assets/black_bicep.svg";
+
+interface SessionDisplay {
+  scheduleId: string;
+  sessionDate: string;
+  classId: string;
+  category: string;
+  branch: string;
+  startTime: string;
+  endTime: string;
+  capacity: number;
+}
+
+function getNext7Days() {
+  const today = startOfToday();
+  return Array.from({ length: 7 }).map((_, i) => addDays(today, i));
+}
 
 declare global {
   interface Window {
@@ -63,6 +81,138 @@ function StrengthIcons({ level }: { level: number }) {
         />
       ))}
     </div>
+  );
+}
+
+type BranchOption = "Lower Parel" | "Mazgaon";
+
+/** Lightweight read-only schedule view for enrollment plan evaluation. Local branch toggle for comparison. */
+function EnrollScheduleSheetContent({
+  initialBranch,
+  classTypes,
+}: {
+  initialBranch: BranchOption;
+  classTypes: ClassType[];
+}) {
+  const dates = getNext7Days();
+  const [branch, setBranch] = useState<BranchOption>(initialBranch);
+  const [selectedDate, setSelectedDate] = useState<Date>(dates[0]);
+  const [filter, setFilter] = useState<string>("All");
+  const [sessions, setSessions] = useState<SessionDisplay[]>([]);
+  const [loadingSchedule, setLoadingSchedule] = useState(true);
+
+  useEffect(() => {
+    setLoadingSchedule(true);
+    const dateStr = format(selectedDate, "yyyy-MM-dd");
+    apiFetch<{ sessions: SessionDisplay[] }>(
+      `/api/schedule?branch=${encodeURIComponent(branch)}&date=${encodeURIComponent(dateStr)}`
+    )
+      .then((r) => {
+        if (r.ok && Array.isArray(r.data?.sessions)) setSessions(r.data.sessions);
+        else setSessions([]);
+      })
+      .catch(() => setSessions([]))
+      .finally(() => setLoadingSchedule(false));
+  }, [branch, selectedDate]);
+
+  const filteredSessions =
+    filter === "All" ? sessions : sessions.filter((s) => s.category === filter);
+  const filterChips = ["All", ...classTypes.map((t) => t.name)];
+
+  return (
+    <>
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 shrink-0">Branch</span>
+        <div className="flex rounded-lg border border-gray-200 dark:border-gray-600 p-0.5 bg-gray-100 dark:bg-gray-700/50">
+          {(["Lower Parel", "Mazgaon"] as const).map((b) => (
+            <button
+              key={b}
+              type="button"
+              onClick={() => setBranch(b)}
+              className={cn(
+                "min-w-[5rem] py-1.5 px-3 rounded-md text-xs font-medium transition-all text-center",
+                branch === b
+                  ? "bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 shadow-sm"
+                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+              )}
+            >
+              {b === "Lower Parel" ? "Lower Parel" : "Mazgaon"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 shrink-0">Day</span>
+        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide flex-1 min-w-0">
+          {dates.map((d, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => setSelectedDate(d)}
+              className={cn(
+                "flex flex-col items-center justify-center min-w-[2.75rem] h-12 rounded-md border transition-all shrink-0",
+                isSameDay(d, selectedDate)
+                  ? "bg-airborne-teal border-airborne-teal text-white"
+                  : "bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400"
+              )}
+            >
+              <span className="text-[10px] font-semibold uppercase leading-tight">{format(d, "EEE")}</span>
+              <span className="text-sm font-bold leading-tight">{format(d, "d")}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 shrink-0">Class</span>
+        <div className="flex gap-1.5 overflow-x-auto overflow-y-hidden pb-1 scrollbar-hide flex-1 min-w-0">
+          {filterChips.map((chip) => (
+            <button
+              key={chip}
+              type="button"
+              onClick={() => setFilter(chip)}
+              className={cn(
+                "shrink-0 py-1.5 px-3 rounded-full text-xs font-medium whitespace-nowrap border transition-all text-center",
+                filter === chip
+                  ? "bg-airborne-teal/10 dark:bg-airborne-teal/25 border-airborne-teal dark:border-teal-400 text-airborne-deep dark:text-teal-200"
+                  : "bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-600"
+              )}
+            >
+              {chip}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto min-h-0 space-y-2">
+        {loadingSchedule ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+          </div>
+        ) : filteredSessions.length === 0 ? (
+          <p className="text-xs text-gray-500 dark:text-gray-400 text-center py-6">No classes on this day.</p>
+        ) : (
+          filteredSessions.map((session) => (
+            <div
+              key={`${session.scheduleId}_${session.sessionDate}_${session.startTime}`}
+              className="flex gap-3 rounded-lg border border-gray-100 dark:border-gray-700 border-l-2 border-l-airborne-teal dark:border-l-teal-400 bg-gray-50/50 dark:bg-gray-800/50 px-3 py-2.5 transition-shadow duration-200 hover:shadow-md"
+            >
+              <div className="flex flex-col items-center justify-center w-12 border-r border-gray-200 dark:border-gray-600 pr-3 text-center shrink-0">
+                <span className="text-sm font-bold text-gray-900 dark:text-gray-100 leading-tight">{formatTime12h(session.startTime)}</span>
+                <span className="text-[10px] text-gray-500 dark:text-gray-400 leading-tight">{formatTime12h(session.endTime)}</span>
+              </div>
+              <div className="min-w-0 flex-1 flex items-center">
+                <div className="min-w-0">
+                  <h4 className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">{session.category}</h4>
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{session.branch}</p>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </>
   );
 }
 
@@ -232,10 +382,9 @@ const PersonalDetails = ({ onNext, data, onChange }: any) => {
   );
 };
 
-const MembershipSelection = ({ onNext, onBack, onAddPlan, onRemovePlan, selectedPlans, classTypes, plansByClassType, selectedClassType, onSelectClassType }: any) => {
+const MembershipSelection = ({ onNext, onBack, onAddPlan, onRemovePlan, selectedPlans, classTypes, plansByClassType, selectedClassType, onSelectClassType, onViewSchedule }: any) => {
   const [infoSheetOpen, setInfoSheetOpen] = useState(false);
   const [infoClass, setInfoClass] = useState<ClassType | null>(null);
-  const [, setLocation] = useLocation();
   const currentPlan = selectedPlans.find((p: any) => p.category === selectedClassType?.name);
   const currentPlans = selectedClassType ? (plansByClassType[selectedClassType.id] ?? []) : [];
 
@@ -250,7 +399,7 @@ const MembershipSelection = ({ onNext, onBack, onAddPlan, onRemovePlan, selected
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Select Plans</h2>
-        <Button variant="outline" size="sm" onClick={() => setLocation("/book?from=enroll")} className="text-airborne-teal border-airborne-teal dark:bg-transparent dark:hover:bg-teal-900/20" data-testid="button-view-schedule">
+        <Button variant="outline" size="sm" onClick={onViewSchedule} className="text-airborne-teal border-airborne-teal dark:bg-transparent dark:hover:bg-teal-900/20" data-testid="button-view-schedule">
           <Calendar size={14} className="mr-1" /> View Schedule
         </Button>
       </div>
@@ -265,7 +414,7 @@ const MembershipSelection = ({ onNext, onBack, onAddPlan, onRemovePlan, selected
               selectedClassType?.id === cls.id
                 ? "bg-gray-900 border-gray-900"
                 : selectedPlans.some((p: any) => p.category === cls.name)
-                  ? "bg-teal-50 dark:bg-teal-900/30 border-airborne-teal"
+                  ? "bg-teal-50 dark:bg-teal-900/30 border-airborne-teal dark:border-teal-400"
                   : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
             )}
             data-testid={`button-category-${cls.id}`}
@@ -329,9 +478,9 @@ const MembershipSelection = ({ onNext, onBack, onAddPlan, onRemovePlan, selected
             onClick={() => onAddPlan(selectedClassType.name, plan)}
             data-testid={`card-plan-${plan.id}`}
             className={cn(
-              "p-5 rounded border cursor-pointer",
+              "p-5 rounded border border-l-2 border-l-airborne-teal dark:border-l-teal-400 cursor-pointer transition-shadow duration-200 hover:shadow-md",
               currentPlan?.plan.id === plan.id
-                ? "bg-teal-50 dark:bg-teal-900/30 border-airborne-teal"
+                ? "bg-teal-50 dark:bg-teal-900/30 border-airborne-teal dark:border-teal-400"
                 : "bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700"
             )}
           >
@@ -352,7 +501,7 @@ const MembershipSelection = ({ onNext, onBack, onAddPlan, onRemovePlan, selected
       )}
 
       {selectedPlans.length > 0 && (
-        <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded border border-gray-200 dark:border-gray-700">
+        <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded border border-gray-200 dark:border-gray-700 border-l-2 border-l-airborne-teal dark:border-l-teal-400">
           <h4 className="text-xs font-bold uppercase text-gray-500 dark:text-gray-400 mb-2">Selected ({selectedPlans.length})</h4>
           {selectedPlans.map((item: any) => (
             <div key={item.category} className="flex justify-between items-center text-sm mb-1">
@@ -495,7 +644,7 @@ const Waiver = ({ onNext, onBack, data, onChange }: any) => {
 
 const Payment = ({ onBack, onPay, plans, loading, loadingError }: any) => {
   const subtotal = plans.reduce((sum: number, item: any) => sum + item.plan.price, 0);
-  const tax = subtotal * 0.18;
+  const tax = subtotal * 0.05;
   const total = subtotal + tax;
   const amountPaise = Math.round(total * 100);
   return (
@@ -504,7 +653,7 @@ const Payment = ({ onBack, onPay, plans, loading, loadingError }: any) => {
         {loadingError && (
           <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 p-3 rounded border border-red-100 dark:border-red-800" data-testid="payment-error">{loadingError}</p>
         )}
-        <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-6 rounded shadow-sm">
+        <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 border-l-2 border-l-airborne-teal dark:border-l-teal-400 p-6 rounded shadow-sm">
             {plans.map((item: any) => (
                 <div key={item.category} className="flex justify-between mb-2">
                   <div>
@@ -516,7 +665,7 @@ const Payment = ({ onBack, onPay, plans, loading, loadingError }: any) => {
             ))}
             <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300 mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
               <div className="flex justify-between"><span>Subtotal</span><span>₹{subtotal.toLocaleString()}</span></div>
-              <div className="flex justify-between"><span>GST (18%)</span><span>₹{tax.toLocaleString()}</span></div>
+              <div className="flex justify-between"><span>GST (5%)</span><span>₹{tax.toLocaleString()}</span></div>
               <div className="flex justify-between text-airborne-teal font-bold pt-2 border-t border-gray-100 dark:border-gray-700 text-lg"><span>Total</span><span>₹{total.toLocaleString()}</span></div>
             </div>
         </div>
@@ -529,8 +678,9 @@ const Payment = ({ onBack, onPay, plans, loading, loadingError }: any) => {
 };
 
 export default function Enroll() {
-  const { enroll, user } = useMember();
+  const { enroll, user, selectedBranch } = useMember();
   const [, setLocation] = useLocation();
+  const [scheduleSheetOpen, setScheduleSheetOpen] = useState(false);
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState(() => {
     const name = user?.name && user.name !== "New Member" ? user.name : "";
@@ -569,8 +719,9 @@ export default function Enroll() {
   useEffect(() => {
     apiFetch<ClassType[]>("/api/class-types").then((r) => {
       if (r.ok && Array.isArray(r.data)) {
-        setClassTypes(r.data);
-        if (r.data.length > 0) setSelectedClassType((prev) => prev ?? r.data[0]);
+        const sorted = [...r.data].sort((a, b) => a.name.localeCompare(b.name, "en"));
+        setClassTypes(sorted);
+        if (sorted.length > 0) setSelectedClassType((prev) => prev ?? sorted[0]);
       }
     });
   }, []);
@@ -649,14 +800,28 @@ export default function Enroll() {
 
       const Razorpay = await loadRazorpay();
       await apiFetch(`/api/payments/transactions/${transactionId}/set-pending`, { method: "PATCH" });
-      const options = {
+
+      let fallbackTimerId: ReturnType<typeof setTimeout> | null = null;
+      const clearLoadingAndShowCancel = () => {
+        if (fallbackTimerId) clearTimeout(fallbackTimerId);
+        fallbackTimerId = null;
+        setIsLoading(false);
+        setLoadingError("Payment was cancelled. You can try again.");
+      };
+
+      const options: Record<string, unknown> = {
         key: keyRes.data.keyId,
         amount,
         currency,
         order_id: orderId,
         name: "Airborne Fitness",
         description: "Membership enrollment",
+        modal: {
+          ondismiss: () => clearLoadingAndShowCancel(),
+        },
         handler: async (response: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }) => {
+          if (fallbackTimerId) clearTimeout(fallbackTimerId);
+          fallbackTimerId = null;
           try {
             const verifyRes = await apiFetch<{ verified: boolean }>("/api/payments/verify", {
               method: "POST",
@@ -673,14 +838,21 @@ export default function Enroll() {
             if (!verifyRes.data?.verified) {
               throw new Error("Payment verification failed");
             }
-            await enroll(
-              formData,
-              selectedPlans,
-              waiverData,
-              hasKidsCategory ? kidInfo : undefined,
-              transactionId
-            );
-            setLocation("/enroll/success");
+            try {
+              await enroll(
+                formData,
+                selectedPlans,
+                waiverData,
+                hasKidsCategory ? kidInfo : undefined,
+                transactionId
+              );
+              setLocation("/enroll/success");
+            } catch (enrollErr) {
+              setIsLoading(false);
+              setLoadingError(
+                "Payment was successful but we couldn't complete your enrollment. Please contact support with your transaction details—we'll get you set up."
+              );
+            }
           } catch (e) {
             setIsLoading(false);
             setLoadingError(e instanceof Error ? e.message : "Payment verification failed");
@@ -689,9 +861,23 @@ export default function Enroll() {
       };
       const rzp = new Razorpay(options);
       rzp.on("payment.failed", () => {
+        if (fallbackTimerId) clearTimeout(fallbackTimerId);
+        fallbackTimerId = null;
         setIsLoading(false);
-        setLoadingError("Payment failed or was cancelled.");
+        setLoadingError("Payment failed or was cancelled. You can try again when ready.");
       });
+
+      fallbackTimerId = setTimeout(() => {
+        fallbackTimerId = null;
+        setIsLoading((loading) => {
+          if (loading) {
+            setLoadingError("Payment was cancelled. You can try again.");
+            return false;
+          }
+          return loading;
+        });
+      }, 90000);
+
       rzp.open();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Payment could not be started";
@@ -716,12 +902,23 @@ export default function Enroll() {
             </div>
             <AnimatePresence mode="wait">
               {step === 1 && <PersonalDetails key="step1" data={formData} onChange={(k: any, v: any) => setFormData(p => ({...p, [k]: v}))} onNext={() => setStep(2)} />}
-              {step === 2 && <MembershipSelection key="step2" classTypes={classTypes} plansByClassType={plansByClassType} selectedClassType={selectedClassType} onSelectClassType={setSelectedClassType} selectedPlans={selectedPlans} onAddPlan={handleAddPlan} onRemovePlan={(c: string) => setSelectedPlans(p => p.filter(x => x.category !== c))} onNext={nextStep} onBack={() => setStep(1)} />}
+              {step === 2 && <MembershipSelection key="step2" classTypes={classTypes} plansByClassType={plansByClassType} selectedClassType={selectedClassType} onSelectClassType={setSelectedClassType} selectedPlans={selectedPlans} onAddPlan={handleAddPlan} onRemovePlan={(c: string) => setSelectedPlans(p => p.filter(x => x.category !== c))} onNext={nextStep} onBack={() => setStep(1)} onViewSchedule={() => setScheduleSheetOpen(true)} />}
               {step === 3 && <KidDetails key="step3" data={kidInfo} onChange={(k: any, v: any) => setKidInfo(p => ({...p, [k]: v}))} onNext={() => setStep(4)} onBack={() => setStep(2)} />}
               {step === 4 && <Waiver key="step4" data={waiverData} onChange={(k: any, v: any) => setWaiverData(p => ({...p, [k]: v}))} onNext={() => setStep(5)} onBack={prevStep} />}
               {step === 5 && <Payment key="step5" plans={selectedPlans} loading={isLoading} loadingError={loadingError} onBack={() => setStep(4)} onPay={handlePay} />}
             </AnimatePresence>
         </div>
+
+        <Sheet open={scheduleSheetOpen} onOpenChange={setScheduleSheetOpen}>
+          <SheetContent side="bottom" className="rounded-t-2xl max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden bg-white dark:bg-gray-800">
+            <SheetHeader className="flex flex-row items-center justify-between space-y-0 px-6 pt-6 pb-4 pr-12 border-b border-gray-100 dark:border-gray-700 shrink-0">
+              <SheetTitle className="text-left text-lg text-gray-900 dark:text-gray-100">Schedule</SheetTitle>
+            </SheetHeader>
+            <div className="flex-1 overflow-hidden flex flex-col px-6 py-4 min-h-0">
+              <EnrollScheduleSheetContent initialBranch={selectedBranch} classTypes={classTypes} />
+            </div>
+          </SheetContent>
+        </Sheet>
     </MobileLayout>
   );
 }

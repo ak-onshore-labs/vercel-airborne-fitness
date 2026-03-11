@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Loader2, ArrowRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetch } from "@/lib/api";
+import { AirborneLogo } from "@/components/AirborneLogo";
 
 export default function Login() {
   const { loginWithPayload } = useMember();
@@ -64,7 +65,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-[#F9FAFB] px-6">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-[#F9FAFB] dark:bg-gray-900 px-6">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -72,12 +73,12 @@ export default function Login() {
         className="w-full max-w-sm flex flex-col items-center"
       >
         <div className="mb-10 w-full flex justify-center">
-           <img src="/logo.png" alt="Airborne Aerial Fitness" className="h-24 object-contain" />
+          <AirborneLogo className="h-24 object-contain" alt="Airborne Aerial Fitness" />
         </div>
 
-        <div className="w-full bg-white p-8 rounded shadow-sm border border-gray-100">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2 text-center">Welcome</h2>
-          <p className="text-gray-500 text-center text-sm mb-8">
+        <div className="w-full bg-white dark:bg-gray-800 p-8 rounded shadow-sm border border-gray-100 dark:border-gray-700 border-l-2 border-l-airborne-teal dark:border-l-teal-400">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2 text-center">Welcome</h2>
+          <p className="text-gray-500 dark:text-gray-400 text-center text-sm mb-8">
             {step === 'phone' ? 'Enter your mobile number to continue' : 'Enter the verification code sent to your phone'}
           </p>
 

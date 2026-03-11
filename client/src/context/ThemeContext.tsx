@@ -24,7 +24,7 @@ type ThemeContextType = {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [darkMode, setDarkModeState] = useState(readStored);
+  const [darkMode, setDarkModeState] = useState(() => readStored());
 
   useEffect(() => {
     applyToDocument(darkMode);
