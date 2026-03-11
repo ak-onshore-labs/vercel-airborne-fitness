@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/select";
 import { adminApiFetch, type ListResponse } from "../api";
 import { AdminTablePagination } from "../components/AdminTablePagination";
+import { useAdminPermissions } from "../useAdminPermissions";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 
@@ -93,6 +94,7 @@ function getNext7Days(): Date[] {
 }
 
 export default function AdminBookings() {
+  const { ADD } = useAdminPermissions("bookings");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [sessionDate, setSessionDate] = useState("");
@@ -333,7 +335,7 @@ export default function AdminBookings() {
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold">Bookings</h1>
-        <Button onClick={openAddBooking}>Add booking</Button>
+        {ADD && <Button onClick={openAddBooking}>Add booking</Button>}
       </div>
 
       <Dialog open={addBookingOpen} onOpenChange={(open) => !open && closeAddBooking()}>

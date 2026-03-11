@@ -27,6 +27,7 @@ import {
 import { Plus } from "lucide-react";
 import { adminApiFetch, type ListResponse } from "../api";
 import { AdminTablePagination } from "../components/AdminTablePagination";
+import { useAdminPermissions } from "../useAdminPermissions";
 
 type ClassTypeItem = {
   id: string;
@@ -44,6 +45,7 @@ const AGE_GROUP_OPTIONS = [
 const STRENGTH_LEVELS = [1, 2, 3, 4, 5];
 
 export default function AdminClassTypes() {
+  const { ADD } = useAdminPermissions("class-types");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [data, setData] = useState<ListResponse<ClassTypeItem> | null>(null);
@@ -129,9 +131,11 @@ export default function AdminClassTypes() {
       <h1 className="text-2xl font-semibold">Class Types</h1>
 
       <div className="flex justify-end">
-        <Button variant="default" onClick={openAdd}>
-          Add class type
-        </Button>
+        {ADD && (
+          <Button variant="default" onClick={openAdd}>
+            Add class type
+          </Button>
+        )}
       </div>
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>

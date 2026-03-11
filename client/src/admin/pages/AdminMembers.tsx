@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/table";
 import { adminApiFetch, type ListResponse } from "../api";
 import { AdminTablePagination } from "../components/AdminTablePagination";
+import { useAdminPermissions } from "../useAdminPermissions";
 
 type MemberItem = {
   id: string;
@@ -30,6 +31,7 @@ type MemberItem = {
 };
 
 export default function AdminMembers() {
+  const { ADD, EDIT } = useAdminPermissions("members");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [phone, setPhone] = useState("");
@@ -177,7 +179,7 @@ export default function AdminMembers() {
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold">Members</h1>
-        <Button onClick={openAdd}>Create member</Button>
+        {ADD && <Button onClick={openAdd}>Create member</Button>}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -377,7 +379,9 @@ export default function AdminMembers() {
                   <TableCell>{m.email ?? "—"}</TableCell>
                   <TableCell>{m.memberType}</TableCell>
                   <TableCell>
-                    <Button variant="outline" size="sm" onClick={() => openEdit(m)}>Edit</Button>
+                    {EDIT && (
+                      <Button variant="outline" size="sm" onClick={() => openEdit(m)}>Edit</Button>
+                    )}
                   </TableCell>
                 </TableRow>
               ))

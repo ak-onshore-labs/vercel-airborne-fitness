@@ -3,8 +3,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { adminApiFetch } from "../api";
+import { useAdminPermissions } from "../useAdminPermissions";
 
 export default function AdminSettings() {
+  const { EDIT } = useAdminPermissions("settings");
   const [cancellationWindowMinutes, setCancellationWindowMinutes] = useState<number>(60);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -72,9 +74,11 @@ export default function AdminSettings() {
         </div>
         {error && <p className="text-sm text-destructive">{error}</p>}
         {message && <p className="text-sm text-green-600 dark:text-green-400">{message}</p>}
-        <Button onClick={handleSave} disabled={saving}>
-          {saving ? "Saving…" : "Save"}
-        </Button>
+        {EDIT && (
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? "Saving…" : "Save"}
+          </Button>
+        )}
       </div>
     </div>
   );

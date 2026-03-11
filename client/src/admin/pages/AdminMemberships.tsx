@@ -20,6 +20,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { adminApiFetch, type ListResponse } from "../api";
 import { AdminTablePagination } from "../components/AdminTablePagination";
+import { useAdminPermissions } from "../useAdminPermissions";
 
 type MemberOption = { id: string; name?: string | null; mobile?: string };
 type PlanOption = { id: string; name: string; classTypeName: string; sessionsTotal: number; validityDays: number; price: number };
@@ -40,6 +41,7 @@ type MembershipItem = {
 };
 
 export default function AdminMemberships() {
+  const { ADD } = useAdminPermissions("memberships");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [memberIdFilter, setMemberIdFilter] = useState("");
@@ -206,7 +208,7 @@ export default function AdminMemberships() {
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold">Memberships</h1>
-        <Button onClick={openAdd}>Create membership</Button>
+        {ADD && <Button onClick={openAdd}>Create membership</Button>}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">

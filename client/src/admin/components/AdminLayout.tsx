@@ -2,10 +2,11 @@ import { useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { AdminSidebar } from "./AdminSidebar";
 import { ADMIN_SECTION_COMPONENTS } from "../routes";
-import { hashToSection } from "../constants";
+import { hashToSection, sectionToHash } from "../constants";
 import { setActiveSection, toggleMobileMenu } from "../store/slices/adminUiSlice";
 import type { AdminRootState } from "../store";
 import type { AdminSection } from "../store/slices/adminUiSlice";
+import { useViewableSections } from "../useAdminPermissions";
 import { Menu } from "lucide-react";
 
 function getHashSection(): AdminSection {
@@ -17,6 +18,7 @@ export function AdminLayout() {
   const activeSection = useSelector(
     (s: AdminRootState) => s.adminUi.activeSection
   );
+  const viewableSections = useViewableSections();
 
   useEffect(() => {
     const syncFromHash = () => dispatch(setActiveSection(getHashSection()));
@@ -28,10 +30,18 @@ export function AdminLayout() {
   useEffect(() => {
     const hash = window.location.hash;
     if (!hash || hash === "#") {
-      window.location.hash = "#/dashboard";
-      dispatch(setActiveSection("dashboard"));
+      const first = viewableSections[0] ?? "dashboard";
+      window.location.hash = sectionToHash(first);
+      dispatch(setActiveSection(first));
+      return;
     }
-  }, [dispatch]);
+    const section = getHashSection();
+    if (viewableSections.length > 0 && !viewableSections.includes(section)) {
+      const first = viewableSections[0];
+      window.location.hash = sectionToHash(first);
+      dispatch(setActiveSection(first));
+    }
+  }, [dispatch, viewableSections]);
 
   const SectionComponent = ADMIN_SECTION_COMPONENTS[activeSection];
 

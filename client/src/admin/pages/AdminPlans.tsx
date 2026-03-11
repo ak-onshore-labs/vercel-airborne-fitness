@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/table";
 import { adminApiFetch, type ListResponse } from "../api";
 import { AdminTablePagination } from "../components/AdminTablePagination";
+import { useAdminPermissions } from "../useAdminPermissions";
 
 type PlanItem = {
   id: string;
@@ -42,6 +43,7 @@ type PlanItem = {
 type ClassTypeOption = { id: string; name: string };
 
 export default function AdminPlans() {
+  const { ADD, EDIT } = useAdminPermissions("plans");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [classTypeName, setClassTypeName] = useState("");
@@ -166,9 +168,11 @@ export default function AdminPlans() {
       <h1 className="text-2xl font-semibold">Plans</h1>
 
       <div className="flex justify-end">
-        <Button variant="default" onClick={openAdd}>
-          Add plan
-        </Button>
+        {ADD && (
+          <Button variant="default" onClick={openAdd}>
+            Add plan
+          </Button>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -296,7 +300,9 @@ export default function AdminPlans() {
                   <TableCell>{p.price}</TableCell>
                   <TableCell>{p.isActive ? "Yes" : "No"}</TableCell>
                   <TableCell>
-                    <Button variant="outline" size="sm" onClick={() => openEdit(p)}>Edit</Button>
+                    {EDIT && (
+                      <Button variant="outline" size="sm" onClick={() => openEdit(p)}>Edit</Button>
+                    )}
                   </TableCell>
                 </TableRow>
               ))

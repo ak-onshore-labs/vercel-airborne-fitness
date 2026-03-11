@@ -3,8 +3,9 @@ import { asyncHandler, requireAuth } from "../middleware";
 import { storage } from "../storage";
 import { signToken } from "../lib/jwt";
 
-const MSG91_SEND_OTP_URL = "https://api.msg91.com/api/sendotp.php";
+const MSG91_SEND_OTP_URL = "https://control.msg91.com/api/v5/otp";
 const MSG91_VERIFY_OTP_URL = "https://control.msg91.com/api/v5/otp/verify";
+const MSG91_OTP_TEMPLATE_ID = "69b1704fc22c055df50c2443";
 
 function getMsg91Auth(): string {
   const key = process.env.MSG_API_KEY;
@@ -15,13 +16,6 @@ function getMsg91Auth(): string {
 }
 
 const digitsOnly = (s: string) => s.replace(/\D/g, "");
-
-function toMsg91Mobile(phone: string): string {
-  const d = digitsOnly(phone);
-  if (d.length === 10) return `91${d}`;
-  if (d.length >= 10 && d.startsWith("91")) return d.slice(0, 12);
-  return d.slice(-12);
-}
 
 function toTenDigits(phone: string): string {
   const d = digitsOnly(phone);
@@ -40,10 +34,16 @@ export function registerAuthRoutes(app: Express): void {
 
       try {
         const authKey = getMsg91Auth();
-        const mobile = toMsg91Mobile(phone);
-        const url = `${MSG91_SEND_OTP_URL}?authkey=${encodeURIComponent(authKey)}&mobile=${encodeURIComponent(mobile)}&sender=MSGIND`;
-
-        const msgRes = await fetch(url, { method: "GET" });
+        const mobile = toTenDigits(phone);
+        const msgRes = await fetch(MSG91_SEND_OTP_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            authkey: authKey,
+            mobile,
+            template_id: MSG91_OTP_TEMPLATE_ID,
+          }),
+        });
         const text = await msgRes.text();
         let data: { type?: string; message?: string };
         try {
@@ -83,13 +83,12 @@ export function registerAuthRoutes(app: Express): void {
 
       if (!approved) {
         const authKey = getMsg91Auth();
-        const mobile = toMsg91Mobile(phone);
-        const verifyUrl = `${MSG91_VERIFY_OTP_URL}?mobile=${encodeURIComponent(mobile)}&otp=${encodeURIComponent(codeTrimmed)}`;
+        const mobile = toTenDigits(phone);
+        const verifyUrl = `${MSG91_VERIFY_OTP_URL}?otp=${encodeURIComponent(codeTrimmed)}&mobile=${encodeURIComponent(mobile)}`;
 
         const msgRes = await fetch(verifyUrl, {
           method: "GET",
           headers: {
-            accept: "application/json",
             authkey: authKey,
           },
         });

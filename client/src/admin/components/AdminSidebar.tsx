@@ -5,6 +5,7 @@ import type { AdminRootState } from "../store";
 import type { AdminSection } from "../store/slices/adminUiSlice";
 import { setActiveSection, setMobileMenuOpen } from "../store/slices/adminUiSlice";
 import { ADMIN_MENU, sectionToHash } from "../constants";
+import { useViewableSections } from "../useAdminPermissions";
 
 export function AdminSidebar() {
   const dispatch = useDispatch();
@@ -13,6 +14,8 @@ export function AdminSidebar() {
   );
   const collapsed = useSelector((s: AdminRootState) => s.adminUi.sidebarCollapsed);
   const mobileMenuOpen = useSelector((s: AdminRootState) => s.adminUi.mobileMenuOpen);
+  const viewableSections = useViewableSections();
+  const menuItems = ADMIN_MENU.filter(({ id }) => viewableSections.includes(id));
 
   const handleNav = (id: AdminSection) => {
     dispatch(setActiveSection(id));
@@ -49,7 +52,7 @@ export function AdminSidebar() {
           )}
         </div>
         <nav className="flex-1 space-y-0.5 p-2 overflow-y-auto">
-          {ADMIN_MENU.map(({ id, label }) => (
+          {menuItems.map(({ id, label }) => (
             <button
               key={id}
               type="button"

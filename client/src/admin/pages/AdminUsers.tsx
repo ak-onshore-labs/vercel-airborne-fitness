@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/table";
 import { adminApiFetch, type ListResponse } from "../api";
 import { AdminTablePagination } from "../components/AdminTablePagination";
+import { useAdminPermissions } from "../useAdminPermissions";
 import type { User, UserRole } from "@shared/schema";
 
 const USER_ROLE_OPTIONS: { value: UserRole; label: string }[] = [
@@ -56,6 +57,7 @@ function displayGender(gender: string | undefined | null): string {
 type ModalMode = "add" | "edit";
 
 export default function AdminUsers() {
+  const { ADD, EDIT } = useAdminPermissions("users");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [nameInput, setNameInput] = useState("");
@@ -189,9 +191,11 @@ export default function AdminUsers() {
       <h1 className="text-2xl font-semibold">Users</h1>
 
       <div className="flex justify-end">
-        <Button variant="default" onClick={openAdd}>
-          Add user
-        </Button>
+        {ADD && (
+          <Button variant="default" onClick={openAdd}>
+            Add user
+          </Button>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -321,13 +325,15 @@ export default function AdminUsers() {
                   <TableCell>{displayGender(u.gender)}</TableCell>
                   <TableCell>{u.userRole ?? "—"}</TableCell>
                   <TableCell>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openEdit(u)}
-                    >
-                      Edit
-                    </Button>
+                    {EDIT && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openEdit(u)}
+                      >
+                        Edit
+                      </Button>
+                    )}
                   </TableCell>
                 </TableRow>
               ))
