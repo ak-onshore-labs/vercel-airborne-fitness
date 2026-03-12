@@ -41,3 +41,12 @@ export interface ListResponse<T> {
   items: T[];
   total: number;
 }
+
+import type { DashboardStats } from "@shared/schema";
+
+export type { DashboardStats };
+
+export async function getDashboard(): Promise<DashboardStats | null> {
+  const result = await adminApiFetch<DashboardStats>("/api/admin/dashboard");
+  return result.ok ? result.data : null;
+}

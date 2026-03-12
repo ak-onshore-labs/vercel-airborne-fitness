@@ -63,13 +63,13 @@ export default function ProfileSettings() {
   return (
     <MobileLayout>
       <div className="p-6">
-        <Button variant="ghost" size="sm" onClick={() => setLocation("/profile")} className="mb-4 -ml-2 text-gray-600">
+        <Button variant="ghost" size="sm" onClick={() => setLocation("/profile")} className="mb-4 -ml-2 text-airborne-teal hover:bg-teal-50 dark:hover:bg-teal-900/30">
           <ArrowLeft size={16} className="mr-2" /> Back to Profile
         </Button>
-        <h1 className="text-2xl font-bold text-gray-900 mb-6">Account Settings</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6">Account Settings</h1>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="text-xs font-medium text-gray-500 block mb-1">Full Name</label>
+            <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Full Name</label>
             <Input
               value={formData.fullName}
               onChange={(e) => setFormData((p) => ({ ...p, fullName: e.target.value }))}

@@ -1,9 +1,11 @@
 import { useMember } from "@/context/MemberContext";
 import MobileLayout from "@/components/layout/MobileLayout";
+import { HeroWithAccent } from "@/components/HeroWithAccent";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
 import { format } from "date-fns";
 import { Calendar, CheckCircle2, PlusCircle, Loader2 } from "lucide-react";
+import { formatTime12h } from "@/lib/formatTime";
 
 export default function Dashboard() {
   const { user, bookedSessions } = useMember();
@@ -22,10 +24,12 @@ export default function Dashboard() {
   return (
     <MobileLayout>
       <div className="p-6 space-y-8">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100" data-testid="text-greeting">Hi, {user.name.split(' ')[0]}</h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm">Welcome back to Airborne.</p>
-        </div>
+        <HeroWithAccent>
+          <div className="space-y-1">
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100" data-testid="text-greeting">Hi, {user.name.split(' ')[0]}</h1>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">Welcome back to Airborne.</p>
+          </div>
+        </HeroWithAccent>
 
         <div className="space-y-4">
             <div className="flex justify-between items-center">
@@ -42,11 +46,11 @@ export default function Dashboard() {
           {hasAnyMembership ? (
             <div className="space-y-3">
               {Object.entries(user.memberships).map(([category, details]) => (
-                <div key={category} className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-5 rounded shadow-sm relative overflow-hidden group" data-testid={`card-membership-${category}`}>
+                <div key={category} className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 border-l-[3px] border-l-airborne-teal dark:border-l-teal-400 p-5 rounded shadow-sm relative overflow-hidden group transition-shadow duration-200 hover:shadow-md" data-testid={`card-membership-${category}`}>
                   <div className="relative z-10">
                     <div className="flex justify-between items-start mb-2">
                         <h3 className="font-bold text-gray-900 dark:text-gray-100 text-lg">{category}</h3>
-                        <span className="bg-teal-50 dark:bg-teal-900/40 text-airborne-teal text-[10px] px-2 py-1 rounded font-medium uppercase tracking-wide">Active</span>
+                        <span className="bg-teal-50 dark:bg-teal-900/40 text-airborne-teal dark:text-teal-300 text-[10px] px-2 py-1 rounded font-medium uppercase tracking-wide">Active</span>
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">{details.planName}</p>
                     <div className="flex items-end justify-between">
@@ -66,7 +70,7 @@ export default function Dashboard() {
               ))}
             </div>
           ) : (
-            <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-6 rounded shadow-sm text-center" data-testid="card-membership-inactive">
+            <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 border-l-[3px] border-l-airborne-teal dark:border-l-teal-400 p-6 rounded shadow-sm text-center transition-shadow duration-200 hover:shadow-md" data-testid="card-membership-inactive">
               <div className="w-12 h-12 bg-gray-50 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-3 text-gray-400 dark:text-gray-500">
                   <Calendar size={24} />
               </div>
@@ -90,10 +94,10 @@ export default function Dashboard() {
             {todaysBookings.length > 0 ? (
                 <div className="space-y-3">
                     {todaysBookings.map(booking => (
-                    <div key={booking.id} className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-4 rounded shadow-sm flex justify-between items-center" data-testid={`card-today-booking-${booking.id}`}>
+                    <div key={booking.id} className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 border-l-2 border-l-airborne-teal dark:border-l-teal-400 p-4 rounded shadow-sm flex justify-between items-center transition-shadow duration-200 hover:shadow-md" data-testid={`card-today-booking-${booking.id}`}>
                         <div>
                           <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-1 capitalize">{booking.category}</h3>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">{booking.startTime} - {booking.endTime} | {booking.branch}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">{formatTime12h(booking.startTime)} - {formatTime12h(booking.endTime)} | {booking.branch}</p>
                         </div>
                         <Button disabled className="h-9 bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 border border-green-100 dark:border-green-800 shadow-none"><CheckCircle2 size={14} className="mr-1"/> Booked</Button>
                     </div>

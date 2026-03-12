@@ -583,6 +583,15 @@ export function registerAdminRoutes(app: Express): void {
   );
 
   app.get(
+    "/api/admin/dashboard",
+    requireAdminAsync,
+    asyncHandler(async (_req: Request, res: Response) => {
+      const stats = await storage.getDashboardStats();
+      res.json(stats);
+    })
+  );
+
+  app.get(
     "/api/admin/settings",
     requireAdminAsync,
     asyncHandler(async (_req: Request, res: Response) => {

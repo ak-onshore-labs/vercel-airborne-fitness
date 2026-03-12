@@ -3,11 +3,12 @@ import { storage } from "../storage";
 import { asyncHandler } from "../middleware";
 
 export function registerMasterDataRoutes(app: Express): void {
-  // Class types (DB-driven)
+  // Class types (DB-driven), sorted alphabetically by name for member-facing flows
   app.get("/api/class-types", asyncHandler(async (_req: Request, res: Response) => {
     const types = await storage.getClassTypes();
+    const sorted = [...types].sort((a, b) => a.name.localeCompare(b.name, "en"));
     res.json(
-      types.map((t) => ({
+      sorted.map((t) => ({
         id: t.id,
         name: t.name,
         ageGroup: t.ageGroup,
@@ -21,8 +22,9 @@ export function registerMasterDataRoutes(app: Express): void {
   // Legacy alias for Enroll
   app.get("/api/categories", asyncHandler(async (_req: Request, res: Response) => {
     const types = await storage.getClassTypes();
+    const sorted = [...types].sort((a, b) => a.name.localeCompare(b.name, "en"));
     res.json(
-      types.map((t) => ({
+      sorted.map((t) => ({
         id: t.id,
         name: t.name,
         ageGroup: t.ageGroup,

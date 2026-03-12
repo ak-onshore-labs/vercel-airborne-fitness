@@ -16,6 +16,12 @@ import type {
   InsertMembershipPlan,
   Transaction,
   InsertTransaction,
+  DashboardStats,
+  DashboardSessionRow,
+  DashboardClassTypeRank,
+  DashboardRecentEnrollment,
+  DashboardBranchStats,
+  DashboardMembershipRow,
 } from "@shared/schema";
 import {
   UserModel,
@@ -161,7 +167,11 @@ export interface IStorage {
     items: (BookingRecord & { memberMobile?: string; classTypeName?: string; startTime?: string; endTime?: string; branch?: string })[];
     total: number;
   }>;
+  getDashboardStats(): Promise<DashboardStats>;
 }
+
+/** Occupancy fraction (0–1) above which a class is considered "almost full" for dashboard. */
+export const ALMOST_FULL_OCCUPANCY_THRESHOLD = 0.8;
 
 export class MongoStorage implements IStorage {
   async getUserByMobile(mobile: string): Promise<User | undefined> {
@@ -270,11 +280,14 @@ export class MongoStorage implements IStorage {
         validityDays: p.validityDays,
       });
     }
+    for (const name of Object.keys(out)) {
+      out[name].sort((a, b) => a.price - b.price);
+    }
     return out;
   }
 
   async getMembershipPlansByClassType(classTypeId: string): Promise<Array<{ id: string; name: string; sessions: number; price: number; validityDays: number }>> {
-    const plans = await MembershipPlanModel.find({ classTypeId, isActive: true });
+    const plans = await MembershipPlanModel.find({ classTypeId, isActive: true }).sort({ price: 1 });
     return toApiList<MembershipPlan>(plans).map((p) => ({
       id: p.id,
       name: p.name,
@@ -765,6 +778,262 @@ export class MongoStorage implements IStorage {
       };
     });
     return { items, total };
+  }
+
+  async getDashboardStats(): Promise<DashboardStats> {
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+    const sevenDaysLater = new Date(now);
+    sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
+    const thirtyDaysLater = new Date(now);
+    thirtyDaysLater.setDate(thirtyDaysLater.getDate() + 30);
+    const sevenDaysAgo = new Date(now);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const thirtyDaysAgo = new Date(now);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const fromDate30 = thirtyDaysAgo.toISOString().slice(0, 10);
+
+    const types = await ClassTypeModel.find({});
+    const typeMap: Record<string, string> = {};
+    for (const t of types) typeMap[(t as any)._id.toString()] = t.name;
+
+    // Active members: distinct memberIds with at least one membership where expiryDate > now and sessionsRemaining > 0
+    const activeMemberIds = await MembershipModel.distinct("memberId", {
+      expiryDate: { $gt: now },
+      sessionsRemaining: { $gt: 0 },
+    });
+    const activeMembersCount = activeMemberIds.length;
+
+    // Memberships expiring in next 7 / 30 days (future window)
+    const [membershipsExpiringIn7Days, membershipsExpiringIn30Days] = await Promise.all([
+      MembershipModel.countDocuments({
+        expiryDate: { $gt: now, $lte: sevenDaysLater },
+      }),
+      MembershipModel.countDocuments({
+        expiryDate: { $gt: now, $lte: thirtyDaysLater },
+      }),
+    ]);
+
+    // Memberships expired in last 7 / 30 days (past window)
+    const [membershipsExpiredInLast7Days, membershipsExpiredInLast30Days] = await Promise.all([
+      MembershipModel.countDocuments({
+        expiryDate: { $gte: sevenDaysAgo, $lte: now },
+      }),
+      MembershipModel.countDocuments({
+        expiryDate: { $gte: thirtyDaysAgo, $lte: now },
+      }),
+    ]);
+
+    const buildMembershipRows = async (
+      filter: Record<string, unknown>
+    ): Promise<DashboardMembershipRow[]> => {
+      const docs = await MembershipModel.find(filter).sort({ expiryDate: 1 }).lean();
+      if (docs.length === 0) return [];
+      const memberIds = Array.from(new Set((docs as any[]).map((m) => m.memberId)));
+      const planIds = Array.from(new Set((docs as any[]).map((m) => m.membershipPlanId)));
+      const [memberDocs, planDocs] = await Promise.all([
+        MemberModel.find({ _id: { $in: memberIds.map((id) => new mongoose.Types.ObjectId(id)) } }).lean(),
+        MembershipPlanModel.find({ _id: { $in: planIds.map((id) => new mongoose.Types.ObjectId(id)) } }).lean(),
+      ]);
+      const memberNameMap: Record<string, string> = {};
+      const memberUserIdMap: Record<string, string> = {};
+      for (const m of memberDocs as any[]) {
+        const id = m._id.toString();
+        memberNameMap[id] = m.name ?? "";
+        memberUserIdMap[id] = m.userId;
+      }
+      const planMapById: Record<string, { name: string; classTypeId: string }> = {};
+      for (const p of planDocs as any[]) {
+        planMapById[p._id.toString()] = { name: p.name, classTypeId: p.classTypeId };
+      }
+      const ctIds = Array.from(new Set(Object.values(planMapById).map((x) => x.classTypeId)));
+      const typeDocs = await ClassTypeModel.find({ _id: { $in: ctIds.map((id) => new mongoose.Types.ObjectId(id)) } }).lean();
+      const typeNameMap: Record<string, string> = {};
+      for (const t of typeDocs as any[]) typeNameMap[t._id.toString()] = t.name;
+      const userIds = Array.from(new Set(Object.values(memberUserIdMap)));
+      const userDocs = await UserModel.find({ _id: { $in: userIds.map((id) => new mongoose.Types.ObjectId(id)) } }).lean();
+      const userMobileMap: Record<string, string> = {};
+      for (const u of userDocs as any[]) userMobileMap[u._id.toString()] = u.mobile ?? "";
+      return (docs as any[]).map((m) => {
+        const plan = planMapById[m.membershipPlanId];
+        const classTypeName = plan ? typeNameMap[plan.classTypeId] ?? "" : "";
+        const userId = memberUserIdMap[m.memberId];
+        return {
+          id: m._id.toString(),
+          memberId: m.memberId,
+          memberName: memberNameMap[m.memberId] ?? "",
+          planName: plan?.name ?? "",
+          classTypeName,
+          expiryDate: (m.expiryDate as Date).toISOString(),
+          sessionsRemaining: m.sessionsRemaining ?? 0,
+          memberMobile: userId ? userMobileMap[userId] : undefined,
+        };
+      });
+    };
+
+    const [membershipsExpiringNext7Days, membershipsExpiringNext30Days, membershipsExpiredLast7Days, membershipsExpiredLast30Days] =
+      await Promise.all([
+        buildMembershipRows({ expiryDate: { $gt: now, $lte: sevenDaysLater } }),
+        buildMembershipRows({ expiryDate: { $gt: now, $lte: thirtyDaysLater } }),
+        buildMembershipRows({ expiryDate: { $gte: sevenDaysAgo, $lte: now } }),
+        buildMembershipRows({ expiryDate: { $gte: thirtyDaysAgo, $lte: now } }),
+      ]);
+
+    // Today's bookings: only seat-occupying statuses (BOOKED, ATTENDED) — one booking = one seat, no double-count
+    const todayBookingsCount = await BookingModel.countDocuments({
+      sessionDate: todayStr,
+      status: { $in: ["BOOKED", "ATTENDED"] },
+    });
+
+    // Waitlist: today and upcoming only (sessionDate >= today)
+    const waitlistCountTodayAndUpcoming = await BookingModel.countDocuments({
+      status: "WAITLIST",
+      sessionDate: { $gte: todayStr },
+    });
+
+    // Build today's sessions for all branches (for occupancy, full/almost-full, branch-wise)
+    const branches = await ScheduleSlotModel.distinct("branch");
+    const dayOfWeek = new Date(todayStr + "T12:00:00").getDay();
+    const allSlotsToday = await ScheduleSlotModel.find({ dayOfWeek }).sort({ branch: 1, startHour: 1, startMinute: 1 });
+
+    let totalBookedToday = 0;
+    let totalCapacityToday = 0;
+    const classesFullToday: DashboardSessionRow[] = [];
+    const classesAlmostFullToday: DashboardSessionRow[] = [];
+    const branchBooked: Record<string, number> = {};
+    const branchCapacity: Record<string, number> = {};
+    for (const b of branches) {
+      branchBooked[b] = 0;
+      branchCapacity[b] = 0;
+    }
+
+    for (const slot of allSlotsToday) {
+      const sid = (slot as any)._id.toString();
+      const category = typeMap[slot.classTypeId] ?? "";
+      const startTime = `${pad2(slot.startHour)}:${pad2(slot.startMinute)}`;
+      const endTime = `${pad2(slot.endHour)}:${pad2(slot.endMinute)}`;
+      const bookingCount = await BookingModel.countDocuments({
+        scheduleId: sid,
+        sessionDate: todayStr,
+        status: { $in: ["BOOKED", "ATTENDED"] },
+      });
+      const capacity = slot.capacity;
+      totalBookedToday += bookingCount;
+      totalCapacityToday += capacity;
+      branchBooked[slot.branch] = (branchBooked[slot.branch] ?? 0) + bookingCount;
+      branchCapacity[slot.branch] = (branchCapacity[slot.branch] ?? 0) + capacity;
+
+      const row: DashboardSessionRow = {
+        scheduleId: sid,
+        sessionDate: todayStr,
+        startTime,
+        endTime,
+        category,
+        branch: slot.branch,
+        bookingCount,
+        capacity,
+      };
+      if (bookingCount >= capacity) {
+        classesFullToday.push(row);
+      } else if (capacity > 0 && bookingCount >= capacity * ALMOST_FULL_OCCUPANCY_THRESHOLD) {
+        classesAlmostFullToday.push(row);
+      }
+    }
+
+    const todayOccupancyRatePercent =
+      totalCapacityToday > 0 ? Math.round((totalBookedToday / totalCapacityToday) * 100) : 0;
+
+    const branchWiseBookingsAndOccupancy: DashboardBranchStats[] = branches.map((branch) => {
+      const booked = branchBooked[branch] ?? 0;
+      const cap = branchCapacity[branch] ?? 0;
+      const occupancyRatePercent = cap > 0 ? Math.round((booked / cap) * 100) : 0;
+      return { branch, bookingCount: booked, occupancyRatePercent };
+    });
+
+    // Most booked class types (last 30 days, top 5) — only seat-occupying statuses
+    const slotIds = (await ScheduleSlotModel.find({}).select("_id classTypeId")).map((s: any) => ({
+      id: s._id.toString(),
+      classTypeId: s.classTypeId,
+    }));
+    const slotIdToClassTypeId: Record<string, string> = {};
+    for (const s of slotIds) slotIdToClassTypeId[s.id] = s.classTypeId;
+
+    const bookingAgg = await BookingModel.aggregate([
+      {
+        $match: {
+          sessionDate: { $gte: fromDate30 },
+          status: { $in: ["BOOKED", "ATTENDED"] },
+        },
+      },
+      { $group: { _id: "$scheduleId", count: { $sum: 1 } } },
+    ]);
+    const classTypeCount: Record<string, number> = {};
+    for (const g of bookingAgg) {
+      const ctId = slotIdToClassTypeId[g._id];
+      if (ctId) classTypeCount[ctId] = (classTypeCount[ctId] ?? 0) + g.count;
+    }
+    const mostBookedClassTypesLast30Days: DashboardClassTypeRank[] = Object.entries(classTypeCount)
+      .map(([classTypeId, bookingCount]) => ({
+        classTypeName: typeMap[classTypeId] ?? classTypeId,
+        bookingCount,
+      }))
+      .sort((a, b) => b.bookingCount - a.bookingCount)
+      .slice(0, 5);
+
+    // Recent enrollments (memberships, sorted by createdAt desc)
+    const recentMembershipDocs = await MembershipModel.find({})
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .lean();
+    const memberIds = Array.from(new Set(recentMembershipDocs.map((m: any) => m.memberId)));
+    const planIds = Array.from(new Set(recentMembershipDocs.map((m: any) => m.membershipPlanId)));
+    const [memberDocs, planDocs] = await Promise.all([
+      MemberModel.find({ _id: { $in: memberIds.map((id) => new mongoose.Types.ObjectId(id)) } }).lean(),
+      MembershipPlanModel.find({ _id: { $in: planIds.map((id) => new mongoose.Types.ObjectId(id)) } }).lean(),
+    ]);
+    const memberNameMap: Record<string, string> = {};
+    for (const m of memberDocs as any[]) memberNameMap[m._id.toString()] = m.name ?? "";
+    const planMapById: Record<string, { name: string; classTypeId: string }> = {};
+    for (const p of planDocs as any[]) {
+      planMapById[p._id.toString()] = { name: p.name, classTypeId: p.classTypeId };
+    }
+    const ctIds = Array.from(new Set(Object.values(planMapById).map((x) => x.classTypeId)));
+    const typeDocs = await ClassTypeModel.find({ _id: { $in: ctIds.map((id) => new mongoose.Types.ObjectId(id)) } }).lean();
+    const typeNameMap: Record<string, string> = {};
+    for (const t of typeDocs as any[]) typeNameMap[t._id.toString()] = t.name;
+
+    const recentEnrollments: DashboardRecentEnrollment[] = recentMembershipDocs.map((m: any) => {
+      const id = m._id.toString();
+      const plan = planMapById[m.membershipPlanId];
+      const classTypeName = plan ? typeNameMap[plan.classTypeId] : undefined;
+      return {
+        id,
+        memberName: memberNameMap[m.memberId] ?? "",
+        planName: plan?.name ?? "",
+        classTypeName,
+        createdAt: (m.createdAt as Date).toISOString(),
+      };
+    });
+
+    return {
+      activeMembersCount,
+      membershipsExpiringIn7Days,
+      membershipsExpiringIn30Days,
+      membershipsExpiredInLast7Days,
+      membershipsExpiredInLast30Days,
+      membershipsExpiringNext7Days,
+      membershipsExpiringNext30Days,
+      membershipsExpiredLast7Days,
+      membershipsExpiredLast30Days,
+      todayBookingsCount,
+      todayOccupancyRatePercent,
+      classesFullToday,
+      classesAlmostFullToday,
+      waitlistCountTodayAndUpcoming,
+      mostBookedClassTypesLast30Days,
+      recentEnrollments,
+      branchWiseBookingsAndOccupancy,
+    };
   }
 }
 

@@ -140,3 +140,71 @@ export type InsertMembershipPlan = Omit<MembershipPlan, "id">;
 export type InsertScheduleSlot = Omit<ScheduleSlot, "id">;
 export type InsertWaiver = Omit<WaiverSignature, "id" | "createdAt"> & { createdAt?: Date };
 export type InsertTransaction = Omit<Transaction, "id" | "createdAt" | "updatedAt"> & { createdAt?: Date; updatedAt?: Date };
+
+// ----- Admin dashboard (operational metrics) -----
+
+/** One session row for capacity insights (full / almost full today). */
+export interface DashboardSessionRow {
+  scheduleId: string;
+  sessionDate: string;
+  startTime: string;
+  endTime: string;
+  category: string;
+  branch: string;
+  bookingCount: number;
+  capacity: number;
+}
+
+/** One class type with booking count for "most booked" (last 30 days). */
+export interface DashboardClassTypeRank {
+  classTypeName: string;
+  bookingCount: number;
+}
+
+/** One recent membership (enrollment) for dashboard. */
+export interface DashboardRecentEnrollment {
+  id: string;
+  memberName: string;
+  planName: string;
+  classTypeName?: string;
+  createdAt: string;
+}
+
+/** Per-branch today stats. */
+export interface DashboardBranchStats {
+  branch: string;
+  bookingCount: number;
+  occupancyRatePercent: number;
+}
+
+/** One membership row for lifecycle drill-down (expiring / expired). */
+export interface DashboardMembershipRow {
+  id: string;
+  memberId: string;
+  memberName: string;
+  planName: string;
+  classTypeName: string;
+  expiryDate: string;
+  sessionsRemaining: number;
+  memberMobile?: string;
+}
+
+export interface DashboardStats {
+  activeMembersCount: number;
+  membershipsExpiringIn7Days: number;
+  membershipsExpiringIn30Days: number;
+  membershipsExpiredInLast7Days: number;
+  membershipsExpiredInLast30Days: number;
+  membershipsExpiringNext7Days: DashboardMembershipRow[];
+  membershipsExpiringNext30Days: DashboardMembershipRow[];
+  membershipsExpiredLast7Days: DashboardMembershipRow[];
+  membershipsExpiredLast30Days: DashboardMembershipRow[];
+  todayBookingsCount: number;
+  todayOccupancyRatePercent: number;
+  classesFullToday: DashboardSessionRow[];
+  classesAlmostFullToday: DashboardSessionRow[];
+  waitlistCountTodayAndUpcoming: number;
+  mostBookedClassTypesLast30Days: DashboardClassTypeRank[];
+  recentEnrollments: DashboardRecentEnrollment[];
+  branchWiseBookingsAndOccupancy: DashboardBranchStats[];
+}
