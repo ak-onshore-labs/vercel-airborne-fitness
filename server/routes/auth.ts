@@ -5,7 +5,14 @@ import { signToken } from "../lib/jwt";
 import { getMembershipUsabilityState } from "@shared/membershipState";
 
 function tierRank(
-  x: { expiryDate: string; sessionsRemaining: number; extensionApplied: boolean },
+  x: {
+    expiryDate: string;
+    sessionsRemaining: number;
+    extensionApplied: boolean;
+    pauseUsed?: boolean | null;
+    pauseStart?: string | null;
+    pauseEnd?: string | null;
+  },
   now: Date
 ): number {
   const state = getMembershipUsabilityState(
@@ -13,15 +20,34 @@ function tierRank(
       expiryDate: x.expiryDate,
       sessionsRemaining: x.sessionsRemaining,
       extensionApplied: x.extensionApplied,
+      pauseUsed: x.pauseUsed,
+      pauseStart: x.pauseStart,
+      pauseEnd: x.pauseEnd,
     },
     now
   ).state;
-  return state === "active" ? 0 : state === "expired_extendable" ? 1 : 2;
+  return state === "active" ? 0 : state === "paused" ? 1 : state === "expired_extendable" ? 2 : 3;
 }
 
 function isCandidateBetter(
-  candidate: { id: string; sessionsRemaining: number; expiryDate: string; extensionApplied: boolean },
-  existing: { id: string; sessionsRemaining: number; expiryDate: string; extensionApplied: boolean },
+  candidate: {
+    id: string;
+    sessionsRemaining: number;
+    expiryDate: string;
+    extensionApplied: boolean;
+    pauseUsed?: boolean | null;
+    pauseStart?: string | null;
+    pauseEnd?: string | null;
+  },
+  existing: {
+    id: string;
+    sessionsRemaining: number;
+    expiryDate: string;
+    extensionApplied: boolean;
+    pauseUsed?: boolean | null;
+    pauseStart?: string | null;
+    pauseEnd?: string | null;
+  },
   now: Date
 ): boolean {
   const ra = tierRank(candidate, now);
@@ -164,7 +190,20 @@ export function registerAuthRoutes(app: Express): void {
         members = [adult];
       }
 
-      const membershipMap: Record<string, { id: string; sessionsRemaining: number; expiryDate: string; extensionApplied: boolean; planName?: string }> = {};
+      const membershipMap: Record<
+        string,
+        {
+          id: string;
+          sessionsRemaining: number;
+          expiryDate: string;
+          extensionApplied: boolean;
+          planName?: string;
+          pauseUsed: boolean;
+          pauseStart: string | null;
+          pauseEnd: string | null;
+          validityDays?: number;
+        }
+      > = {};
       const { MembershipPlanModel, ClassTypeModel } = await import("../models");
       const planDocs = await MembershipPlanModel.find({});
       const types = await ClassTypeModel.find({});
@@ -184,6 +223,10 @@ export function registerAuthRoutes(app: Express): void {
             expiryDate: m.expiryDate instanceof Date ? m.expiryDate.toISOString() : String(m.expiryDate),
             extensionApplied: Boolean((m as any).extensionApplied),
             planName: plan?.name,
+            pauseUsed: Boolean((m as any).pauseUsed),
+            pauseStart: (m as any).pauseStart ? new Date((m as any).pauseStart).toISOString() : null,
+            pauseEnd: (m as any).pauseEnd ? new Date((m as any).pauseEnd).toISOString() : null,
+            validityDays: typeof (plan as any)?.validityDays === "number" ? (plan as any).validityDays : undefined,
           };
 
           const existing = membershipMap[category];
@@ -248,7 +291,20 @@ export function registerAuthRoutes(app: Express): void {
         members = [adult];
       }
 
-      const membershipMap: Record<string, { id: string; sessionsRemaining: number; expiryDate: string; extensionApplied: boolean; planName?: string }> = {};
+      const membershipMap: Record<
+        string,
+        {
+          id: string;
+          sessionsRemaining: number;
+          expiryDate: string;
+          extensionApplied: boolean;
+          planName?: string;
+          pauseUsed: boolean;
+          pauseStart: string | null;
+          pauseEnd: string | null;
+          validityDays?: number;
+        }
+      > = {};
       const { MembershipPlanModel, ClassTypeModel } = await import("../models");
       const planDocs = await MembershipPlanModel.find({});
       const types = await ClassTypeModel.find({});
@@ -268,6 +324,10 @@ export function registerAuthRoutes(app: Express): void {
             expiryDate: m.expiryDate instanceof Date ? m.expiryDate.toISOString() : String(m.expiryDate),
             extensionApplied: Boolean((m as any).extensionApplied),
             planName: plan?.name,
+            pauseUsed: Boolean((m as any).pauseUsed),
+            pauseStart: (m as any).pauseStart ? new Date((m as any).pauseStart).toISOString() : null,
+            pauseEnd: (m as any).pauseEnd ? new Date((m as any).pauseEnd).toISOString() : null,
+            validityDays: typeof (plan as any)?.validityDays === "number" ? (plan as any).validityDays : undefined,
           };
 
           const existing = membershipMap[category];

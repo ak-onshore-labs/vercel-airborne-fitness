@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { formatTime12h } from "@/lib/formatTime";
 import { MemberDialogContent } from "@/components/MemberDialogContent";
-import { getRenewUrl, isMembershipActive } from "@/lib/membershipUi";
+import { getMembershipUsability, getRenewUrl } from "@/lib/membershipUi";
 
 interface SessionDisplay {
   scheduleId: string;
@@ -255,7 +255,7 @@ export default function Book() {
             const membershipDetails = user?.memberships[session.category];
             const hasMembership = Boolean(membershipDetails);
             const bookable = isSessionBookable(session.sessionDate, session.startTime);
-            const membershipIsActive = membershipDetails ? isMembershipActive(membershipDetails) : false;
+            const membershipState = membershipDetails ? getMembershipUsability(membershipDetails).state : null;
 
             return (
                 <div
@@ -290,9 +290,18 @@ export default function Book() {
                           <Button disabled size="sm" className={cn("h-9 border shadow-none font-semibold", booking.status === "BOOKED" ? "bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 border-green-100 dark:border-green-800" : "bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-800")} data-testid={`button-status-${key}`}>
                             {booking.status === "BOOKED" ? "Booked" : `Waitlisted (#${booking.waitlistPosition})`}
                           </Button>
+                        ) : membershipState === "paused" ? (
+                             <Button
+                               disabled
+                               size="sm"
+                               className="h-9 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 text-xs px-5 rounded border border-gray-200 dark:border-gray-600 shadow-none"
+                               data-testid={`button-paused-${key}`}
+                             >
+                               Paused
+                             </Button>
                         ) : !hasMembership ? (
                              <Button size="sm" onClick={() => setLocation('/enroll')} className="h-9 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-xs px-5 rounded" data-testid={`button-enroll-${key}`}>Enroll</Button>
-                        ) : !membershipIsActive ? (
+                        ) : membershipState !== "active" ? (
                              <Button
                                size="sm"
                                onClick={() => setLocation(getRenewUrl(session.category))}

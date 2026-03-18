@@ -81,6 +81,9 @@ export interface Membership {
   extensionRequestedAt?: Date | null;
   extensionApprovedAt?: Date | null;
   extensionApplied: boolean;
+  pauseUsed: boolean;
+  pauseStart?: Date | null;
+  pauseEnd?: Date | null;
   createdAt?: Date | null;
 }
 

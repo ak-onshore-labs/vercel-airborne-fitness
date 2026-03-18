@@ -9,6 +9,10 @@ export interface MembershipDetails {
   expiryDate: string;
   extensionApplied: boolean;
   planName?: string;
+  pauseUsed: boolean;
+  pauseStart?: string | null;
+  pauseEnd?: string | null;
+  validityDays?: number;
 }
 
 export type MembershipMap = Record<string, MembershipDetails>;
@@ -74,6 +78,7 @@ interface MemberContextType {
   leaveWaitlist: (bookingId: string) => Promise<void>;
   hasMembershipFor: (categoryName: string) => boolean;
   selfExtendMembership: (categoryName: string) => Promise<boolean>;
+  pauseMembership: (membershipId: string) => Promise<boolean>;
   refreshBookings: () => Promise<void>;
   getSessionCounts: (scheduleId: string, date: string) => Promise<{ bookedCount: number; waitlistCount: number }>;
   updateProfile: (data: Partial<Pick<UserProfile, 'name' | 'email' | 'dob' | 'emergencyContactName' | 'emergencyContactPhone' | 'medicalConditions'>>) => Promise<boolean>;
@@ -103,6 +108,10 @@ export function MemberProvider({ children }: { children: ReactNode }) {
           {
             ...v,
             extensionApplied: (v as any).extensionApplied === true,
+            pauseUsed: (v as any).pauseUsed === true,
+            pauseStart: (v as any).pauseStart ?? null,
+            pauseEnd: (v as any).pauseEnd ?? null,
+            validityDays: typeof (v as any).validityDays === "number" ? (v as any).validityDays : undefined,
           },
         ])
       );
@@ -327,6 +336,48 @@ export function MemberProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
+  const pauseMembership = async (membershipId: string): Promise<boolean> => {
+    if (!user) return false;
+    const result = await apiFetch<{
+      pauseStart: string | null;
+      pauseEnd: string | null;
+      expiryDate: string;
+      pauseUsed: boolean;
+      sessionsRemaining: number;
+    }>(`/api/memberships/${encodeURIComponent(membershipId)}/pause`, { method: "POST" });
+
+    if (!result.ok) {
+      toast({ variant: "destructive", title: "Pause failed", description: result.message });
+      return false;
+    }
+
+    setUser((prev) => {
+      if (!prev) return null;
+      const entries = Object.entries(prev.memberships);
+      const found = entries.find(([, d]) => d.id === membershipId);
+      if (!found) return prev;
+      const [category] = found;
+      const existing = prev.memberships[category];
+      return {
+        ...prev,
+        memberships: {
+          ...prev.memberships,
+          [category]: {
+            ...existing,
+            pauseStart: result.data.pauseStart,
+            pauseEnd: result.data.pauseEnd,
+            expiryDate: result.data.expiryDate,
+            pauseUsed: result.data.pauseUsed === true,
+            sessionsRemaining: result.data.sessionsRemaining,
+          },
+        },
+      };
+    });
+
+    toast({ title: "Membership paused" });
+    return true;
+  };
+
   const updateProfile = async (data: Partial<Pick<UserProfile, 'name' | 'email' | 'dob' | 'emergencyContactName' | 'emergencyContactPhone' | 'medicalConditions'>>): Promise<boolean> => {
     if (!user) return false;
     const result = await apiFetch<UserProfile>(`/api/members/${user.id}`, {
@@ -343,7 +394,7 @@ export function MemberProvider({ children }: { children: ReactNode }) {
     <MemberContext.Provider value={{ 
       user, bookedSessions, selectedBranch, setSelectedBranch,
       login, loginWithPayload, logout, enroll, bookSession, joinWaitlist, cancelBooking, leaveWaitlist, 
-      hasMembershipFor, selfExtendMembership, refreshBookings, getSessionCounts, updateProfile
+      hasMembershipFor, selfExtendMembership, pauseMembership, refreshBookings, getSessionCounts, updateProfile
     }}>
       {children}
     </MemberContext.Provider>

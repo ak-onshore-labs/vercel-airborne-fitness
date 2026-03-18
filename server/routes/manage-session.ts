@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { storage } from "../storage";
 import { asyncHandler, requireAuth } from "../middleware";
 import { MembershipPlanModel } from "../models";
-import { isMembershipBookable } from "@shared/membershipState";
+import { getMembershipUsabilityState, isMembershipBookable } from "@shared/membershipState";
 
 const MEMBER_BOOKING_CUTOFF_MINUTES = 5;
 
@@ -53,6 +53,51 @@ async function findMembershipForSlot(memberId: string, scheduleId: string): Prom
   });
   const m = matching[0];
   return m ? { id: m.id, sessionsRemaining: m.sessionsRemaining } : null;
+}
+
+async function findMembershipForSlotForBooking(
+  memberId: string,
+  scheduleId: string
+): Promise<{ blockedByPause: true } | { blockedByPause: false; membership: { id: string; sessionsRemaining: number } } | null> {
+  const slot = await storage.getScheduleSlot(scheduleId);
+  if (!slot) return null;
+  const all = await storage.getMemberMemberships(memberId);
+  const plans = await MembershipPlanModel.find({ classTypeId: slot.classTypeId });
+  const planIds = new Set(plans.map((p: any) => String(p._id)));
+
+  const now = new Date();
+  const matching = all.filter((m) => planIds.has(m.membershipPlanId));
+  const active: typeof matching = [];
+  let hasPaused = false;
+  for (const m of matching) {
+    const s = getMembershipUsabilityState(
+      {
+        expiryDate: m.expiryDate as any,
+        sessionsRemaining: m.sessionsRemaining,
+        extensionApplied: (m as any).extensionApplied,
+        pauseUsed: (m as any).pauseUsed,
+        pauseStart: (m as any).pauseStart,
+        pauseEnd: (m as any).pauseEnd,
+      },
+      now
+    );
+    if (s.state === "active") active.push(m);
+    if (s.state === "paused") hasPaused = true;
+  }
+
+  active.sort((a, b) => {
+    const ea = new Date(a.expiryDate as any).getTime();
+    const eb = new Date(b.expiryDate as any).getTime();
+    if (ea !== eb) return ea - eb;
+    const ca = a.createdAt ? new Date(a.createdAt as any).getTime() : 0;
+    const cb = b.createdAt ? new Date(b.createdAt as any).getTime() : 0;
+    if (ca !== cb) return ca - cb;
+    return String(a.id).localeCompare(String(b.id), "en");
+  });
+  const m = active[0];
+  if (m) return { blockedByPause: false, membership: { id: m.id, sessionsRemaining: m.sessionsRemaining } };
+  if (hasPaused) return { blockedByPause: true };
+  return null;
 }
 
 export function registerManageSessionRoutes(app: Express): void {
@@ -120,7 +165,11 @@ export function registerManageSessionRoutes(app: Express): void {
         return res.status(409).json({ message: "Already on this session or waitlist", booking: alreadyBooked });
       }
 
-      const membership = await findMembershipForSlot(memberId, scheduleId);
+      const membershipLookup = await findMembershipForSlotForBooking(memberId, scheduleId);
+      if (membershipLookup?.blockedByPause) {
+        return res.status(400).json({ message: "Membership is currently paused" });
+      }
+      const membership = membershipLookup && !membershipLookup.blockedByPause ? membershipLookup.membership : null;
       if (!membership || membership.sessionsRemaining <= 0) {
         return res.status(400).json({ message: "No sessions remaining for this class" });
       }
@@ -176,7 +225,11 @@ export function registerManageSessionRoutes(app: Express): void {
         return res.status(409).json({ message: "Already booked", booking: alreadyBooked });
       }
 
-      const membership = await findMembershipForSlot(memberId, scheduleId);
+      const membershipLookup = await findMembershipForSlotForBooking(memberId, scheduleId);
+      if (membershipLookup?.blockedByPause) {
+        return res.status(400).json({ message: "Membership is currently paused" });
+      }
+      const membership = membershipLookup && !membershipLookup.blockedByPause ? membershipLookup.membership : null;
       if (!membership || membership.sessionsRemaining <= 0) {
         return res.status(400).json({ message: "No sessions remaining for this class" });
       }

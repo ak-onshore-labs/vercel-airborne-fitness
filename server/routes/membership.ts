@@ -1,9 +1,16 @@
 import type { Express, Request, Response } from "express";
 import { storage } from "../storage";
 import { asyncHandler, requireAuth } from "../middleware";
-import { MembershipModel, MembershipPlanModel } from "../models";
+import { BookingModel, MembershipModel, MembershipPlanModel, ScheduleSlotModel } from "../models";
 import mongoose from "mongoose";
 import { getMembershipUsabilityState } from "@shared/membershipState";
+
+const PAUSE_DAYS = 14;
+const PAUSE_MS = PAUSE_DAYS * 24 * 60 * 60 * 1000;
+
+function addMs(d: Date, ms: number): Date {
+  return new Date(d.getTime() + ms);
+}
 
 export function registerMembershipRoutes(app: Express): void {
   app.patch(
@@ -78,6 +85,203 @@ export function registerMembershipRoutes(app: Express): void {
         id: String(updated._id),
         expiryDate: updated.expiryDate instanceof Date ? updated.expiryDate.toISOString() : String(updated.expiryDate),
         extensionApplied: Boolean(updated.extensionApplied),
+      });
+    })
+  );
+
+  app.post(
+    "/api/memberships/:id/pause",
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response): Promise<void> => {
+      const auth = req.auth!;
+      const { id } = req.params;
+      if (!id) {
+        res.status(400).json({ message: "Membership id required" });
+        return;
+      }
+
+      const members = await storage.getMembersByUserId(auth.userId);
+      const memberIds = new Set(members.map((m) => m.id));
+      if (memberIds.size === 0) {
+        res.status(403).json({ message: "Not allowed" });
+        return;
+      }
+
+      const existing = await storage.getMembershipById(id);
+      if (!existing) {
+        res.status(404).json({ message: "Membership not found" });
+        return;
+      }
+      if (!memberIds.has(existing.memberId)) {
+        res.status(403).json({ message: "Not allowed" });
+        return;
+      }
+
+      const plan = await MembershipPlanModel.findById(existing.membershipPlanId);
+      const validityDays = (plan as any)?.validityDays;
+      if (typeof validityDays !== "number" || validityDays < 180) {
+        res.status(400).json({ message: "Pause not available for this membership" });
+        return;
+      }
+
+      if (existing.sessionsRemaining <= 0) {
+        res.status(400).json({ message: "Pause not available for this membership" });
+        return;
+      }
+      if ((existing as any).pauseUsed === true) {
+        res.status(400).json({ message: "Pause not available for this membership" });
+        return;
+      }
+
+      const now = new Date();
+      const state = getMembershipUsabilityState(
+        {
+          expiryDate: existing.expiryDate as any,
+          sessionsRemaining: existing.sessionsRemaining,
+          extensionApplied: (existing as any).extensionApplied,
+          pauseUsed: (existing as any).pauseUsed,
+          pauseStart: (existing as any).pauseStart,
+          pauseEnd: (existing as any).pauseEnd,
+        },
+        now
+      );
+      if (state.state !== "active") {
+        res.status(400).json({ message: "Pause not available for this membership" });
+        return;
+      }
+
+      const pauseStart = now;
+      const pauseEnd = addMs(now, PAUSE_MS);
+      const existingExpiry = new Date(existing.expiryDate as any);
+      const newExpiryDate = addMs(existingExpiry, PAUSE_MS);
+
+      // Step 1+2: set pause fields, push expiry forward (atomic guard against races)
+      const updated = await MembershipModel.findOneAndUpdate(
+        {
+          _id: new mongoose.Types.ObjectId(id),
+          memberId: { $in: Array.from(memberIds) },
+          pauseUsed: { $ne: true },
+          sessionsRemaining: { $gt: 0 },
+          expiryDate: { $gt: now },
+        },
+        {
+          $set: {
+            pauseUsed: true,
+            pauseStart,
+            pauseEnd,
+            expiryDate: newExpiryDate,
+          },
+        },
+        { new: true }
+      );
+      if (!updated) {
+        res.status(400).json({ message: "Pause not available for this membership" });
+        return;
+      }
+
+      async function findActiveMembershipForSlot(memberId: string, scheduleId: string): Promise<{ id: string; sessionsRemaining: number } | null> {
+        const slot = await storage.getScheduleSlot(scheduleId);
+        if (!slot) return null;
+        const plans = await MembershipPlanModel.find({ classTypeId: slot.classTypeId });
+        const planIds = new Set(plans.map((p: any) => String(p._id)));
+        const all = await storage.getMemberMemberships(memberId);
+        const now2 = new Date();
+        const candidates = all.filter((m) => planIds.has(m.membershipPlanId));
+        const active = candidates.filter((m) => {
+          const s = getMembershipUsabilityState(
+            {
+              expiryDate: m.expiryDate as any,
+              sessionsRemaining: m.sessionsRemaining,
+              extensionApplied: (m as any).extensionApplied,
+              pauseUsed: (m as any).pauseUsed,
+              pauseStart: (m as any).pauseStart,
+              pauseEnd: (m as any).pauseEnd,
+            },
+            now2
+          );
+          return s.state === "active";
+        });
+        active.sort((a, b) => {
+          const ea = new Date(a.expiryDate as any).getTime();
+          const eb = new Date(b.expiryDate as any).getTime();
+          if (ea !== eb) return ea - eb;
+          return String(a.id).localeCompare(String(b.id), "en");
+        });
+        const m = active[0];
+        return m ? { id: m.id, sessionsRemaining: m.sessionsRemaining } : null;
+      }
+
+      async function rerankWaitlist(scheduleId: string, sessionDate: string): Promise<void> {
+        const sessionBookings = await storage.getBookingsForSession(scheduleId, sessionDate);
+        const waitlist = sessionBookings
+          .filter((b) => b.status === "WAITLIST")
+          .sort((a, b) => (a.waitlistPosition ?? 999) - (b.waitlistPosition ?? 999));
+        for (let i = 0; i < waitlist.length; i++) {
+          await storage.updateBookingStatus(waitlist[i].id, "WAITLIST", i + 1);
+        }
+      }
+
+      async function handleCancelledBooked(scheduleId: string, sessionDate: string): Promise<void> {
+        const sessionBookings = await storage.getBookingsForSession(scheduleId, sessionDate);
+        const waitlist = sessionBookings
+          .filter((b) => b.status === "WAITLIST")
+          .sort((a, b) => (a.waitlistPosition ?? 999) - (b.waitlistPosition ?? 999));
+        if (waitlist.length === 0) return;
+
+        const first = waitlist[0];
+        const firstMembership = await findActiveMembershipForSlot(first.memberId, scheduleId);
+        if (!firstMembership || firstMembership.sessionsRemaining <= 0) return;
+
+        const ok = await storage.decrementMembershipSessionsIfPositive(firstMembership.id);
+        if (!ok) return;
+
+        await storage.updateBookingStatus(first.id, "BOOKED", null);
+
+        const remaining = waitlist.slice(1);
+        for (let i = 0; i < remaining.length; i++) {
+          await storage.updateBookingStatus(remaining[i].id, "WAITLIST", i + 1);
+        }
+      }
+
+      // Step 3+4: cancel bookings and remove from waitlists within pause window for this category
+      const classTypeId = (plan as any)?.classTypeId ?? "";
+      const scheduleIds = (
+        await ScheduleSlotModel.find({ classTypeId }).select("_id").lean()
+      ).map((s: any) => String(s._id));
+
+      const startDate = pauseStart.toISOString().slice(0, 10);
+      const endDate = pauseEnd.toISOString().slice(0, 10);
+      const affected = await BookingModel.find({
+        memberId: existing.memberId,
+        scheduleId: { $in: scheduleIds },
+        status: { $in: ["BOOKED", "WAITLIST"] },
+        sessionDate: { $gte: startDate, $lte: endDate },
+      }).lean();
+
+      for (const b of affected as any[]) {
+        const priorStatus = b.status as string;
+        await storage.updateBookingStatus(String(b._id), "CANCELLED");
+
+        if (priorStatus === "BOOKED") {
+          await storage.incrementMembershipSessions(id, 1);
+          await handleCancelledBooked(b.scheduleId, b.sessionDate);
+        } else if (priorStatus === "WAITLIST") {
+          await rerankWaitlist(b.scheduleId, b.sessionDate);
+        }
+      }
+
+      const finalDoc = await MembershipModel.findById(new mongoose.Types.ObjectId(id));
+      if (!finalDoc) {
+        res.status(500).json({ message: "Unable to pause membership" });
+        return;
+      }
+
+      res.json({
+        pauseStart: (finalDoc as any).pauseStart ? new Date((finalDoc as any).pauseStart).toISOString() : null,
+        pauseEnd: (finalDoc as any).pauseEnd ? new Date((finalDoc as any).pauseEnd).toISOString() : null,
+        expiryDate: (finalDoc as any).expiryDate instanceof Date ? (finalDoc as any).expiryDate.toISOString() : String((finalDoc as any).expiryDate),
+        pauseUsed: Boolean((finalDoc as any).pauseUsed),
+        sessionsRemaining: Number((finalDoc as any).sessionsRemaining ?? 0),
       });
     })
   );
@@ -244,20 +448,63 @@ export function registerMembershipRoutes(app: Express): void {
       const classTypeDocs = await ClassTypeModel.find({});
       const typeIdToName: Record<string, string> = {};
       for (const t of classTypeDocs) typeIdToName[(t as any)._id.toString()] = t.name;
-      const membershipMap: Record<string, { id: string; sessionsRemaining: number; expiryDate: string; extensionApplied: boolean; planName?: string }> = {};
+      const membershipMap: Record<
+        string,
+        {
+          id: string;
+          sessionsRemaining: number;
+          expiryDate: string;
+          extensionApplied: boolean;
+          planName?: string;
+          pauseUsed: boolean;
+          pauseStart: string | null;
+          pauseEnd: string | null;
+          validityDays?: number;
+        }
+      > = {};
       const now = new Date();
 
-      function tierRank(x: { expiryDate: string; sessionsRemaining: number; extensionApplied: boolean }): number {
+      function tierRank(x: {
+        expiryDate: string;
+        sessionsRemaining: number;
+        extensionApplied: boolean;
+        pauseUsed?: boolean | null;
+        pauseStart?: string | null;
+        pauseEnd?: string | null;
+      }): number {
         const state = getMembershipUsabilityState(
-          { expiryDate: x.expiryDate, sessionsRemaining: x.sessionsRemaining, extensionApplied: x.extensionApplied },
+          {
+            expiryDate: x.expiryDate,
+            sessionsRemaining: x.sessionsRemaining,
+            extensionApplied: x.extensionApplied,
+            pauseUsed: x.pauseUsed,
+            pauseStart: x.pauseStart,
+            pauseEnd: x.pauseEnd,
+          },
           now
         ).state;
-        return state === "active" ? 0 : state === "expired_extendable" ? 1 : 2;
+        return state === "active" ? 0 : state === "paused" ? 1 : state === "expired_extendable" ? 2 : 3;
       }
 
       function isCandidateBetter(
-        candidate: { id: string; sessionsRemaining: number; expiryDate: string; extensionApplied: boolean },
-        existing: { id: string; sessionsRemaining: number; expiryDate: string; extensionApplied: boolean }
+        candidate: {
+          id: string;
+          sessionsRemaining: number;
+          expiryDate: string;
+          extensionApplied: boolean;
+          pauseUsed?: boolean | null;
+          pauseStart?: string | null;
+          pauseEnd?: string | null;
+        },
+        existing: {
+          id: string;
+          sessionsRemaining: number;
+          expiryDate: string;
+          extensionApplied: boolean;
+          pauseUsed?: boolean | null;
+          pauseStart?: string | null;
+          pauseEnd?: string | null;
+        }
       ): boolean {
         const ra = tierRank(candidate);
         const rb = tierRank(existing);
@@ -277,6 +524,10 @@ export function registerMembershipRoutes(app: Express): void {
           expiryDate: m.expiryDate instanceof Date ? m.expiryDate.toISOString() : String(m.expiryDate),
           extensionApplied: Boolean((m as any).extensionApplied),
           planName: plan?.name,
+          pauseUsed: Boolean((m as any).pauseUsed),
+          pauseStart: (m as any).pauseStart ? new Date((m as any).pauseStart).toISOString() : null,
+          pauseEnd: (m as any).pauseEnd ? new Date((m as any).pauseEnd).toISOString() : null,
+          validityDays: typeof (plan as any)?.validityDays === "number" ? (plan as any).validityDays : undefined,
         };
         const existing = membershipMap[category];
         if (!existing) {

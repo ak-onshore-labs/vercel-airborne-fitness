@@ -11,6 +11,9 @@ const membershipSchema = new mongoose.Schema<Membership & { _id: mongoose.Types.
     extensionRequestedAt: { type: Date, default: null },
     extensionApprovedAt: { type: Date, default: null },
     extensionApplied: { type: Boolean, default: false },
+    pauseUsed: { type: Boolean, default: false },
+    pauseStart: { type: Date, default: null },
+    pauseEnd: { type: Date, default: null },
   },
   { timestamps: true }
 );

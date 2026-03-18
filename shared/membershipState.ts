@@ -1,4 +1,4 @@
-export type MembershipUsabilityState = "active" | "expired_extendable" | "renew_only";
+export type MembershipUsabilityState = "active" | "paused" | "expired_extendable" | "renew_only";
 
 export type MembershipRenewOnlyReason = "expired" | "no_sessions" | "defensive_negative";
 
@@ -6,6 +6,9 @@ export type MembershipStateInput = {
   expiryDate: string | Date;
   sessionsRemaining: number;
   extensionApplied?: boolean | null;
+  pauseUsed?: boolean | null;
+  pauseStart?: string | Date | null;
+  pauseEnd?: string | Date | null;
 };
 
 function toDate(d: string | Date): Date {
@@ -13,8 +16,7 @@ function toDate(d: string | Date): Date {
 }
 
 export function isMembershipBookable(input: MembershipStateInput, now = new Date()): boolean {
-  const expiry = toDate(input.expiryDate);
-  return expiry.getTime() > now.getTime() && input.sessionsRemaining > 0;
+  return getMembershipUsabilityState(input, now).state === "active";
 }
 
 export function getMembershipUsabilityState(
@@ -22,10 +24,21 @@ export function getMembershipUsabilityState(
   now = new Date()
 ):
   | { state: "active" }
+  | { state: "paused" }
   | { state: "expired_extendable" }
   | { state: "renew_only"; reason: MembershipRenewOnlyReason } {
   const expiry = toDate(input.expiryDate);
   const sessions = input.sessionsRemaining;
+
+  const pauseUsed = input.pauseUsed === true;
+  const pauseStart = input.pauseStart ? toDate(input.pauseStart) : null;
+  const pauseEnd = input.pauseEnd ? toDate(input.pauseEnd) : null;
+  if (pauseUsed && pauseStart && pauseEnd) {
+    const nowMs = now.getTime();
+    if (nowMs >= pauseStart.getTime() && nowMs <= pauseEnd.getTime()) {
+      return { state: "paused" };
+    }
+  }
 
   if (expiry.getTime() > now.getTime() && sessions > 0) {
     return { state: "active" };

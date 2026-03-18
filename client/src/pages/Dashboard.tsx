@@ -1,16 +1,27 @@
+import { useState } from "react";
 import { useMember } from "@/context/MemberContext";
 import MobileLayout from "@/components/layout/MobileLayout";
 import { HeroWithAccent } from "@/components/HeroWithAccent";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
-import { format } from "date-fns";
+import { addDays, format } from "date-fns";
 import { Calendar, CheckCircle2, PlusCircle, Loader2 } from "lucide-react";
 import { formatTime12h } from "@/lib/formatTime";
-import { getMembershipCtas, getMembershipHeadline, getRenewUrl, isMembershipActive } from "@/lib/membershipUi";
+import { getMembershipCtas, getMembershipHeadline, getMembershipUsability, getRenewUrl, isMembershipActive, isPauseCtaVisible } from "@/lib/membershipUi";
+import {
+  Dialog,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { MemberDialogContent } from "@/components/MemberDialogContent";
 
 export default function Dashboard() {
-  const { user, bookedSessions, selfExtendMembership } = useMember();
+  const { user, bookedSessions, selfExtendMembership, pauseMembership } = useMember();
   const [, setLocation] = useLocation();
+  const [pauseConfirmOpen, setPauseConfirmOpen] = useState(false);
+  const [pausePending, setPausePending] = useState<{ category: string; membershipId: string } | null>(null);
 
   if (!user) {
     return <div className="flex items-center justify-center h-full">Loading... <Loader2 size={16} /></div>;
@@ -21,6 +32,7 @@ export default function Dashboard() {
 
   const todayStr = format(new Date(), 'yyyy-MM-dd');
   const todaysBookings = bookedSessions.filter(b => b.sessionDate === todayStr && b.status === "BOOKED");
+  const resumeDateLabel = format(addDays(new Date(), 14), "dd MMM yyyy");
 
   return (
     <MobileLayout>
@@ -57,7 +69,14 @@ export default function Dashboard() {
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">{details.planName}</p>
                     {getMembershipHeadline(details) && (
-                      <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 mb-4" data-testid={`text-membership-headline-${category}`}>
+                      <p
+                        className={
+                          getMembershipUsability(details).state === "paused"
+                            ? "text-xs font-semibold text-airborne-teal dark:text-teal-300 mb-4"
+                            : "text-xs font-semibold text-amber-700 dark:text-amber-300 mb-4"
+                        }
+                        data-testid={`text-membership-headline-${category}`}
+                      >
                         {getMembershipHeadline(details)}
                       </p>
                     )}
@@ -70,6 +89,20 @@ export default function Dashboard() {
                             <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">Expires {format(new Date(details.expiryDate), 'dd MMM yyyy')}</p>
                         </div>
                         <div className="flex items-center gap-2">
+                          {isPauseCtaVisible(details) && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-9 rounded"
+                              onClick={() => {
+                                setPausePending({ category, membershipId: details.id });
+                                setPauseConfirmOpen(true);
+                              }}
+                              data-testid={`button-pause-${category}`}
+                            >
+                              Pause
+                            </Button>
+                          )}
                           {getMembershipCtas(details).showExtend && (
                             <Button
                               size="sm"
@@ -115,6 +148,38 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+
+        <Dialog open={pauseConfirmOpen} onOpenChange={setPauseConfirmOpen}>
+          <MemberDialogContent onPointerDownOutside={(e) => e.preventDefault()}>
+            <DialogHeader>
+              <DialogTitle>Pause membership?</DialogTitle>
+              <DialogDescription>
+                <div className="space-y-3">
+                  <p>The membership will be paused for 14 days.</p>
+                  <p><span className="font-medium">Resume date:</span> {resumeDateLabel}</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>You will not be able to book any sessions for this membership during the pause window.</li>
+                    <li>Any sessions already booked for this category within the two-week window will be automatically cancelled and returned to your balance.</li>
+                    <li>This pause cannot be undone once confirmed.</li>
+                  </ul>
+                </div>
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button variant="outline" onClick={() => setPauseConfirmOpen(false)}>Cancel</Button>
+              <Button
+                onClick={async () => {
+                  if (!pausePending) return;
+                  setPauseConfirmOpen(false);
+                  await pauseMembership(pausePending.membershipId);
+                  setPausePending(null);
+                }}
+              >
+                Confirm Pause
+              </Button>
+            </DialogFooter>
+          </MemberDialogContent>
+        </Dialog>
 
         {hasAnyMembership && (
             <div>
