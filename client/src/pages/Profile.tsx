@@ -7,9 +7,10 @@ import { useLocation } from "wouter";
 import { format } from "date-fns";
 import { LogOut, Settings, ChevronRight, Loader2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { getMembershipCtas, getMembershipHeadline, getRenewUrl } from "@/lib/membershipUi";
 
 export default function Profile() {
-  const { user, logout } = useMember();
+  const { user, logout, selfExtendMembership } = useMember();
   const { darkMode, setDarkMode } = useTheme();
   const [, setLocation] = useLocation();
 
@@ -34,24 +35,57 @@ export default function Profile() {
 
         {/* Memberships Section */}
         <div className="mb-8">
-            <h2 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3 px-1">Active Memberships</h2>
+            <h2 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3 px-1">Memberships</h2>
             {hasMemberships ? (
                 <div className="space-y-3">
                     {Object.entries(user.memberships).map(([name, details]) => (
-                        <div key={name} className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 border-l-[3px] border-l-airborne-teal dark:border-l-teal-400 p-4 rounded shadow-sm flex justify-between items-center transition-shadow duration-200 hover:shadow-md">
-                            <div>
-                                <h3 className="font-bold text-gray-900 dark:text-gray-100 text-sm">{name}</h3>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">{details.planName}</p>
+                        <div key={name} className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 border-l-[3px] border-l-airborne-teal dark:border-l-teal-400 p-4 rounded shadow-sm transition-shadow duration-200 hover:shadow-md">
+                          <div className="flex justify-between items-center">
+                              <div>
+                                  <h3 className="font-bold text-gray-900 dark:text-gray-100 text-sm">{name}</h3>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">{details.planName}</p>
+                                  {getMembershipHeadline(details) && (
+                                    <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 mt-2" data-testid={`text-membership-headline-${name}`}>
+                                      {getMembershipHeadline(details)}
+                                    </p>
+                                  )}
+                              </div>
+                              <div className="text-right">
+                                  <div className="text-airborne-teal font-bold text-lg">{details.sessionsRemaining}</div>
+                                  <div className="text-[10px] text-gray-400 dark:text-gray-500">sessions left</div>
+                                  {details.expiryDate && (
+                                    <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1" data-testid="membership-expiry">
+                                      Expires {format(new Date(details.expiryDate), "dd MMM yyyy")}
+                                    </p>
+                                  )}
+                              </div>
+                          </div>
+
+                          {(getMembershipCtas(details).showExtend || getMembershipCtas(details).showRenew) && (
+                            <div className="flex gap-2 mt-3">
+                              {getMembershipCtas(details).showExtend && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-9 rounded flex-1"
+                                  onClick={() => selfExtendMembership(name)}
+                                  data-testid={`button-extend-${name}`}
+                                >
+                                  Get 1 Week Extension
+                                </Button>
+                              )}
+                              {getMembershipCtas(details).showRenew && (
+                                <Button
+                                  size="sm"
+                                  className="h-9 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded flex-1"
+                                  onClick={() => setLocation(getRenewUrl(name))}
+                                  data-testid={`button-renew-${name}`}
+                                >
+                                  Renew
+                                </Button>
+                              )}
                             </div>
-                            <div className="text-right">
-                                <div className="text-airborne-teal font-bold text-lg">{details.sessionsRemaining}</div>
-                                <div className="text-[10px] text-gray-400 dark:text-gray-500">sessions left</div>
-                                {details.expiryDate && (
-                                  <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1" data-testid="membership-expiry">
-                                    Expires {format(new Date(details.expiryDate), "dd MMM yyyy")}
-                                  </p>
-                                )}
-                            </div>
+                          )}
                         </div>
                     ))}
                 </div>

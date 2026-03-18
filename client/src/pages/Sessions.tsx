@@ -9,13 +9,13 @@ import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
 import {
   Dialog,
-  DialogContent,
   DialogHeader,
   DialogTitle,
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
 import { formatTime12h } from "@/lib/formatTime";
+import { MemberDialogContent } from "@/components/MemberDialogContent";
 
 export default function Sessions() {
   const { user, bookedSessions, cancelBooking, leaveWaitlist, refreshBookings } = useMember();
@@ -144,7 +144,7 @@ export default function Sessions() {
   return (
     <MobileLayout>
       <Dialog open={cancelModalOpen} onOpenChange={setCancelModalOpen}>
-        <DialogContent className="sm:max-w-md" onPointerDownOutside={(e) => e.preventDefault()}>
+        <MemberDialogContent onPointerDownOutside={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle>Cancel Class?</DialogTitle>
             <DialogDescription>
@@ -155,7 +155,7 @@ export default function Sessions() {
             <Button variant="outline" onClick={() => setCancelModalOpen(false)}>No</Button>
             <Button variant="destructive" onClick={handleConfirmCancel}>Yes, Cancel Class</Button>
           </DialogFooter>
-        </DialogContent>
+        </MemberDialogContent>
       </Dialog>
       <div className="p-6 pb-24">
         <HeroWithAccent>

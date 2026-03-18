@@ -2,6 +2,36 @@ import type { Express, Request, Response } from "express";
 import { asyncHandler, requireAuth } from "../middleware";
 import { storage } from "../storage";
 import { signToken } from "../lib/jwt";
+import { getMembershipUsabilityState } from "@shared/membershipState";
+
+function tierRank(
+  x: { expiryDate: string; sessionsRemaining: number; extensionApplied: boolean },
+  now: Date
+): number {
+  const state = getMembershipUsabilityState(
+    {
+      expiryDate: x.expiryDate,
+      sessionsRemaining: x.sessionsRemaining,
+      extensionApplied: x.extensionApplied,
+    },
+    now
+  ).state;
+  return state === "active" ? 0 : state === "expired_extendable" ? 1 : 2;
+}
+
+function isCandidateBetter(
+  candidate: { id: string; sessionsRemaining: number; expiryDate: string; extensionApplied: boolean },
+  existing: { id: string; sessionsRemaining: number; expiryDate: string; extensionApplied: boolean },
+  now: Date
+): boolean {
+  const ra = tierRank(candidate, now);
+  const rb = tierRank(existing, now);
+  if (ra !== rb) return ra < rb;
+  const expA = new Date(candidate.expiryDate).getTime();
+  const expB = new Date(existing.expiryDate).getTime();
+  if (expA !== expB) return expA < expB;
+  return String(candidate.id).localeCompare(String(existing.id), "en") < 0;
+}
 
 const MSG91_SEND_OTP_URL = "https://control.msg91.com/api/v5/otp";
 const MSG91_VERIFY_OTP_URL = "https://control.msg91.com/api/v5/otp/verify";
@@ -134,12 +164,13 @@ export function registerAuthRoutes(app: Express): void {
         members = [adult];
       }
 
-      const membershipMap: Record<string, { id: string; sessionsRemaining: number; expiryDate: string }> = {};
+      const membershipMap: Record<string, { id: string; sessionsRemaining: number; expiryDate: string; extensionApplied: boolean; planName?: string }> = {};
       const { MembershipPlanModel, ClassTypeModel } = await import("../models");
       const planDocs = await MembershipPlanModel.find({});
       const types = await ClassTypeModel.find({});
       const typeIdToName: Record<string, string> = {};
       for (const t of types) typeIdToName[(t as any)._id.toString()] = t.name;
+      const now = new Date();
 
       for (const member of members) {
         const list = await storage.getMemberMemberships(member.id);
@@ -147,11 +178,23 @@ export function registerAuthRoutes(app: Express): void {
           const plan = planDocs.find((p: any) => String(p._id) === m.membershipPlanId);
           const classTypeId = plan?.classTypeId ?? "";
           const category = typeIdToName[classTypeId] ?? m.membershipPlanId;
-          membershipMap[category] = {
+          const candidate = {
             id: m.id,
             sessionsRemaining: m.sessionsRemaining,
             expiryDate: m.expiryDate instanceof Date ? m.expiryDate.toISOString() : String(m.expiryDate),
+            extensionApplied: Boolean((m as any).extensionApplied),
+            planName: plan?.name,
           };
+
+          const existing = membershipMap[category];
+          if (!existing) {
+            membershipMap[category] = candidate;
+            continue;
+          }
+
+          if (isCandidateBetter(candidate, existing, now)) {
+            membershipMap[category] = candidate;
+          }
         }
       }
 
@@ -205,12 +248,13 @@ export function registerAuthRoutes(app: Express): void {
         members = [adult];
       }
 
-      const membershipMap: Record<string, { id: string; sessionsRemaining: number; expiryDate: string }> = {};
+      const membershipMap: Record<string, { id: string; sessionsRemaining: number; expiryDate: string; extensionApplied: boolean; planName?: string }> = {};
       const { MembershipPlanModel, ClassTypeModel } = await import("../models");
       const planDocs = await MembershipPlanModel.find({});
       const types = await ClassTypeModel.find({});
       const typeIdToName: Record<string, string> = {};
       for (const t of types) typeIdToName[(t as any)._id.toString()] = t.name;
+      const now = new Date();
 
       for (const member of members) {
         const list = await storage.getMemberMemberships(member.id);
@@ -218,11 +262,23 @@ export function registerAuthRoutes(app: Express): void {
           const plan = planDocs.find((p: any) => String(p._id) === m.membershipPlanId);
           const classTypeId = plan?.classTypeId ?? "";
           const category = typeIdToName[classTypeId] ?? m.membershipPlanId;
-          membershipMap[category] = {
+          const candidate = {
             id: m.id,
             sessionsRemaining: m.sessionsRemaining,
             expiryDate: m.expiryDate instanceof Date ? m.expiryDate.toISOString() : String(m.expiryDate),
+            extensionApplied: Boolean((m as any).extensionApplied),
+            planName: plan?.name,
           };
+
+          const existing = membershipMap[category];
+          if (!existing) {
+            membershipMap[category] = candidate;
+            continue;
+          }
+
+          if (isCandidateBetter(candidate, existing, now)) {
+            membershipMap[category] = candidate;
+          }
         }
       }
 

@@ -4,10 +4,18 @@ import { cn } from "@/lib/utils";
 import { useMember } from "@/context/MemberContext";
 import { AirborneLogo } from "@/components/AirborneLogo";
 import { Button } from "@/components/ui/button";
+import { useEffect, useRef } from "react";
 
 export default function MobileLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { user } = useMember();
+  const mainRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const el = mainRef.current;
+    if (!el) return;
+    el.scrollTop = 0;
+  }, [location]);
 
   const navItems = [
     { href: "/dashboard", icon: Home, label: "Home" },
@@ -46,7 +54,7 @@ export default function MobileLayout({ children }: { children: React.ReactNode }
             </div>
           </header>
         )}
-        <main className="flex-1 overflow-y-auto pb-24 scrollbar-hide">
+        <main ref={mainRef} className="flex-1 overflow-y-auto pb-24 scrollbar-hide">
           {children}
         </main>
         {!isAuthPage && (

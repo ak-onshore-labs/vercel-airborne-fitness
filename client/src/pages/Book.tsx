@@ -9,13 +9,14 @@ import { Loader2, ArrowLeft } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import {
   Dialog,
-  DialogContent,
   DialogHeader,
   DialogTitle,
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
 import { formatTime12h } from "@/lib/formatTime";
+import { MemberDialogContent } from "@/components/MemberDialogContent";
+import { getRenewUrl, isMembershipActive } from "@/lib/membershipUi";
 
 interface SessionDisplay {
   scheduleId: string;
@@ -178,7 +179,7 @@ export default function Book() {
     const classStart = new Date(session.sessionDate + "T00:00:00");
     classStart.setHours(h, m, 0, 0);
     const cutoff = subMinutes(classStart, cancellationWindowMinutes);
-    return format(cutoff, "MMM d, yyyy 'at' h:mm a");
+    return format(cutoff, "h:mm a").toLowerCase();
   }
 
   if (!user) {
@@ -221,12 +222,12 @@ export default function Book() {
         </div>
 
         <Dialog open={bookingConfirmOpen} onOpenChange={setBookingConfirmOpen}>
-          <DialogContent className="sm:max-w-md" onPointerDownOutside={(e) => e.preventDefault()}>
+          <MemberDialogContent onPointerDownOutside={(e) => e.preventDefault()}>
             <DialogHeader>
               <DialogTitle>Confirm Booking</DialogTitle>
               <DialogDescription>
                 {pendingSession && (
-                  <>You will not be allowed to cancel this class past {cutoffTimeForSession(pendingSession)}</>
+                  <>You will not be able to cancel the class after {cutoffTimeForSession(pendingSession)}</>
                 )}
               </DialogDescription>
             </DialogHeader>
@@ -234,7 +235,7 @@ export default function Book() {
               <Button variant="outline" onClick={() => setBookingConfirmOpen(false)}>Cancel</Button>
               <Button onClick={handleBookingConfirm}>Confirm Booking</Button>
             </DialogFooter>
-          </DialogContent>
+          </MemberDialogContent>
         </Dialog>
 
         <div className="space-y-4">
@@ -251,8 +252,10 @@ export default function Book() {
             const isFull = counts.bookedCount >= session.capacity;
             const slotsLeft = Math.max(0, session.capacity - counts.bookedCount);
             const booking = bookedSessions.find(b => b.scheduleId === session.scheduleId && b.sessionDate === session.sessionDate && b.status !== "CANCELLED");
-            const hasMembership = !!user?.memberships[session.category];
+            const membershipDetails = user?.memberships[session.category];
+            const hasMembership = Boolean(membershipDetails);
             const bookable = isSessionBookable(session.sessionDate, session.startTime);
+            const membershipIsActive = membershipDetails ? isMembershipActive(membershipDetails) : false;
 
             return (
                 <div
@@ -289,6 +292,15 @@ export default function Book() {
                           </Button>
                         ) : !hasMembership ? (
                              <Button size="sm" onClick={() => setLocation('/enroll')} className="h-9 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-xs px-5 rounded" data-testid={`button-enroll-${key}`}>Enroll</Button>
+                        ) : !membershipIsActive ? (
+                             <Button
+                               size="sm"
+                               onClick={() => setLocation(getRenewUrl(session.category))}
+                               className="h-9 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-xs px-5 rounded"
+                               data-testid={`button-renew-${key}`}
+                             >
+                               Renew
+                             </Button>
                         ) : (
                             <Button size="sm" onClick={() => bookable && handleAction(session, isFull)} disabled={!bookable || loadingId === session.scheduleId} className={cn("h-9 text-white text-xs px-5 rounded disabled:opacity-60", isFull ? "bg-amber-500" : "bg-airborne-teal")} data-testid={`button-book-${key}`}>
                             {loadingId === session.scheduleId ? <Loader2 className="animate-spin h-3 w-3" /> : isFull ? `Join Waitlist (${counts.waitlistCount})` : "Book Class"}

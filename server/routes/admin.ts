@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import { storage } from "../storage";
 import { asyncHandler, requireAdmin } from "../middleware";
 import { MembershipPlanModel } from "../models";
+import { isMembershipBookable } from "@shared/membershipState";
 
 const requireAdminAsync = asyncHandler(requireAdmin);
 
@@ -11,10 +12,29 @@ async function findMembershipForSlot(memberId: string, scheduleId: string): Prom
   if (!slot) return null;
   const all = await storage.getMemberMemberships(memberId);
   const now = new Date();
-  const memberships = all.filter((m) => new Date(m.expiryDate) > now && m.sessionsRemaining > 0);
+  const memberships = all.filter((m) =>
+    isMembershipBookable(
+      {
+        expiryDate: m.expiryDate,
+        sessionsRemaining: m.sessionsRemaining,
+        extensionApplied: (m as any).extensionApplied,
+      },
+      now
+    )
+  );
   const plans = await MembershipPlanModel.find({ classTypeId: slot.classTypeId });
   const planIds = new Set(plans.map((p: { _id: unknown }) => String(p._id)));
-  const m = memberships.find((x) => planIds.has(x.membershipPlanId));
+  const matching = memberships.filter((x) => planIds.has(x.membershipPlanId));
+  matching.sort((a, b) => {
+    const ea = new Date(a.expiryDate).getTime();
+    const eb = new Date(b.expiryDate).getTime();
+    if (ea !== eb) return ea - eb;
+    const ca = a.createdAt ? new Date(a.createdAt as any).getTime() : 0;
+    const cb = b.createdAt ? new Date(b.createdAt as any).getTime() : 0;
+    if (ca !== cb) return ca - cb;
+    return String(a.id).localeCompare(String(b.id), "en");
+  });
+  const m = matching[0];
   return m ? { id: m.id, sessionsRemaining: m.sessionsRemaining } : null;
 }
 
@@ -538,7 +558,11 @@ export function registerAdminRoutes(app: Express): void {
         return;
       }
 
-      await storage.updateMembershipSessions(membership.id, membership.sessionsRemaining - 1);
+      const decremented = await storage.decrementMembershipSessionsIfPositive(membership.id);
+      if (!decremented) {
+        res.status(400).json({ message: "No sessions remaining" });
+        return;
+      }
       const booking = await storage.createBooking({
         memberId,
         scheduleId,

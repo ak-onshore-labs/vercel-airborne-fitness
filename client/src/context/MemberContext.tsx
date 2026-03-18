@@ -7,6 +7,7 @@ export interface MembershipDetails {
   id: string;
   sessionsRemaining: number;
   expiryDate: string;
+  extensionApplied: boolean;
   planName?: string;
 }
 
@@ -72,6 +73,7 @@ interface MemberContextType {
   cancelBooking: (bookingId: string) => Promise<void>;
   leaveWaitlist: (bookingId: string) => Promise<void>;
   hasMembershipFor: (categoryName: string) => boolean;
+  selfExtendMembership: (categoryName: string) => Promise<boolean>;
   refreshBookings: () => Promise<void>;
   getSessionCounts: (scheduleId: string, date: string) => Promise<{ bookedCount: number; waitlistCount: number }>;
   updateProfile: (data: Partial<Pick<UserProfile, 'name' | 'email' | 'dob' | 'emergencyContactName' | 'emergencyContactPhone' | 'medicalConditions'>>) => Promise<boolean>;
@@ -95,6 +97,15 @@ export function MemberProvider({ children }: { children: ReactNode }) {
     try {
       setStoredToken(payload.token);
       const { user: apiUser, members, memberships, isNew } = payload;
+      const normalizedMemberships: MembershipMap = Object.fromEntries(
+        Object.entries(memberships || {}).map(([k, v]) => [
+          k,
+          {
+            ...v,
+            extensionApplied: (v as any).extensionApplied === true,
+          },
+        ])
+      );
       const primaryMember = members[0];
       const memberId = primaryMember?.id ?? apiUser.id;
       setUser({
@@ -106,7 +117,7 @@ export function MemberProvider({ children }: { children: ReactNode }) {
         emergencyContactName: primaryMember?.emergencyContactName ?? undefined,
         emergencyContactPhone: primaryMember?.emergencyContactPhone ?? undefined,
         medicalConditions: primaryMember?.medicalConditions ?? undefined,
-        memberships,
+        memberships: normalizedMemberships,
         userRole: ((apiUser as { userRole?: string }).userRole === "ADMIN" || (apiUser as { userRole?: string }).userRole === "STAFF" ? (apiUser as { userRole?: string }).userRole : "MEMBER") as "ADMIN" | "STAFF" | "MEMBER",
       });
       const bookingsResult = await apiFetch<Booking[]>(`/api/bookings/${memberId}`);
@@ -252,6 +263,7 @@ export function MemberProvider({ children }: { children: ReactNode }) {
 
   const cancelBooking = async (bookingId: string) => {
     if (!user) return;
+    const booking = bookedSessions.find((b) => b.id === bookingId);
     const result = await apiFetch<{ bookings: Booking[] }>('/api/cancel', {
       method: 'POST',
       body: JSON.stringify({ bookingId, memberId: user.id }),
@@ -261,11 +273,58 @@ export function MemberProvider({ children }: { children: ReactNode }) {
       return;
     }
     setBookedSessions(result.data.bookings);
+    if (booking?.status === "BOOKED" && booking.category) {
+      const cat = booking.category;
+      setUser((prev) => {
+        if (!prev) return null;
+        const m = prev.memberships[cat];
+        if (!m) return prev;
+        return {
+          ...prev,
+          memberships: {
+            ...prev.memberships,
+            [cat]: { ...m, sessionsRemaining: m.sessionsRemaining + 1 },
+          },
+        };
+      });
+    }
     toast({ title: "Booking cancelled" });
   };
 
   const leaveWaitlist = async (bookingId: string) => {
     await cancelBooking(bookingId);
+  };
+
+  const selfExtendMembership = async (categoryName: string): Promise<boolean> => {
+    if (!user) return false;
+    const membership = user.memberships[categoryName];
+    if (!membership?.id) return false;
+    const result = await apiFetch<{ id: string; expiryDate: string; extensionApplied: boolean }>(
+      `/api/memberships/${encodeURIComponent(membership.id)}/self-extend`,
+      { method: "POST" }
+    );
+    if (!result.ok) {
+      toast({ variant: "destructive", title: "Extension failed", description: result.message });
+      return false;
+    }
+    setUser((prev) => {
+      if (!prev) return null;
+      const m = prev.memberships[categoryName];
+      if (!m) return prev;
+      return {
+        ...prev,
+        memberships: {
+          ...prev.memberships,
+          [categoryName]: {
+            ...m,
+            expiryDate: result.data.expiryDate,
+            extensionApplied: result.data.extensionApplied,
+          },
+        },
+      };
+    });
+    toast({ title: "Membership extended by 1 week" });
+    return true;
   };
 
   const updateProfile = async (data: Partial<Pick<UserProfile, 'name' | 'email' | 'dob' | 'emergencyContactName' | 'emergencyContactPhone' | 'medicalConditions'>>): Promise<boolean> => {
@@ -284,7 +343,7 @@ export function MemberProvider({ children }: { children: ReactNode }) {
     <MemberContext.Provider value={{ 
       user, bookedSessions, selectedBranch, setSelectedBranch,
       login, loginWithPayload, logout, enroll, bookSession, joinWaitlist, cancelBooking, leaveWaitlist, 
-      hasMembershipFor, refreshBookings, getSessionCounts, updateProfile
+      hasMembershipFor, selfExtendMembership, refreshBookings, getSessionCounts, updateProfile
     }}>
       {children}
     </MemberContext.Provider>

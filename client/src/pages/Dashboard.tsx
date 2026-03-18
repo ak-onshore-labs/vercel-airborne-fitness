@@ -6,9 +6,10 @@ import { Link, useLocation } from "wouter";
 import { format } from "date-fns";
 import { Calendar, CheckCircle2, PlusCircle, Loader2 } from "lucide-react";
 import { formatTime12h } from "@/lib/formatTime";
+import { getMembershipCtas, getMembershipHeadline, getRenewUrl, isMembershipActive } from "@/lib/membershipUi";
 
 export default function Dashboard() {
-  const { user, bookedSessions } = useMember();
+  const { user, bookedSessions, selfExtendMembership } = useMember();
   const [, setLocation] = useLocation();
 
   if (!user) {
@@ -50,9 +51,16 @@ export default function Dashboard() {
                   <div className="relative z-10">
                     <div className="flex justify-between items-start mb-2">
                         <h3 className="font-bold text-gray-900 dark:text-gray-100 text-lg">{category}</h3>
-                        <span className="bg-teal-50 dark:bg-teal-900/40 text-airborne-teal dark:text-teal-300 text-[10px] px-2 py-1 rounded font-medium uppercase tracking-wide">Active</span>
+                        {isMembershipActive(details) && (
+                          <span className="bg-teal-50 dark:bg-teal-900/40 text-airborne-teal dark:text-teal-300 text-[10px] px-2 py-1 rounded font-medium uppercase tracking-wide">Active</span>
+                        )}
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">{details.planName}</p>
+                    {getMembershipHeadline(details) && (
+                      <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 mb-4" data-testid={`text-membership-headline-${category}`}>
+                        {getMembershipHeadline(details)}
+                      </p>
+                    )}
                     <div className="flex items-end justify-between">
                         <div>
                             <div className="flex items-baseline gap-1">
@@ -61,9 +69,34 @@ export default function Dashboard() {
                             </div>
                             <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">Expires {format(new Date(details.expiryDate), 'dd MMM yyyy')}</p>
                         </div>
-                        <Link href="/book">
-                            <Button size="sm" className="h-9 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded" data-testid={`button-book-${category}`}>Book Class</Button>
-                        </Link>
+                        <div className="flex items-center gap-2">
+                          {getMembershipCtas(details).showExtend && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-9 rounded"
+                              onClick={() => selfExtendMembership(category)}
+                              data-testid={`button-extend-${category}`}
+                            >
+                              Get 1 Week Extension
+                            </Button>
+                          )}
+                          {getMembershipCtas(details).showRenew && (
+                            <Button
+                              size="sm"
+                              className="h-9 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded"
+                              onClick={() => setLocation(getRenewUrl(category))}
+                              data-testid={`button-renew-${category}`}
+                            >
+                              Renew
+                            </Button>
+                          )}
+                          {getMembershipCtas(details).showBook && (
+                            <Link href="/book">
+                              <Button size="sm" className="h-9 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded" data-testid={`button-book-${category}`}>Book Class</Button>
+                            </Link>
+                          )}
+                        </div>
                     </div>
                   </div>
                 </div>

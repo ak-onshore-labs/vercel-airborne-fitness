@@ -79,6 +79,7 @@ export interface IStorage {
   updateMembership(id: string, data: Partial<InsertMembership>): Promise<Membership | undefined>;
   updateMembershipSessions(id: string, sessionsRemaining: number): Promise<void>;
   incrementMembershipSessions(id: string, delta: number): Promise<void>;
+  decrementMembershipSessionsIfPositive(id: string): Promise<boolean>;
 
   getClassTypes(): Promise<Array<{ id: string; name: string; ageGroup: string; strengthLevel: number; infoBullets: string[]; isActive: boolean }>>;
   createClassType(item: InsertClassType): Promise<ClassType>;
@@ -243,6 +244,18 @@ export class MongoStorage implements IStorage {
       { _id: new mongoose.Types.ObjectId(id) },
       { $inc: { sessionsRemaining: delta } }
     );
+  }
+
+  async decrementMembershipSessionsIfPositive(id: string): Promise<boolean> {
+    const updated = await MembershipModel.findOneAndUpdate(
+      {
+        _id: new mongoose.Types.ObjectId(id),
+        sessionsRemaining: { $gt: 0 },
+      },
+      { $inc: { sessionsRemaining: -1 } },
+      { new: true }
+    );
+    return Boolean(updated);
   }
 
   async getClassTypes(): Promise<Array<{ id: string; name: string; ageGroup: string; strengthLevel: number; infoBullets: string[]; isActive: boolean }>> {

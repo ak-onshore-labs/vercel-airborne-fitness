@@ -1,7 +1,9 @@
 import type { Express, Request, Response } from "express";
 import { storage } from "../storage";
 import { asyncHandler, requireAuth } from "../middleware";
-import { MembershipPlanModel } from "../models";
+import { MembershipModel, MembershipPlanModel } from "../models";
+import mongoose from "mongoose";
+import { getMembershipUsabilityState } from "@shared/membershipState";
 
 export function registerMembershipRoutes(app: Express): void {
   app.patch(
@@ -15,6 +17,68 @@ export function registerMembershipRoutes(app: Express): void {
         return;
       }
       res.json(updated);
+    })
+  );
+
+  app.post(
+    "/api/memberships/:id/self-extend",
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response): Promise<void> => {
+      const auth = req.auth!;
+      const { id } = req.params;
+      if (!id) {
+        res.status(400).json({ message: "Membership id required" });
+        return;
+      }
+
+      const members = await storage.getMembersByUserId(auth.userId);
+      const memberIds = new Set(members.map((m) => m.id));
+      if (memberIds.size === 0) {
+        res.status(403).json({ message: "Not allowed" });
+        return;
+      }
+
+      const now = new Date();
+      const existing = await storage.getMembershipById(id);
+      if (!existing) {
+        res.status(404).json({ message: "Membership not found" });
+        return;
+      }
+      if (!memberIds.has(existing.memberId)) {
+        res.status(403).json({ message: "Not allowed" });
+        return;
+      }
+
+      const baseMs = Math.max(new Date(existing.expiryDate as any).getTime(), now.getTime());
+      const newExpiry = new Date(baseMs + 7 * 24 * 60 * 60 * 1000);
+
+      const updated = await MembershipModel.findOneAndUpdate(
+        {
+          _id: new mongoose.Types.ObjectId(id),
+          memberId: { $in: Array.from(memberIds) },
+          expiryDate: { $lte: now },
+          sessionsRemaining: { $gt: 0 },
+          extensionApplied: { $ne: true },
+        },
+        {
+          $set: {
+            expiryDate: newExpiry,
+            extensionApplied: true,
+          },
+        },
+        { new: true }
+      );
+
+      if (!updated) {
+        res.status(400).json({ message: "Extension not available" });
+        return;
+      }
+
+      res.json({
+        id: String(updated._id),
+        expiryDate: updated.expiryDate instanceof Date ? updated.expiryDate.toISOString() : String(updated.expiryDate),
+        extensionApplied: Boolean(updated.extensionApplied),
+      });
     })
   );
 
@@ -180,12 +244,48 @@ export function registerMembershipRoutes(app: Express): void {
       const classTypeDocs = await ClassTypeModel.find({});
       const typeIdToName: Record<string, string> = {};
       for (const t of classTypeDocs) typeIdToName[(t as any)._id.toString()] = t.name;
-      const membershipMap: Record<string, { id: string; sessionsRemaining: number; expiryDate: Date }> = {};
+      const membershipMap: Record<string, { id: string; sessionsRemaining: number; expiryDate: string; extensionApplied: boolean; planName?: string }> = {};
+      const now = new Date();
+
+      function tierRank(x: { expiryDate: string; sessionsRemaining: number; extensionApplied: boolean }): number {
+        const state = getMembershipUsabilityState(
+          { expiryDate: x.expiryDate, sessionsRemaining: x.sessionsRemaining, extensionApplied: x.extensionApplied },
+          now
+        ).state;
+        return state === "active" ? 0 : state === "expired_extendable" ? 1 : 2;
+      }
+
+      function isCandidateBetter(
+        candidate: { id: string; sessionsRemaining: number; expiryDate: string; extensionApplied: boolean },
+        existing: { id: string; sessionsRemaining: number; expiryDate: string; extensionApplied: boolean }
+      ): boolean {
+        const ra = tierRank(candidate);
+        const rb = tierRank(existing);
+        if (ra !== rb) return ra < rb;
+        const expA = new Date(candidate.expiryDate).getTime();
+        const expB = new Date(existing.expiryDate).getTime();
+        if (expA !== expB) return expA < expB;
+        return String(candidate.id).localeCompare(String(existing.id), "en") < 0;
+      }
       for (const m of allMemberships) {
         const plan = planById.get(m.membershipPlanId);
         const classTypeId = plan?.classTypeId ?? "";
         const category = typeIdToName[classTypeId] ?? m.membershipPlanId;
-        membershipMap[category] = { id: m.id, sessionsRemaining: m.sessionsRemaining, expiryDate: m.expiryDate };
+        const candidate = {
+          id: m.id,
+          sessionsRemaining: m.sessionsRemaining,
+          expiryDate: m.expiryDate instanceof Date ? m.expiryDate.toISOString() : String(m.expiryDate),
+          extensionApplied: Boolean((m as any).extensionApplied),
+          planName: plan?.name,
+        };
+        const existing = membershipMap[category];
+        if (!existing) {
+          membershipMap[category] = candidate;
+          continue;
+        }
+        if (isCandidateBetter(candidate, existing)) {
+          membershipMap[category] = candidate;
+        }
       }
 
       res.json({ memberships: membershipMap });
@@ -215,6 +315,11 @@ export function registerMembershipRoutes(app: Express): void {
     "/api/memberships/:id/approve-extension",
     requireAuth,
     asyncHandler(async (req: Request, res: Response): Promise<void> => {
+      const requester = await storage.getUser(req.auth!.userId);
+      if (!requester || (requester.userRole !== "ADMIN" && requester.userRole !== "STAFF")) {
+        res.status(403).json({ message: "Not allowed" });
+        return;
+      }
       const { id } = req.params;
       const membership = await storage.getMembershipById(id);
       if (!membership) {

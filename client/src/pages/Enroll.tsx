@@ -680,8 +680,11 @@ const Payment = ({ onBack, onPay, plans, loading, loadingError }: any) => {
 export default function Enroll() {
   const { enroll, user, selectedBranch } = useMember();
   const [, setLocation] = useLocation();
+  const searchParams = new URLSearchParams(window.location.search);
+  const isRenewFlow = searchParams.get("renew") === "1";
+  const renewCategoryParam = searchParams.get("category");
   const [scheduleSheetOpen, setScheduleSheetOpen] = useState(false);
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(() => (isRenewFlow ? 2 : 1));
   const [formData, setFormData] = useState(() => {
     const name = user?.name && user.name !== "New Member" ? user.name : "";
     return {
@@ -721,7 +724,16 @@ export default function Enroll() {
       if (r.ok && Array.isArray(r.data)) {
         const sorted = [...r.data].sort((a, b) => a.name.localeCompare(b.name, "en"));
         setClassTypes(sorted);
-        if (sorted.length > 0) setSelectedClassType((prev) => prev ?? sorted[0]);
+        if (sorted.length > 0) {
+          setSelectedClassType((prev) => {
+            if (prev) return prev;
+            if (isRenewFlow && renewCategoryParam) {
+              const match = sorted.find((c) => c.name === renewCategoryParam);
+              if (match) return match;
+            }
+            return sorted[0];
+          });
+        }
       }
     });
   }, []);
