@@ -78,6 +78,11 @@ function toTenDigits(phone: string): string {
   return d.length > 10 && d.startsWith("91") ? d.slice(2) : d.slice(-10);
 }
 
+/** MSG91 v5 OTP API expects mobile as country code + number, e.g. 917007232096 */
+function toMsg91Mobile(phone: string): string {
+  return `91${toTenDigits(phone)}`;
+}
+
 export function registerAuthRoutes(app: Express): void {
   app.post(
     "/api/auth/send-otp",
@@ -90,14 +95,15 @@ export function registerAuthRoutes(app: Express): void {
 
       try {
         const authKey = getMsg91Auth();
-        const mobile = toTenDigits(phone);
         const msgRes = await fetch(MSG91_SEND_OTP_URL, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+          headers: {
+            "Content-Type": "application/json",
             authkey: authKey,
-            mobile,
+          },
+          body: JSON.stringify({
             template_id: MSG91_OTP_TEMPLATE_ID,
+            mobile: toMsg91Mobile(phone),
           }),
         });
         const text = await msgRes.text();
@@ -139,8 +145,8 @@ export function registerAuthRoutes(app: Express): void {
 
       if (!approved) {
         const authKey = getMsg91Auth();
-        const mobile = toTenDigits(phone);
-        const verifyUrl = `${MSG91_VERIFY_OTP_URL}?otp=${encodeURIComponent(codeTrimmed)}&mobile=${encodeURIComponent(mobile)}`;
+        const msg91Mobile = toMsg91Mobile(phone);
+        const verifyUrl = `${MSG91_VERIFY_OTP_URL}?otp=${encodeURIComponent(codeTrimmed)}&mobile=${encodeURIComponent(msg91Mobile)}`;
 
         const msgRes = await fetch(verifyUrl, {
           method: "GET",
