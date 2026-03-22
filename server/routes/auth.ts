@@ -64,11 +64,14 @@ const MSG91_VERIFY_OTP_URL = "https://control.msg91.com/api/v5/otp/verify";
 const MSG91_OTP_TEMPLATE_ID = "69b1704fc22c055df50c2443";
 
 function getMsg91Auth(): string {
-  const key = process.env.MSG_API_KEY;
-  if (!key || !key.trim()) {
-    throw new Error("MSG_API_KEY must be set");
+  const key =
+    process.env.MSG_API_KEY?.trim() ||
+    process.env.MSG91_AUTH_KEY?.trim() ||
+    process.env.MSG91_API_KEY?.trim();
+  if (!key) {
+    throw new Error("MSG_API_KEY (or MSG91_AUTH_KEY) must be set");
   }
-  return key.trim();
+  return key;
 }
 
 const digitsOnly = (s: string) => s.replace(/\D/g, "");
@@ -93,8 +96,19 @@ export function registerAuthRoutes(app: Express): void {
         return;
       }
 
+      let authKey: string;
       try {
-        const authKey = getMsg91Auth();
+        authKey = getMsg91Auth();
+      } catch (err) {
+        console.error(
+          "[MSG91] Missing auth key in process.env — set MSG_API_KEY (or MSG91_AUTH_KEY) on your production host. Local .env is not deployed by default.",
+          err,
+        );
+        res.status(200).json({ success: false, message: "Unable to send OTP. Please try again later." });
+        return;
+      }
+
+      try {
         const msgRes = await fetch(MSG91_SEND_OTP_URL, {
           method: "POST",
           headers: {
@@ -115,12 +129,24 @@ export function registerAuthRoutes(app: Express): void {
         }
 
         if (!msgRes.ok || data.type !== "success") {
+          console.error(
+            "[MSG91] send-otp failed:",
+            "httpStatus=",
+            msgRes.status,
+            "response=",
+            text.slice(0, 500),
+            "parsedType=",
+            data.type,
+            "parsedMessage=",
+            data.message,
+          );
           res.status(200).json({ success: false, message: "Unable to send OTP. Please try again later." });
           return;
         }
 
         res.json({ success: true, status: "pending" });
-      } catch {
+      } catch (err) {
+        console.error("[MSG91] send-otp network or unexpected error:", err);
         res.status(200).json({ success: false, message: "Unable to send OTP. Please try again later." });
       }
     })
