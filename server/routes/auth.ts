@@ -86,6 +86,31 @@ function toMsg91Mobile(phone: string): string {
   return `91${toTenDigits(phone)}`;
 }
 
+/** Wrap for use inside bash single quotes (e.g. curl --data '...'). */
+function bashSingleQuoted(s: string): string {
+  return `'${s.replace(/'/g, "'\\''")}'`;
+}
+
+function logMsg91SendOtpCurl(authKey: string, msg91Mobile: string): void {
+  const bodyStr = JSON.stringify({
+    template_id: MSG91_OTP_TEMPLATE_ID,
+    mobile: msg91Mobile,
+  });
+  const redact =
+    process.env.NODE_ENV === "production" && process.env.MSG91_LOG_CURL_WITH_SECRET !== "true";
+  const keyForHeader = redact ? "<REDACTED>" : authKey;
+  const note = redact
+    ? " [authkey redacted; set MSG91_LOG_CURL_WITH_SECRET=true to log it]"
+    : "";
+  console.log(
+    `[MSG91] send-otp equivalent curl${note}:\n` +
+      `curl --location ${bashSingleQuoted(MSG91_SEND_OTP_URL)} \\\n` +
+      `  --header ${bashSingleQuoted("Content-Type: application/json")} \\\n` +
+      `  --header ${bashSingleQuoted(`authkey: ${keyForHeader}`)} \\\n` +
+      `  --data ${bashSingleQuoted(bodyStr)}`,
+  );
+}
+
 export function registerAuthRoutes(app: Express): void {
   app.post(
     "/api/auth/send-otp",
@@ -109,6 +134,8 @@ export function registerAuthRoutes(app: Express): void {
       }
 
       try {
+        const msg91Mobile = toMsg91Mobile(phone);
+        logMsg91SendOtpCurl(authKey, msg91Mobile);
         const msgRes = await fetch(MSG91_SEND_OTP_URL, {
           method: "POST",
           headers: {
@@ -117,7 +144,7 @@ export function registerAuthRoutes(app: Express): void {
           },
           body: JSON.stringify({
             template_id: MSG91_OTP_TEMPLATE_ID,
-            mobile: toMsg91Mobile(phone),
+            mobile: msg91Mobile,
           }),
         });
         const text = await msgRes.text();
