@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import { asyncHandler, requireAuth } from "../middleware";
 import { storage } from "../storage";
 import { signToken } from "../lib/jwt";
+import { log } from "../lib/log";
 import { getMembershipUsabilityState } from "@shared/membershipState";
 
 function tierRank(
@@ -86,12 +87,8 @@ function toMsg91Mobile(phone: string): string {
   return `91${toTenDigits(phone)}`;
 }
 
-/** Wrap for use inside bash single quotes (e.g. curl --data '...'). */
-function bashSingleQuoted(s: string): string {
-  return `'${s.replace(/'/g, "'\\''")}'`;
-}
-
-function logMsg91SendOtpCurl(authKey: string, msg91Mobile: string): void {
+/** One-line curl (double-quoted args) so PM2 / log shippers do not drop multiline output. */
+function formatMsg91SendOtpCurlOneLine(authKey: string, msg91Mobile: string): string {
   const bodyStr = JSON.stringify({
     template_id: MSG91_OTP_TEMPLATE_ID,
     mobile: msg91Mobile,
@@ -99,16 +96,23 @@ function logMsg91SendOtpCurl(authKey: string, msg91Mobile: string): void {
   const redact =
     process.env.NODE_ENV === "production" && process.env.MSG91_LOG_CURL_WITH_SECRET !== "true";
   const keyForHeader = redact ? "<REDACTED>" : authKey;
-  const note = redact
-    ? " [authkey redacted; set MSG91_LOG_CURL_WITH_SECRET=true to log it]"
-    : "";
-  console.log(
-    `[MSG91] send-otp equivalent curl${note}:\n` +
-      `curl --location ${bashSingleQuoted(MSG91_SEND_OTP_URL)} \\\n` +
-      `  --header ${bashSingleQuoted("Content-Type: application/json")} \\\n` +
-      `  --header ${bashSingleQuoted(`authkey: ${keyForHeader}`)} \\\n` +
-      `  --data ${bashSingleQuoted(bodyStr)}`,
-  );
+  return [
+    "curl --location",
+    JSON.stringify(MSG91_SEND_OTP_URL),
+    "--header",
+    JSON.stringify("Content-Type: application/json"),
+    "--header",
+    JSON.stringify(`authkey: ${keyForHeader}`),
+    "--data",
+    JSON.stringify(bodyStr),
+  ].join(" ");
+}
+
+function logMsg91SendOtpCurl(authKey: string, msg91Mobile: string): void {
+  const redact =
+    process.env.NODE_ENV === "production" && process.env.MSG91_LOG_CURL_WITH_SECRET !== "true";
+  const suffix = redact ? " (authkey redacted; MSG91_LOG_CURL_WITH_SECRET=true to show)" : "";
+  log(`send-otp curl${suffix}: ${formatMsg91SendOtpCurlOneLine(authKey, msg91Mobile)}`, "msg91");
 }
 
 export function registerAuthRoutes(app: Express): void {
@@ -125,9 +129,9 @@ export function registerAuthRoutes(app: Express): void {
       try {
         authKey = getMsg91Auth();
       } catch (err) {
-        console.error(
-          "[MSG91] Missing auth key in process.env — set MSG_API_KEY (or MSG91_AUTH_KEY) on your production host. Local .env is not deployed by default.",
-          err,
+        log(
+          `send-otp missing MSG_API_KEY: ${(err as Error).message} — set MSG_API_KEY or MSG91_AUTH_KEY on the host`,
+          "msg91",
         );
         res.status(200).json({ success: false, message: "Unable to send OTP. Please try again later." });
         return;
@@ -156,16 +160,9 @@ export function registerAuthRoutes(app: Express): void {
         }
 
         if (!msgRes.ok || data.type !== "success") {
-          console.error(
-            "[MSG91] send-otp failed:",
-            "httpStatus=",
-            msgRes.status,
-            "response=",
-            text.slice(0, 500),
-            "parsedType=",
-            data.type,
-            "parsedMessage=",
-            data.message,
+          log(
+            `send-otp failed http=${msgRes.status} type=${data.type ?? ""} msg=${data.message ?? ""} body=${text.slice(0, 400)}`,
+            "msg91",
           );
           res.status(200).json({ success: false, message: "Unable to send OTP. Please try again later." });
           return;
@@ -173,7 +170,7 @@ export function registerAuthRoutes(app: Express): void {
 
         res.json({ success: true, status: "pending" });
       } catch (err) {
-        console.error("[MSG91] send-otp network or unexpected error:", err);
+        log(`send-otp error: ${err instanceof Error ? err.message : String(err)}`, "msg91");
         res.status(200).json({ success: false, message: "Unable to send OTP. Please try again later." });
       }
     })
