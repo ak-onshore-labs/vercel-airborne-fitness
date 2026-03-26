@@ -3,6 +3,7 @@ import { storage } from "../storage";
 import { asyncHandler, requireAdmin } from "../middleware";
 import { MembershipPlanModel } from "../models";
 import { isMembershipBookable } from "@shared/membershipState";
+import { calendarDateInIST, computeMembershipExpiryExclusiveEnd, parseMembershipStartDateFromInput } from "@shared/membershipDates";
 
 const requireAdminAsync = asyncHandler(requireAdmin);
 
@@ -18,6 +19,10 @@ async function findMembershipForSlot(memberId: string, scheduleId: string): Prom
         expiryDate: m.expiryDate,
         sessionsRemaining: m.sessionsRemaining,
         extensionApplied: (m as any).extensionApplied,
+        pauseUsed: (m as any).pauseUsed,
+        pauseStart: (m as any).pauseStart,
+        pauseEnd: (m as any).pauseEnd,
+        startDate: (m as any).startDate,
       },
       now
     )
@@ -475,7 +480,9 @@ export function registerAdminRoutes(app: Express): void {
         return;
       }
 
-      const expiryDate = new Date(Date.now() + validityDays * 24 * 60 * 60 * 1000);
+      const todayStr = calendarDateInIST(new Date());
+      const expiryDate = computeMembershipExpiryExclusiveEnd(todayStr, validityDays);
+      const startDate = parseMembershipStartDateFromInput(todayStr);
       const membership = await storage.createMembership({
         memberId,
         membershipPlanId,
@@ -483,6 +490,8 @@ export function registerAdminRoutes(app: Express): void {
         expiryDate,
         carryForward: 0,
         extensionApplied: false,
+        pauseUsed: false,
+        startDate,
       });
 
       // Optional: record a cash transaction for admin-created memberships

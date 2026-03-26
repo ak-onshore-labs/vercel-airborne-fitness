@@ -71,7 +71,8 @@ export default function Dashboard() {
                     {getMembershipHeadline(details) && (
                       <p
                         className={
-                          getMembershipUsability(details).state === "paused"
+                          getMembershipUsability(details).state === "paused" ||
+                          getMembershipUsability(details).state === "upcoming"
                             ? "text-xs font-semibold text-airborne-teal dark:text-teal-300 mb-4"
                             : "text-xs font-semibold text-amber-700 dark:text-amber-300 mb-4"
                         }

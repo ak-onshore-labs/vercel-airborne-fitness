@@ -14,6 +14,7 @@ const membershipSchema = new mongoose.Schema<Membership & { _id: mongoose.Types.
     pauseUsed: { type: Boolean, default: false },
     pauseStart: { type: Date, default: null },
     pauseEnd: { type: Date, default: null },
+    startDate: { type: Date, default: null },
   },
   { timestamps: true }
 );

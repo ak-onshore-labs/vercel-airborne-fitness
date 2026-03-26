@@ -5,12 +5,22 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLocation } from "wouter";
-import { X, Calendar, Info, Loader2 } from "lucide-react";
+import { X, Calendar as CalendarIcon, Info, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import MobileLayout from "@/components/layout/MobileLayout";
 import { apiFetch } from "@/lib/api";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { format, isSameDay, addDays, startOfToday } from "date-fns";
+import { format, isSameDay, addDays, startOfToday, parseISO } from "date-fns";
+import { membershipEnrollmentStartBounds } from "@shared/membershipDates";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Calendar as DayPickerCalendar } from "@/components/ui/calendar";
 import { formatTime12h } from "@/lib/formatTime";
 import filledBicep from "@assets/filled_bicep.svg";
 import blackBicep from "@assets/black_bicep.svg";
@@ -400,7 +410,7 @@ const MembershipSelection = ({ onNext, onBack, onAddPlan, onRemovePlan, selected
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900 dark:text-[#EDEDED]">Select Plans</h2>
         <Button variant="outline" size="sm" onClick={onViewSchedule} className="text-airborne-teal border-airborne-teal dark:bg-transparent dark:hover:bg-teal-900/20" data-testid="button-view-schedule">
-          <Calendar size={14} className="mr-1" /> View Schedule
+          <CalendarIcon size={14} className="mr-1" /> View Schedule
         </Button>
       </div>
       <div className="flex gap-2 overflow-x-auto pb-2 -mx-6 px-6 scrollbar-hide">
@@ -718,6 +728,13 @@ export default function Enroll() {
   const [classTypes, setClassTypes] = useState<ClassType[]>([]);
   const [selectedClassType, setSelectedClassType] = useState<ClassType | null>(null);
   const [plansByClassType, setPlansByClassType] = useState<Record<string, MembershipPlan[]>>({});
+  const [startModalOpen, setStartModalOpen] = useState(false);
+  const [startMode, setStartMode] = useState<"today" | "custom">("today");
+  const [modalBounds, setModalBounds] = useState(() => membershipEnrollmentStartBounds(new Date()));
+  const [pickerDate, setPickerDate] = useState<Date>(() =>
+    parseISO(`${membershipEnrollmentStartBounds(new Date()).min}T12:00:00`)
+  );
+  const [enrollmentStartDate, setEnrollmentStartDate] = useState(() => membershipEnrollmentStartBounds(new Date()).min);
 
   useEffect(() => {
     apiFetch<ClassType[]>("/api/class-types").then((r) => {
@@ -759,6 +776,25 @@ export default function Enroll() {
     else setStep(step + 1);
   };
 
+  const openMembershipStartModal = () => {
+    const b = membershipEnrollmentStartBounds(new Date());
+    setModalBounds(b);
+    setStartMode("today");
+    setPickerDate(parseISO(`${b.min}T12:00:00`));
+    setStartModalOpen(true);
+  };
+
+  const confirmMembershipStart = () => {
+    const b = membershipEnrollmentStartBounds(new Date());
+    const chosen = startMode === "today" ? b.min : format(pickerDate, "yyyy-MM-dd");
+    if (chosen < b.min || chosen > b.max) {
+      return;
+    }
+    setEnrollmentStartDate(chosen);
+    setStartModalOpen(false);
+    nextStep();
+  };
+
   const prevStep = () => {
     if (step === 4 && !hasKidsCategory) setStep(2);
     else setStep(step - 1);
@@ -776,7 +812,9 @@ export default function Enroll() {
         formData,
         selectedPlans,
         waiverData,
-        hasKidsCategory ? kidInfo : undefined
+        hasKidsCategory ? kidInfo : undefined,
+        undefined,
+        enrollmentStartDate
       );
       setLocation("/enroll/success");
     } catch {
@@ -856,7 +894,8 @@ export default function Enroll() {
                 selectedPlans,
                 waiverData,
                 hasKidsCategory ? kidInfo : undefined,
-                transactionId
+                transactionId,
+                enrollmentStartDate
               );
               setLocation("/enroll/success");
             } catch (enrollErr) {
@@ -914,7 +953,7 @@ export default function Enroll() {
             </div>
             <AnimatePresence mode="wait">
               {step === 1 && <PersonalDetails key="step1" data={formData} onChange={(k: any, v: any) => setFormData(p => ({...p, [k]: v}))} onNext={() => setStep(2)} />}
-              {step === 2 && <MembershipSelection key="step2" classTypes={classTypes} plansByClassType={plansByClassType} selectedClassType={selectedClassType} onSelectClassType={setSelectedClassType} selectedPlans={selectedPlans} onAddPlan={handleAddPlan} onRemovePlan={(c: string) => setSelectedPlans(p => p.filter(x => x.category !== c))} onNext={nextStep} onBack={() => setStep(1)} onViewSchedule={() => setScheduleSheetOpen(true)} />}
+              {step === 2 && <MembershipSelection key="step2" classTypes={classTypes} plansByClassType={plansByClassType} selectedClassType={selectedClassType} onSelectClassType={setSelectedClassType} selectedPlans={selectedPlans} onAddPlan={handleAddPlan} onRemovePlan={(c: string) => setSelectedPlans(p => p.filter(x => x.category !== c))} onNext={openMembershipStartModal} onBack={() => setStep(1)} onViewSchedule={() => setScheduleSheetOpen(true)} />}
               {step === 3 && <KidDetails key="step3" data={kidInfo} onChange={(k: any, v: any) => setKidInfo(p => ({...p, [k]: v}))} onNext={() => setStep(4)} onBack={() => setStep(2)} />}
               {step === 4 && <Waiver key="step4" data={waiverData} onChange={(k: any, v: any) => setWaiverData(p => ({...p, [k]: v}))} onNext={() => setStep(5)} onBack={prevStep} />}
               {step === 5 && <Payment key="step5" plans={selectedPlans} loading={isLoading} loadingError={loadingError} onBack={() => setStep(4)} onPay={handlePay} />}
@@ -931,6 +970,91 @@ export default function Enroll() {
             </div>
           </SheetContent>
         </Sheet>
+
+        <Dialog open={startModalOpen} onOpenChange={setStartModalOpen}>
+          <DialogContent className="max-w-[calc(100%-2rem)] rounded-2xl border-0 bg-white dark:bg-[#111113]">
+            <DialogHeader>
+              <DialogTitle className="text-gray-900 dark:text-[#EDEDED] font-bold text-xl">
+                Membership start date
+              </DialogTitle>
+              <DialogDescription className="text-gray-600 dark:text-[#9CA3AF] text-left text-sm leading-relaxed">
+                Choose when you want your membership to begin. You can book sessions with this membership only from that
+                date onward. Your plan length and expiry are calculated from the start date you pick.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStartMode("today");
+                    setPickerDate(parseISO(`${modalBounds.min}T12:00:00`));
+                  }}
+                  className={cn(
+                    "rounded-xl border px-3 py-3 text-sm font-semibold transition-colors",
+                    startMode === "today"
+                      ? "border-airborne-teal bg-teal-50 dark:bg-teal-900/30 text-airborne-teal dark:text-teal-300"
+                      : "border-gray-200 dark:border-white/10 text-gray-700 dark:text-[#EDEDED]"
+                  )}
+                >
+                  Start from today
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStartMode("custom")}
+                  className={cn(
+                    "rounded-xl border px-3 py-3 text-sm font-semibold transition-colors",
+                    startMode === "custom"
+                      ? "border-airborne-teal bg-teal-50 dark:bg-teal-900/30 text-airborne-teal dark:text-teal-300"
+                      : "border-gray-200 dark:border-white/10 text-gray-700 dark:text-[#EDEDED]"
+                  )}
+                >
+                  Choose a date
+                </button>
+              </div>
+              {startMode === "custom" && (
+                <div className="flex justify-center rounded-xl border border-gray-100 dark:border-white/10 p-2">
+                  <DayPickerCalendar
+                    mode="single"
+                    selected={pickerDate}
+                    onSelect={(d: Date | undefined) => {
+                      if (d) {
+                        setPickerDate(d);
+                        setStartMode("custom");
+                      }
+                    }}
+                    disabled={(date: Date) => {
+                      const ds = format(date, "yyyy-MM-dd");
+                      return ds < modalBounds.min || ds > modalBounds.max;
+                    }}
+                    defaultMonth={pickerDate}
+                    className="mx-auto"
+                  />
+                </div>
+              )}
+              <p className="text-xs text-gray-500 dark:text-[#6B7280]">
+                You can pick any date from today through the next 4 weeks ({modalBounds.min} – {modalBounds.max}).
+              </p>
+            </div>
+            <DialogFooter className="gap-2 sm:gap-2 flex-col sm:flex-row">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full sm:w-auto border-gray-200 dark:border-white/10"
+                onClick={() => setStartModalOpen(false)}
+              >
+                Close
+              </Button>
+              <Button
+                type="button"
+                className="w-full sm:w-auto bg-airborne-teal hover:bg-airborne-deep text-white"
+                onClick={confirmMembershipStart}
+              >
+                Continue
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
     </MobileLayout>
   );
 }

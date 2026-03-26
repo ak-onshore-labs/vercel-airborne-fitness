@@ -84,6 +84,8 @@ export interface Membership {
   pauseUsed: boolean;
   pauseStart?: Date | null;
   pauseEnd?: Date | null;
+  /** Calendar start of membership (IST). Omitted/null = legacy / effective immediate start. */
+  startDate?: Date | null;
   createdAt?: Date | null;
 }
 

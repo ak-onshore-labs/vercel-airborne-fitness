@@ -299,6 +299,17 @@ export default function Book() {
                              >
                                Paused
                              </Button>
+                        ) : membershipState === "upcoming" ? (
+                             <Button
+                               disabled
+                               size="sm"
+                               className="h-9 bg-gray-100 dark:bg-[#18181B] text-gray-500 dark:text-[#9CA3AF] text-xs px-5 rounded border border-gray-200 dark:border-white/10 shadow-none"
+                               data-testid={`button-upcoming-${key}`}
+                             >
+                               {membershipDetails?.startDate
+                                 ? `Starts on ${format(new Date(membershipDetails.startDate), "dd MMM yyyy")}`
+                                 : "Starts soon"}
+                             </Button>
                         ) : !hasMembership ? (
                              <Button size="sm" onClick={() => setLocation('/enroll')} className="h-9 bg-gray-900 dark:bg-[#EDEDED] text-white dark:text-[#0B0B0C] text-xs px-5 rounded" data-testid={`button-enroll-${key}`}>Enroll</Button>
                         ) : membershipState !== "active" ? (

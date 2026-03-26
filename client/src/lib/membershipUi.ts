@@ -15,6 +15,7 @@ export function getMembershipHeadline(details: MembershipDetails, now = new Date
       pauseUsed: details.pauseUsed,
       pauseStart: details.pauseStart ?? null,
       pauseEnd: details.pauseEnd ?? null,
+      startDate: details.startDate ?? null,
     },
     now
   );
@@ -23,6 +24,10 @@ export function getMembershipHeadline(details: MembershipDetails, now = new Date
   if (s.state === "paused") {
     const resume = details.pauseEnd ? format(new Date(details.pauseEnd), "dd MMM yyyy") : "soon";
     return `Membership paused — resumes on ${resume}`;
+  }
+  if (s.state === "upcoming") {
+    const sd = details.startDate ? format(new Date(details.startDate), "dd MMM yyyy") : "";
+    return sd ? `Starts on ${sd}` : "Membership starts soon";
   }
   if (s.state === "expired_extendable") return "Your membership has expired";
   if (s.reason === "expired") return "Your membership has expired";
@@ -38,6 +43,7 @@ export function getMembershipUsability(details: MembershipDetails, now = new Dat
       pauseUsed: details.pauseUsed,
       pauseStart: details.pauseStart ?? null,
       pauseEnd: details.pauseEnd ?? null,
+      startDate: details.startDate ?? null,
     },
     now
   );
@@ -51,6 +57,7 @@ export function getMembershipCtas(details: MembershipDetails, now = new Date()):
   const s = getMembershipUsability(details, now);
 
   if (s.state === "active") return { showBook: true, showRenew: false, showExtend: false };
+  if (s.state === "upcoming") return { showBook: false, showRenew: false, showExtend: false };
   if (s.state === "paused") return { showBook: false, showRenew: false, showExtend: false };
   if (s.state === "expired_extendable") return { showBook: false, showRenew: true, showExtend: true };
   return { showBook: false, showRenew: true, showExtend: false };
