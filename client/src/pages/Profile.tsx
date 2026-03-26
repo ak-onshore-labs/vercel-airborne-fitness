@@ -41,21 +41,21 @@ export default function Profile() {
     <MobileLayout>
       <div className="p-6">
         <HeroWithAccent className="mb-8">
-          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">{user.name}</h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">{user.phone}</p>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-[#EDEDED] mb-2">{user.name}</h1>
+          <p className="text-gray-500 dark:text-[#9CA3AF] text-sm font-medium">{user.phone}</p>
         </HeroWithAccent>
 
         {/* Memberships Section */}
         <div className="mb-8">
-            <h2 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3 px-1">Memberships</h2>
+            <h2 className="text-xs font-bold text-gray-400 dark:text-[#6B7280] uppercase tracking-wider mb-3 px-1">Memberships</h2>
             {hasMemberships ? (
                 <div className="space-y-3">
                     {Object.entries(user.memberships).map(([name, details]) => (
-                        <div key={name} className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 border-l-[3px] border-l-airborne-teal dark:border-l-teal-400 p-4 rounded shadow-sm transition-shadow duration-200 hover:shadow-md">
+                        <div key={name} className="bg-white dark:bg-[#111113] border border-gray-100 dark:border-white/6 border-l-[3px] border-l-airborne-teal dark:border-l-teal-400 p-4 rounded shadow-sm dark:shadow-black/30 transition-shadow duration-200 hover:shadow-md dark:hover:shadow-black/30">
                           <div className="flex justify-between items-center">
                               <div>
-                                  <h3 className="font-bold text-gray-900 dark:text-gray-100 text-sm">{name}</h3>
-                                  <p className="text-xs text-gray-500 dark:text-gray-400">{details.planName}</p>
+                                  <h3 className="font-bold text-gray-900 dark:text-[#EDEDED] text-sm">{name}</h3>
+                                  <p className="text-xs text-gray-500 dark:text-[#9CA3AF]">{details.planName}</p>
                                   {getMembershipHeadline(details) && (
                                     <p
                                       className={
@@ -71,9 +71,9 @@ export default function Profile() {
                               </div>
                               <div className="text-right">
                                   <div className="text-airborne-teal font-bold text-lg">{details.sessionsRemaining}</div>
-                                  <div className="text-[10px] text-gray-400 dark:text-gray-500">sessions left</div>
+                                  <div className="text-[10px] text-gray-400 dark:text-[#6B7280]">sessions left</div>
                                   {details.expiryDate && (
-                                    <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1" data-testid="membership-expiry">
+                                    <p className="text-[10px] text-gray-500 dark:text-[#9CA3AF] mt-1" data-testid="membership-expiry">
                                       Expires {format(new Date(details.expiryDate), "dd MMM yyyy")}
                                     </p>
                                   )}
@@ -110,7 +110,7 @@ export default function Profile() {
                               {getMembershipCtas(details).showRenew && (
                                 <Button
                                   size="sm"
-                                  className="h-9 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded flex-1"
+                                  className="h-9 bg-gray-900 dark:bg-[#EDEDED] text-white dark:text-[#0B0B0C] rounded flex-1"
                                   onClick={() => setLocation(getRenewUrl(name))}
                                   data-testid={`button-renew-${name}`}
                                 >
@@ -123,8 +123,8 @@ export default function Profile() {
                     ))}
                 </div>
             ) : (
-                <div className="bg-gray-50 dark:bg-gray-800/50 rounded p-4 text-center border border-dashed border-gray-200 dark:border-gray-600">
-                    <p className="text-gray-400 dark:text-gray-500 text-sm">No active memberships</p>
+                <div className="bg-gray-50 dark:bg-[#111113] rounded p-4 text-center border border-dashed border-gray-200 dark:border-white/10">
+                    <p className="text-gray-400 dark:text-[#6B7280] text-sm">No active memberships</p>
                 </div>
             )}
         </div>
@@ -163,18 +163,18 @@ export default function Profile() {
 
         {/* Settings List */}
         <div className="space-y-3">
-          <button onClick={() => setLocation("/profile/settings")} className="w-full flex items-center justify-between bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 border-l-2 border-l-airborne-teal dark:border-l-teal-400 p-4 rounded hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors transition-shadow duration-200 hover:shadow-md group">
+          <button onClick={() => setLocation("/profile/settings")} className="w-full flex items-center justify-between bg-white dark:bg-[#111113] border border-gray-100 dark:border-white/6 border-l-2 border-l-airborne-teal dark:border-l-teal-400 p-4 rounded hover:bg-gray-50 dark:hover:bg-[#18181B] transition-colors transition-shadow duration-200 hover:shadow-md dark:hover:shadow-black/30 group">
             <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-500 dark:text-blue-400 flex items-center justify-center">
                     <Settings size={16} />
                 </div>
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Account Settings</span>
+                <span className="text-sm font-medium text-gray-700 dark:text-[#EDEDED]">Account Settings</span>
             </div>
-            <ChevronRight size={16} className="text-gray-300 dark:text-gray-500 group-hover:text-gray-500 dark:group-hover:text-gray-400" />
+            <ChevronRight size={16} className="text-gray-300 dark:text-[#6B7280] group-hover:text-gray-500 dark:group-hover:text-[#9CA3AF]" />
           </button>
 
-          <div className="w-full flex items-center justify-between bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 border-l-2 border-l-airborne-teal dark:border-l-teal-400 p-4 rounded transition-shadow duration-200 hover:shadow-md">
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Dark Mode</span>
+          <div className="w-full flex items-center justify-between bg-white dark:bg-[#111113] border border-gray-100 dark:border-white/6 border-l-2 border-l-airborne-teal dark:border-l-teal-400 p-4 rounded transition-shadow duration-200 hover:shadow-md dark:hover:shadow-black/30">
+            <span className="text-sm font-medium text-gray-700 dark:text-[#EDEDED]">Dark Mode</span>
             <Switch checked={darkMode} onCheckedChange={setDarkMode} />
           </div>
           

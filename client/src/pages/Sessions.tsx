@@ -88,11 +88,11 @@ export default function Sessions() {
     const isWaitlisted = booking.status === "WAITLIST";
 
     return (
-      <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 border-l-2 border-l-airborne-teal dark:border-l-teal-400 p-5 rounded shadow-sm space-y-4 transition-shadow duration-200 hover:shadow-md" data-testid={`card-booking-${booking.id}`}>
+      <div className="bg-white dark:bg-[#111113] border border-gray-100 dark:border-white/6 border-l-2 border-l-airborne-teal dark:border-l-teal-400 p-5 rounded shadow-sm dark:shadow-black/30 space-y-4 transition-shadow duration-200 hover:shadow-md dark:hover:shadow-black/30" data-testid={`card-booking-${booking.id}`}>
         <div className="flex justify-between items-start">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <h3 className="font-bold text-gray-900 dark:text-gray-100 capitalize" data-testid={`text-booking-category-${booking.id}`}>{booking.category}</h3>
+              <h3 className="font-bold text-gray-900 dark:text-[#EDEDED] capitalize" data-testid={`text-booking-category-${booking.id}`}>{booking.category}</h3>
               <span className={cn(
                 "text-[10px] px-2 py-0.5 rounded-full font-bold uppercase",
                 isWaitlisted ? "bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-800" : "bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 border border-green-100 dark:border-green-800"
@@ -101,20 +101,20 @@ export default function Sessions() {
               </span>
             </div>
             <div className="space-y-1">
-              <div className="flex items-center text-xs text-gray-500 dark:text-gray-400 gap-1.5">
+              <div className="flex items-center text-xs text-gray-500 dark:text-[#9CA3AF] gap-1.5">
                 <Calendar size={12} /> {booking.sessionDate}
               </div>
-              <div className="flex items-center text-xs text-gray-500 dark:text-gray-400 gap-1.5">
+              <div className="flex items-center text-xs text-gray-500 dark:text-[#9CA3AF] gap-1.5">
                 <Clock size={12} /> {formatTime12h(booking.startTime)} - {formatTime12h(booking.endTime)}
               </div>
-              <div className="flex items-center text-xs text-gray-500 dark:text-gray-400 gap-1.5">
+              <div className="flex items-center text-xs text-gray-500 dark:text-[#9CA3AF] gap-1.5">
                 <MapPin size={12} /> {booking.branch}
               </div>
             </div>
           </div>
         </div>
 
-        <div className="pt-2 border-t border-gray-50 dark:border-gray-700 flex justify-between items-center">
+        <div className="pt-2 border-t border-gray-50 dark:border-white/6 flex justify-between items-center">
           {!canCancel ? (
             <span className="text-[10px] font-bold text-red-400 dark:text-red-500 flex items-center gap-1">
               <AlertCircle size={12} /> Cancellation closed
@@ -130,7 +130,7 @@ export default function Sessions() {
             onClick={() => canCancel && openCancelModal(booking, isWaitlisted)}
             className={cn(
               "text-xs font-semibold h-8 rounded px-4",
-              canCancel ? "text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20" : "text-gray-300 dark:text-gray-600"
+              canCancel ? "text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20" : "text-gray-300 dark:text-[#6B7280]"
             )}
             data-testid={`button-cancel-${booking.id}`}
           >
@@ -159,12 +159,12 @@ export default function Sessions() {
       </Dialog>
       <div className="p-6 pb-24">
         <HeroWithAccent>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">My Sessions</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-[#EDEDED]">My Sessions</h1>
         </HeroWithAccent>
 
-        <div className="flex p-1 bg-gray-100 dark:bg-gray-700 rounded mb-6">
-          <button onClick={() => setActiveTab("upcoming")} className={cn("flex-1 py-2 text-xs font-bold rounded transition-all", activeTab === "upcoming" ? "bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 shadow-sm border-b-2 border-airborne-teal dark:border-teal-400" : "text-gray-500 dark:text-gray-400")} data-testid="tab-upcoming">Upcoming</button>
-          <button onClick={() => setActiveTab("past")} className={cn("flex-1 py-2 text-xs font-bold rounded transition-all", activeTab === "past" ? "bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 shadow-sm border-b-2 border-airborne-teal dark:border-teal-400" : "text-gray-500 dark:text-gray-400")} data-testid="tab-past">Past</button>
+        <div className="flex p-1 bg-gray-100 dark:bg-[#18181B] rounded mb-6">
+          <button onClick={() => setActiveTab("upcoming")} className={cn("flex-1 py-2 text-xs font-bold rounded transition-all", activeTab === "upcoming" ? "bg-white dark:bg-[#111113] text-gray-900 dark:text-[#EDEDED] shadow-sm border-b-2 border-airborne-teal dark:border-teal-400" : "text-gray-500 dark:text-[#9CA3AF]")} data-testid="tab-upcoming">Upcoming</button>
+          <button onClick={() => setActiveTab("past")} className={cn("flex-1 py-2 text-xs font-bold rounded transition-all", activeTab === "past" ? "bg-white dark:bg-[#111113] text-gray-900 dark:text-[#EDEDED] shadow-sm border-b-2 border-airborne-teal dark:border-teal-400" : "text-gray-500 dark:text-[#9CA3AF]")} data-testid="tab-past">Past</button>
         </div>
 
         {activeTab === "upcoming" ? (
@@ -172,8 +172,8 @@ export default function Sessions() {
             {upcomingBookings.length > 0 ? (
               upcomingBookings.map(booking => <BookingCard key={booking.id} booking={booking} />)
             ) : (
-              <div className="text-center py-12 bg-gray-50 dark:bg-gray-800/50 rounded border border-dashed border-gray-200 dark:border-gray-600">
-                <p className="text-gray-500 dark:text-gray-400 text-sm">No upcoming sessions.</p>
+              <div className="text-center py-12 bg-gray-50 dark:bg-[#111113] rounded border border-dashed border-gray-200 dark:border-white/10">
+                <p className="text-gray-500 dark:text-[#9CA3AF] text-sm">No upcoming sessions.</p>
               </div>
             )}
           </div>
@@ -182,8 +182,8 @@ export default function Sessions() {
             {pastBookings.length > 0 ? (
               pastBookings.map(booking => <BookingCard key={booking.id} booking={booking} />)
             ) : (
-              <div className="text-center py-12 bg-gray-50 dark:bg-gray-800/50 rounded border border-dashed border-gray-200 dark:border-gray-600">
-                <p className="text-gray-500 dark:text-gray-400 text-sm">No past sessions.</p>
+              <div className="text-center py-12 bg-gray-50 dark:bg-[#111113] rounded border border-dashed border-gray-200 dark:border-white/10">
+                <p className="text-gray-500 dark:text-[#9CA3AF] text-sm">No past sessions.</p>
               </div>
             )}
           </div>

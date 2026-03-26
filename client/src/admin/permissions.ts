@@ -52,11 +52,11 @@ export const ADMIN_ACCESS: Record<AdminSection, { screen: string; functionality:
 export const STAFF_ACCESS: Record<AdminSection, { screen: string; functionality: ScreenPermission }> = {
   dashboard: {
     screen: "Dashboard",
-    functionality: { VIEW: true, ADD: false, EDIT: false, DELETE: false },
+    functionality: { VIEW: false, ADD: false, EDIT: false, DELETE: false },
   },
   users: {
     screen: "Users",
-    functionality: { VIEW: true, ADD: false, EDIT: false, DELETE: false },
+    functionality: { VIEW: false, ADD: false, EDIT: false, DELETE: false },
   },
   schedule: {
     screen: "Schedule",
@@ -72,15 +72,15 @@ export const STAFF_ACCESS: Record<AdminSection, { screen: string; functionality:
   },
   members: {
     screen: "Members",
-    functionality: { VIEW: true, ADD: false, EDIT: false, DELETE: false },
+    functionality: { VIEW: true, ADD: true, EDIT: true, DELETE: true },
   },
   memberships: {
     screen: "Memberships",
-    functionality: { VIEW: true, ADD: false, EDIT: false, DELETE: false },
+    functionality: { VIEW: true, ADD: true, EDIT: true, DELETE: true },
   },
   bookings: {
     screen: "Bookings",
-    functionality: { VIEW: true, ADD: false, EDIT: false, DELETE: false },
+    functionality: { VIEW: true, ADD: true, EDIT: true, DELETE: true },
   },
   settings: {
     screen: "Settings",

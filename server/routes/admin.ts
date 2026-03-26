@@ -38,6 +38,30 @@ async function findMembershipForSlot(memberId: string, scheduleId: string): Prom
   return m ? { id: m.id, sessionsRemaining: m.sessionsRemaining } : null;
 }
 
+/** Membership lookup for refunds (do not require sessionsRemaining > 0 or membership to be bookable right now). */
+async function findMembershipForSlotForRestore(
+  memberId: string,
+  scheduleId: string
+): Promise<{ id: string; sessionsRemaining: number } | null> {
+  const slot = await storage.getScheduleSlot(scheduleId);
+  if (!slot) return null;
+  const all = await storage.getMemberMemberships(memberId);
+  const plans = await MembershipPlanModel.find({ classTypeId: slot.classTypeId });
+  const planIds = new Set(plans.map((p: { _id: unknown }) => String(p._id)));
+  const matching = all.filter((x) => planIds.has(x.membershipPlanId));
+  matching.sort((a, b) => {
+    const ea = new Date(a.expiryDate).getTime();
+    const eb = new Date(b.expiryDate).getTime();
+    if (ea !== eb) return ea - eb;
+    const ca = a.createdAt ? new Date(a.createdAt as any).getTime() : 0;
+    const cb = b.createdAt ? new Date(b.createdAt as any).getTime() : 0;
+    if (ca !== cb) return ca - cb;
+    return String(a.id).localeCompare(String(b.id), "en");
+  });
+  const m = matching[0];
+  return m ? { id: m.id, sessionsRemaining: m.sessionsRemaining } : null;
+}
+
 function parseIntParam(v: unknown, def: number): number {
   if (v === undefined || v === null) return def;
   const n = typeof v === "string" ? parseInt(v, 10) : Number(v);
@@ -507,8 +531,9 @@ export function registerAdminRoutes(app: Express): void {
       const limit = Math.min(parseIntParam(req.query.limit, 10), 100);
       const sessionDate = typeof req.query.sessionDate === "string" ? req.query.sessionDate : undefined;
       const memberMobile = typeof req.query.memberMobile === "string" ? req.query.memberMobile : undefined;
+      const scheduleId = typeof req.query.scheduleId === "string" ? req.query.scheduleId : undefined;
       const classTypeName = typeof req.query.classTypeName === "string" ? req.query.classTypeName : undefined;
-      const result = await storage.listBookings({ page, limit, sessionDate, memberMobile, classTypeName });
+      const result = await storage.listBookings({ page, limit, sessionDate, memberMobile, scheduleId, classTypeName });
       res.json(result);
     })
   );
@@ -578,6 +603,118 @@ export function registerAdminRoutes(app: Express): void {
         startTime: `${pad2(slot.startHour)}:${pad2(slot.startMinute)}`,
         endTime: `${pad2(slot.endHour)}:${pad2(slot.endMinute)}`,
       });
+    })
+  );
+
+  app.post(
+    "/api/admin/bookings/:bookingId/cancel",
+    requireAdminAsync,
+    asyncHandler(async (req: Request, res: Response) => {
+      const bookingId = typeof req.params.bookingId === "string" ? req.params.bookingId : "";
+      if (!bookingId) {
+        res.status(400).json({ message: "Missing bookingId" });
+        return;
+      }
+
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) {
+        res.status(404).json({ message: "Booking not found" });
+        return;
+      }
+
+      const currentStatus = booking.status;
+      if (currentStatus !== "BOOKED" && currentStatus !== "WAITLIST") {
+        res.status(409).json({ message: `Cannot cancel booking from status ${currentStatus}` });
+        return;
+      }
+
+      // Update booking status first (side effects depend on the updated session state).
+      await storage.updateBookingStatus(booking.id, "CANCELLED", null);
+
+      // Refund/seat restoration only for booked cancellations.
+      if (currentStatus === "BOOKED") {
+        const membershipToRestore = await findMembershipForSlotForRestore(booking.memberId, booking.scheduleId);
+        if (membershipToRestore) {
+          await storage.incrementMembershipSessions(membershipToRestore.id, 1);
+        }
+      }
+
+      const sessionBookings = await storage.getBookingsForSession(booking.scheduleId, booking.sessionDate);
+      const waitlistOrdered = sessionBookings
+        .filter((b) => b.status === "WAITLIST")
+        .sort((a, b) => (a.waitlistPosition ?? 999) - (b.waitlistPosition ?? 999));
+
+      let promoted = false;
+      if (currentStatus === "BOOKED" && waitlistOrdered.length > 0) {
+        const first = waitlistOrdered[0];
+        const firstMembership = await findMembershipForSlot(first.memberId, booking.scheduleId);
+        if (firstMembership && firstMembership.sessionsRemaining > 0) {
+          const ok = await storage.decrementMembershipSessionsIfPositive(firstMembership.id);
+          if (ok) {
+            await storage.updateBookingStatus(first.id, "BOOKED", null);
+            promoted = true;
+          }
+        }
+      }
+
+      const waitlistToRenumber = promoted ? waitlistOrdered.slice(1) : waitlistOrdered;
+      for (let i = 0; i < waitlistToRenumber.length; i++) {
+        await storage.updateBookingStatus(waitlistToRenumber[i].id, "WAITLIST", i + 1);
+      }
+
+      res.json({ ok: true });
+    })
+  );
+
+  app.post(
+    "/api/admin/bookings/:bookingId/attend",
+    requireAdminAsync,
+    asyncHandler(async (req: Request, res: Response) => {
+      const bookingId = typeof req.params.bookingId === "string" ? req.params.bookingId : "";
+      if (!bookingId) {
+        res.status(400).json({ message: "Missing bookingId" });
+        return;
+      }
+
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) {
+        res.status(404).json({ message: "Booking not found" });
+        return;
+      }
+
+      if (booking.status !== "BOOKED") {
+        res.status(409).json({ message: `Cannot mark attended from status ${booking.status}` });
+        return;
+      }
+
+      await storage.updateBookingStatus(booking.id, "ATTENDED", null);
+      res.json({ ok: true });
+    })
+  );
+
+  app.post(
+    "/api/admin/bookings/:bookingId/absent",
+    requireAdminAsync,
+    asyncHandler(async (req: Request, res: Response) => {
+      const bookingId = typeof req.params.bookingId === "string" ? req.params.bookingId : "";
+      if (!bookingId) {
+        res.status(400).json({ message: "Missing bookingId" });
+        return;
+      }
+
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) {
+        res.status(404).json({ message: "Booking not found" });
+        return;
+      }
+
+      if (booking.status !== "BOOKED") {
+        res.status(409).json({ message: `Cannot mark absent from status ${booking.status}` });
+        return;
+      }
+
+      await storage.updateBookingStatus(booking.id, "ABSENT", null);
+      res.json({ ok: true });
     })
   );
 

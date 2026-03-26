@@ -12,7 +12,7 @@ export function MemberDialogContent({ className, ...props }: Props) {
   return (
     <DialogContent
       className={cn(
-        "w-[calc(100%-2rem)] max-w-md rounded-xl border border-gray-100 dark:border-gray-700 shadow-xl",
+        "w-[calc(100%-2rem)] max-w-md rounded-xl border border-gray-100 dark:border-white/6 shadow-xl dark:shadow-black/30",
         "border-l-2 border-l-airborne-teal dark:border-l-teal-400",
         className
       )}

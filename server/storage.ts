@@ -114,6 +114,7 @@ export interface IStorage {
   getBranches(): Promise<string[]>;
   createBooking(booking: InsertBooking): Promise<BookingRecord>;
   updateBookingStatus(id: string, status: string, waitlistPosition?: number | null): Promise<void>;
+  getBooking(id: string): Promise<BookingRecord | undefined>;
 
   createWaiver(waiver: InsertWaiver): Promise<void>;
 
@@ -163,9 +164,10 @@ export interface IStorage {
     limit: number;
     sessionDate?: string;
     memberMobile?: string;
+    scheduleId?: string;
     classTypeName?: string;
   }): Promise<{
-    items: (BookingRecord & { memberMobile?: string; classTypeName?: string; startTime?: string; endTime?: string; branch?: string })[];
+    items: (BookingRecord & { memberMobile?: string; memberName?: string; classTypeName?: string; startTime?: string; endTime?: string; branch?: string })[];
     total: number;
   }>;
   getDashboardStats(): Promise<DashboardStats>;
@@ -429,6 +431,12 @@ export class MongoStorage implements IStorage {
   async getBookingsForSession(scheduleId: string, sessionDate: string): Promise<BookingRecord[]> {
     const docs = await BookingModel.find({ scheduleId, sessionDate });
     return toApiList<BookingRecord>(docs);
+  }
+
+  async getBooking(id: string): Promise<BookingRecord | undefined> {
+    if (!mongoose.Types.ObjectId.isValid(id)) return undefined;
+    const doc = await BookingModel.findById(id);
+    return toApi<BookingRecord>(doc) ?? undefined;
   }
 
   async getUpcomingSessionsByBranch(
@@ -716,12 +724,13 @@ export class MongoStorage implements IStorage {
     limit: number;
     sessionDate?: string;
     memberMobile?: string;
+    scheduleId?: string;
     classTypeName?: string;
   }): Promise<{
-    items: (BookingRecord & { memberMobile?: string; classTypeName?: string; startTime?: string; endTime?: string; branch?: string })[];
+    items: (BookingRecord & { memberMobile?: string; memberName?: string; classTypeName?: string; startTime?: string; endTime?: string; branch?: string })[];
     total: number;
   }> {
-    const { page, limit, sessionDate, memberMobile, classTypeName } = params;
+    const { page, limit, sessionDate, memberMobile, scheduleId, classTypeName } = params;
     let memberIds: string[] | null = null;
     if (memberMobile?.trim()) {
       const user = await UserModel.findOne({ mobile: { $regex: memberMobile.trim(), $options: "i" } });
@@ -733,8 +742,9 @@ export class MongoStorage implements IStorage {
     const filter: Record<string, unknown> = {};
     if (memberIds) filter.memberId = { $in: memberIds };
     if (sessionDate?.trim()) filter.sessionDate = sessionDate.trim();
+    if (scheduleId?.trim()) filter.scheduleId = scheduleId.trim();
     let slotIds: string[] | null = null;
-    if (classTypeName?.trim()) {
+    if (!scheduleId?.trim() && classTypeName?.trim()) {
       const ct = await ClassTypeModel.findOne({ name: new RegExp(classTypeName.trim(), "i") });
       if (ct) {
         const slots = await ScheduleSlotModel.find({ classTypeId: (ct as any)._id.toString() });
@@ -767,7 +777,12 @@ export class MongoStorage implements IStorage {
       };
     }
     const memberMap: Record<string, string> = {};
-    for (const m of members) memberMap[(m as any)._id.toString()] = m.userId;
+    const memberNameMap: Record<string, string> = {};
+    for (const m of members) {
+      const id = (m as any)._id.toString();
+      memberMap[id] = (m as any).userId;
+      memberNameMap[id] = (m as any).name ?? "";
+    }
     const userIds = Array.from(new Set(Object.values(memberMap)));
     const users = await UserModel.find({ _id: { $in: userIds.map((id) => new mongoose.Types.ObjectId(id)) } });
     const userMap: Record<string, string> = {};
@@ -784,6 +799,7 @@ export class MongoStorage implements IStorage {
       return {
         ...b,
         memberMobile: memberMap[b.memberId] ? userMap[memberMap[b.memberId]] : "",
+        memberName: memberNameMap[b.memberId] ?? "",
         classTypeName: ctName,
         startTime,
         endTime,
