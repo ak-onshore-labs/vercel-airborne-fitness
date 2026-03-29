@@ -5,12 +5,22 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLocation } from "wouter";
-import { X, Calendar, Info, Loader2 } from "lucide-react";
+import { X, Calendar as CalendarIcon, Info, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import MobileLayout from "@/components/layout/MobileLayout";
 import { apiFetch } from "@/lib/api";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { format, isSameDay, addDays, startOfToday } from "date-fns";
+import { format, isSameDay, addDays, startOfToday, parseISO } from "date-fns";
+import { membershipEnrollmentStartBounds } from "@shared/membershipDates";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Calendar as DayPickerCalendar } from "@/components/ui/calendar";
 import { formatTime12h } from "@/lib/formatTime";
 import filledBicep from "@assets/filled_bicep.svg";
 import blackBicep from "@assets/black_bicep.svg";
@@ -122,8 +132,8 @@ function EnrollScheduleSheetContent({
   return (
     <>
       <div className="flex items-center gap-2 mb-2">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 shrink-0">Branch</span>
-        <div className="flex rounded-lg border border-gray-200 dark:border-gray-600 p-0.5 bg-gray-100 dark:bg-gray-700/50">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-[#9CA3AF] shrink-0">Branch</span>
+        <div className="flex rounded-lg border border-gray-200 dark:border-white/10 p-0.5 bg-gray-100 dark:bg-[#18181B]">
           {(["Lower Parel", "Mazgaon"] as const).map((b) => (
             <button
               key={b}
@@ -132,8 +142,8 @@ function EnrollScheduleSheetContent({
               className={cn(
                 "min-w-[5rem] py-1.5 px-3 rounded-md text-xs font-medium transition-all text-center",
                 branch === b
-                  ? "bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 shadow-sm"
-                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+                  ? "bg-white dark:bg-[#111113] text-gray-900 dark:text-[#EDEDED] shadow-sm"
+                  : "text-gray-600 dark:text-[#9CA3AF] hover:text-gray-900 dark:hover:text-[#EDEDED]"
               )}
             >
               {b === "Lower Parel" ? "Lower Parel" : "Mazgaon"}
@@ -143,7 +153,7 @@ function EnrollScheduleSheetContent({
       </div>
 
       <div className="flex items-center gap-2 mb-2">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 shrink-0">Day</span>
+        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-[#9CA3AF] shrink-0">Day</span>
         <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide flex-1 min-w-0">
           {dates.map((d, i) => (
             <button
@@ -154,7 +164,7 @@ function EnrollScheduleSheetContent({
                 "flex flex-col items-center justify-center min-w-[2.75rem] h-12 rounded-md border transition-all shrink-0",
                 isSameDay(d, selectedDate)
                   ? "bg-airborne-teal border-airborne-teal text-white"
-                  : "bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400"
+                  : "bg-gray-50 dark:bg-[#111113] border-gray-200 dark:border-white/10 text-gray-500 dark:text-[#9CA3AF]"
               )}
             >
               <span className="text-[10px] font-semibold uppercase leading-tight">{format(d, "EEE")}</span>
@@ -165,7 +175,7 @@ function EnrollScheduleSheetContent({
       </div>
 
       <div className="flex items-center gap-2 mb-2">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 shrink-0">Class</span>
+        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-[#9CA3AF] shrink-0">Class</span>
         <div className="flex gap-1.5 overflow-x-auto overflow-y-hidden pb-1 scrollbar-hide flex-1 min-w-0">
           {filterChips.map((chip) => (
             <button
@@ -176,7 +186,7 @@ function EnrollScheduleSheetContent({
                 "shrink-0 py-1.5 px-3 rounded-full text-xs font-medium whitespace-nowrap border transition-all text-center",
                 filter === chip
                   ? "bg-airborne-teal/10 dark:bg-airborne-teal/25 border-airborne-teal dark:border-teal-400 text-airborne-deep dark:text-teal-200"
-                  : "bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-600"
+                  : "bg-white dark:bg-[#111113] text-gray-500 dark:text-[#9CA3AF] border-gray-200 dark:border-white/10"
               )}
             >
               {chip}
@@ -191,21 +201,21 @@ function EnrollScheduleSheetContent({
             <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
           </div>
         ) : filteredSessions.length === 0 ? (
-          <p className="text-xs text-gray-500 dark:text-gray-400 text-center py-6">No classes on this day.</p>
+          <p className="text-xs text-gray-500 dark:text-[#9CA3AF] text-center py-6">No classes on this day.</p>
         ) : (
           filteredSessions.map((session) => (
             <div
               key={`${session.scheduleId}_${session.sessionDate}_${session.startTime}`}
-              className="flex gap-3 rounded-lg border border-gray-100 dark:border-gray-700 border-l-2 border-l-airborne-teal dark:border-l-teal-400 bg-gray-50/50 dark:bg-gray-800/50 px-3 py-2.5 transition-shadow duration-200 hover:shadow-md"
+              className="flex gap-3 rounded-lg border border-gray-100 dark:border-white/6 border-l-2 border-l-airborne-teal dark:border-l-teal-400 bg-gray-50/50 dark:bg-[#111113] px-3 py-2.5 transition-shadow duration-200 hover:shadow-md dark:hover:shadow-black/30"
             >
-              <div className="flex flex-col items-center justify-center w-12 border-r border-gray-200 dark:border-gray-600 pr-3 text-center shrink-0">
-                <span className="text-sm font-bold text-gray-900 dark:text-gray-100 leading-tight">{formatTime12h(session.startTime)}</span>
-                <span className="text-[10px] text-gray-500 dark:text-gray-400 leading-tight">{formatTime12h(session.endTime)}</span>
+              <div className="flex flex-col items-center justify-center w-12 border-r border-gray-200 dark:border-white/10 pr-3 text-center shrink-0">
+                <span className="text-sm font-bold text-gray-900 dark:text-[#EDEDED] leading-tight">{formatTime12h(session.startTime)}</span>
+                <span className="text-[10px] text-gray-500 dark:text-[#9CA3AF] leading-tight">{formatTime12h(session.endTime)}</span>
               </div>
               <div className="min-w-0 flex-1 flex items-center">
                 <div className="min-w-0">
-                  <h4 className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">{session.category}</h4>
-                  <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{session.branch}</p>
+                  <h4 className="font-semibold text-sm text-gray-900 dark:text-[#EDEDED] truncate">{session.category}</h4>
+                  <p className="text-[10px] text-gray-500 dark:text-[#9CA3AF] truncate">{session.branch}</p>
                 </div>
               </div>
             </div>
@@ -285,12 +295,12 @@ const PersonalDetails = ({ onNext, data, onChange }: any) => {
   return (
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">About You</h2>
-        <p className="text-gray-500 dark:text-gray-400 text-sm">Let's get to know you better.</p>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-[#EDEDED]">About You</h2>
+        <p className="text-gray-500 dark:text-[#9CA3AF] text-sm">Let's get to know you better.</p>
       </div>
       <div className="space-y-4">
         <div className="space-y-1">
-          <label className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Full Name *</label>
+          <label className="text-[10px] font-bold text-gray-400 dark:text-[#6B7280] uppercase tracking-wider">Full Name *</label>
           <Input
             data-testid="input-name"
             placeholder="Jane Doe"
@@ -298,14 +308,14 @@ const PersonalDetails = ({ onNext, data, onChange }: any) => {
             onChange={(e) => onChange("name", e.target.value)}
             onBlur={() => handleBlur("name")}
             className={cn(
-              "bg-gray-50 dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 h-12 rounded focus-visible:ring-airborne-teal",
+              "bg-gray-50 dark:bg-[#111113] border-gray-100 dark:border-white/6 text-gray-900 dark:text-[#EDEDED] placeholder:text-gray-400 dark:placeholder:text-[#6B7280] h-12 rounded focus-visible:ring-airborne-teal",
               errors.name && "border-red-300"
             )}
           />
           {errors.name && <p className="text-xs text-red-500">{errors.name}</p>}
         </div>
         <div className="space-y-1">
-          <label className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Email *</label>
+          <label className="text-[10px] font-bold text-gray-400 dark:text-[#6B7280] uppercase tracking-wider">Email *</label>
           <Input
             data-testid="input-email"
             placeholder="jane@example.com"
@@ -314,14 +324,14 @@ const PersonalDetails = ({ onNext, data, onChange }: any) => {
             onChange={(e) => onChange("email", e.target.value)}
             onBlur={() => handleBlur("email")}
             className={cn(
-              "bg-gray-50 dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 h-12 rounded focus-visible:ring-airborne-teal",
+              "bg-gray-50 dark:bg-[#111113] border-gray-100 dark:border-white/6 text-gray-900 dark:text-[#EDEDED] placeholder:text-gray-400 dark:placeholder:text-[#6B7280] h-12 rounded focus-visible:ring-airborne-teal",
               errors.email && "border-red-300"
             )}
           />
           {errors.email && <p className="text-xs text-red-500">{errors.email}</p>}
         </div>
         <div className="space-y-1">
-          <label className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Date of Birth *</label>
+          <label className="text-[10px] font-bold text-gray-400 dark:text-[#6B7280] uppercase tracking-wider">Date of Birth *</label>
           <Input
             data-testid="input-dob"
             type="date"
@@ -329,14 +339,14 @@ const PersonalDetails = ({ onNext, data, onChange }: any) => {
             onChange={(e) => onChange("dob", e.target.value)}
             onBlur={() => handleBlur("dob")}
             className={cn(
-              "bg-gray-50 dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100 h-12 rounded focus-visible:ring-airborne-teal",
+              "bg-gray-50 dark:bg-[#111113] border-gray-100 dark:border-white/6 text-gray-900 dark:text-[#EDEDED] h-12 rounded focus-visible:ring-airborne-teal",
               errors.dob && "border-red-300"
             )}
           />
           {errors.dob && <p className="text-xs text-red-500">{errors.dob}</p>}
         </div>
         <div className="space-y-1">
-          <label className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Emergency Contact *</label>
+          <label className="text-[10px] font-bold text-gray-400 dark:text-[#6B7280] uppercase tracking-wider">Emergency Contact *</label>
           <div className="space-y-2">
             <Input
               data-testid="input-emergency-name"
@@ -345,7 +355,7 @@ const PersonalDetails = ({ onNext, data, onChange }: any) => {
               onChange={(e) => onChange("emergencyContactName", e.target.value)}
               onBlur={() => handleBlur("emergencyContactName")}
               className={cn(
-                "bg-gray-50 dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 h-12 rounded focus-visible:ring-airborne-teal",
+                "bg-gray-50 dark:bg-[#111113] border-gray-100 dark:border-white/6 text-gray-900 dark:text-[#EDEDED] placeholder:text-gray-400 dark:placeholder:text-[#6B7280] h-12 rounded focus-visible:ring-airborne-teal",
                 errors.emergencyContactName && "border-red-300"
               )}
             />
@@ -357,7 +367,7 @@ const PersonalDetails = ({ onNext, data, onChange }: any) => {
               onChange={(e) => onChange("emergencyContactPhone", e.target.value)}
               onBlur={() => handleBlur("emergencyContactPhone")}
               className={cn(
-                "bg-gray-50 dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 h-12 rounded focus-visible:ring-airborne-teal",
+                "bg-gray-50 dark:bg-[#111113] border-gray-100 dark:border-white/6 text-gray-900 dark:text-[#EDEDED] placeholder:text-gray-400 dark:placeholder:text-[#6B7280] h-12 rounded focus-visible:ring-airborne-teal",
                 errors.emergencyContactPhone && "border-red-300"
               )}
             />
@@ -365,13 +375,13 @@ const PersonalDetails = ({ onNext, data, onChange }: any) => {
           </div>
         </div>
         <div className="space-y-1">
-          <label className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Medical Conditions</label>
+          <label className="text-[10px] font-bold text-gray-400 dark:text-[#6B7280] uppercase tracking-wider">Medical Conditions</label>
           <Textarea
             data-testid="input-medical"
             placeholder="Any injuries or conditions we should know?"
             value={data.medicalConditions || ""}
             onChange={(e) => onChange("medicalConditions", e.target.value)}
-            className="bg-gray-50 dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 rounded focus-visible:ring-airborne-teal min-h-[100px]"
+            className="bg-gray-50 dark:bg-[#111113] border-gray-100 dark:border-white/6 text-gray-900 dark:text-[#EDEDED] placeholder:text-gray-400 dark:placeholder:text-[#6B7280] rounded focus-visible:ring-airborne-teal min-h-[100px]"
           />
         </div>
       </div>
@@ -398,9 +408,9 @@ const MembershipSelection = ({ onNext, onBack, onAddPlan, onRemovePlan, selected
   return (
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Select Plans</h2>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-[#EDEDED]">Select Plans</h2>
         <Button variant="outline" size="sm" onClick={onViewSchedule} className="text-airborne-teal border-airborne-teal dark:bg-transparent dark:hover:bg-teal-900/20" data-testid="button-view-schedule">
-          <Calendar size={14} className="mr-1" /> View Schedule
+          <CalendarIcon size={14} className="mr-1" /> View Schedule
         </Button>
       </div>
       <div className="flex gap-2 overflow-x-auto pb-2 -mx-6 px-6 scrollbar-hide">
@@ -415,7 +425,7 @@ const MembershipSelection = ({ onNext, onBack, onAddPlan, onRemovePlan, selected
                 ? "bg-gray-900 border-gray-900"
                 : selectedPlans.some((p: any) => p.category === cls.name)
                   ? "bg-teal-50 dark:bg-teal-900/30 border-airborne-teal dark:border-teal-400"
-                  : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+                  : "bg-white dark:bg-[#111113] border-gray-200 dark:border-white/6"
             )}
             data-testid={`button-category-${cls.id}`}
           >
@@ -428,9 +438,9 @@ const MembershipSelection = ({ onNext, onBack, onAddPlan, onRemovePlan, selected
       </div>
 
       {selectedClassType && (
-        <div className="rounded border border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 p-4 space-y-3">
+        <div className="rounded border border-gray-100 dark:border-white/6 bg-gray-50/50 dark:bg-[#111113] p-4 space-y-3">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Strength level</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-[#9CA3AF]">Strength level</span>
             <StrengthIcons level={selectedClassType.strengthLevel ?? 1} />
           </div>
           <Button
@@ -449,23 +459,23 @@ const MembershipSelection = ({ onNext, onBack, onAddPlan, onRemovePlan, selected
       <Sheet open={infoSheetOpen} onOpenChange={setInfoSheetOpen}>
         <SheetContent
           side="bottom"
-          className="rounded-t-2xl max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden bg-white dark:bg-gray-800"
+          className="rounded-t-2xl max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden bg-white dark:bg-[#111113]"
         >
-          <SheetHeader className="flex flex-row items-center justify-between space-y-0 px-6 pt-6 pb-2 pr-12 border-b border-gray-100 dark:border-gray-700">
-            <SheetTitle className="text-left text-lg text-gray-900 dark:text-gray-100">{infoClass?.name ?? "Class info"}</SheetTitle>
+          <SheetHeader className="flex flex-row items-center justify-between space-y-0 px-6 pt-6 pb-2 pr-12 border-b border-gray-100 dark:border-white/6">
+            <SheetTitle className="text-left text-lg text-gray-900 dark:text-[#EDEDED]">{infoClass?.name ?? "Class info"}</SheetTitle>
           </SheetHeader>
           <div className="flex-1 overflow-y-auto px-6 py-4 min-h-0">
             {bullets.length > 0 ? (
               <ul className="space-y-2 pb-6">
                 {bullets.map((bullet, i) => (
-                  <li key={i} className="flex gap-2 text-sm text-gray-600 dark:text-gray-300">
+                  <li key={i} className="flex gap-2 text-sm text-gray-600 dark:text-[#9CA3AF]">
                     <span className="text-airborne-teal mt-0.5 shrink-0">•</span>
                     <span>{bullet}</span>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-gray-500 dark:text-gray-400 pb-6">No additional info for this class.</p>
+              <p className="text-sm text-gray-500 dark:text-[#9CA3AF] pb-6">No additional info for this class.</p>
             )}
           </div>
         </SheetContent>
@@ -481,17 +491,17 @@ const MembershipSelection = ({ onNext, onBack, onAddPlan, onRemovePlan, selected
               "p-5 rounded border border-l-2 border-l-airborne-teal dark:border-l-teal-400 cursor-pointer transition-shadow duration-200 hover:shadow-md",
               currentPlan?.plan.id === plan.id
                 ? "bg-teal-50 dark:bg-teal-900/30 border-airborne-teal dark:border-teal-400"
-                : "bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700"
+                : "bg-white dark:bg-[#111113] border-gray-100 dark:border-white/6"
             )}
           >
             <div className="flex justify-between items-center">
               <div>
-                <h3 className="font-bold text-gray-900 dark:text-gray-100">{plan.name}</h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
+                <h3 className="font-bold text-gray-900 dark:text-[#EDEDED]">{plan.name}</h3>
+                <p className="text-xs text-gray-500 dark:text-[#9CA3AF]">
                   {plan.sessions} sessions{plan.validityDays ? ` • Valid ${plan.validityDays} days` : ''}
                 </p>
               </div>
-              <span className="font-bold text-gray-900 dark:text-gray-100">₹{plan.price.toLocaleString()}</span>
+              <span className="font-bold text-gray-900 dark:text-[#EDEDED]">₹{plan.price.toLocaleString()}</span>
             </div>
           </div>
         ))}
@@ -501,14 +511,14 @@ const MembershipSelection = ({ onNext, onBack, onAddPlan, onRemovePlan, selected
       )}
 
       {selectedPlans.length > 0 && (
-        <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded border border-gray-200 dark:border-gray-700 border-l-2 border-l-airborne-teal dark:border-l-teal-400">
-          <h4 className="text-xs font-bold uppercase text-gray-500 dark:text-gray-400 mb-2">Selected ({selectedPlans.length})</h4>
+        <div className="bg-gray-50 dark:bg-[#111113] p-4 rounded border border-gray-200 dark:border-white/10 border-l-2 border-l-airborne-teal dark:border-l-teal-400">
+          <h4 className="text-xs font-bold uppercase text-gray-500 dark:text-[#9CA3AF] mb-2">Selected ({selectedPlans.length})</h4>
           {selectedPlans.map((item: any) => (
             <div key={item.category} className="flex justify-between items-center text-sm mb-1">
-              <span className="text-gray-900 dark:text-gray-100 font-medium">{item.category}</span>
+              <span className="text-gray-900 dark:text-[#EDEDED] font-medium">{item.category}</span>
               <div className="flex items-center gap-2">
-                <span className="text-gray-500 dark:text-gray-400">{item.plan.name}</span>
-                <button onClick={() => onRemovePlan(item.category)} className="text-gray-400 dark:text-gray-500 hover:text-red-500"><X size={14} /></button>
+                <span className="text-gray-500 dark:text-[#9CA3AF]">{item.plan.name}</span>
+                <button onClick={() => onRemovePlan(item.category)} className="text-gray-400 dark:text-[#6B7280] hover:text-red-500"><X size={14} /></button>
               </div>
             </div>
           ))}
@@ -530,40 +540,40 @@ const KidDetails = ({ onNext, onBack, data, onChange }: any) => {
   };
   return (
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
-      <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Kid's Details</h2>
-      <p className="text-gray-500 dark:text-gray-400 text-sm">Required for kids class enrollment.</p>
+      <h2 className="text-2xl font-bold text-gray-900 dark:text-[#EDEDED]">Kid's Details</h2>
+      <p className="text-gray-500 dark:text-[#9CA3AF] text-sm">Required for kids class enrollment.</p>
       <div className="space-y-4">
         <div className="space-y-1">
-          <label className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Kid's Name *</label>
+          <label className="text-[10px] font-bold text-gray-400 dark:text-[#6B7280] uppercase tracking-wider">Kid's Name *</label>
           <Input
             data-testid="input-kid-name"
             placeholder="Kid's Name"
             value={data.name || ""}
             onChange={e => onChange("name", e.target.value)}
             className={cn(
-              "bg-gray-50 dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 h-12 rounded",
+              "bg-gray-50 dark:bg-[#111113] border-gray-100 dark:border-white/6 text-gray-900 dark:text-[#EDEDED] placeholder:text-gray-400 dark:placeholder:text-[#6B7280] h-12 rounded",
               errors.name && "border-red-300"
             )}
           />
           {errors.name && <p className="text-xs text-red-500">{errors.name}</p>}
         </div>
         <div className="space-y-1">
-          <label className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Kid's Date of Birth *</label>
+          <label className="text-[10px] font-bold text-gray-400 dark:text-[#6B7280] uppercase tracking-wider">Kid's Date of Birth *</label>
           <Input
             data-testid="input-kid-dob"
             type="date"
             value={data.dob || ""}
             onChange={e => onChange("dob", e.target.value)}
             className={cn(
-              "bg-gray-50 dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100 h-12 rounded",
+              "bg-gray-50 dark:bg-[#111113] border-gray-100 dark:border-white/6 text-gray-900 dark:text-[#EDEDED] h-12 rounded",
               errors.dob && "border-red-300"
             )}
           />
           {errors.dob && <p className="text-xs text-red-500">{errors.dob}</p>}
         </div>
         <div className="space-y-1">
-          <label className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Gender *</label>
-          <select data-testid="select-kid-gender" value={data.gender || ""} onChange={e => onChange("gender", e.target.value)} className={cn("w-full h-12 px-3 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100 rounded outline-none focus:ring-1 focus:ring-airborne-teal", errors.gender && "border-red-300")}>
+          <label className="text-[10px] font-bold text-gray-400 dark:text-[#6B7280] uppercase tracking-wider">Gender *</label>
+          <select data-testid="select-kid-gender" value={data.gender || ""} onChange={e => onChange("gender", e.target.value)} className={cn("w-full h-12 px-3 bg-gray-50 dark:bg-[#111113] border border-gray-100 dark:border-white/6 text-gray-900 dark:text-[#EDEDED] rounded outline-none focus:ring-1 focus:ring-airborne-teal", errors.gender && "border-red-300")}>
             <option value="">Select Gender</option>
             <option value="Male">Male</option>
             <option value="Female">Female</option>
@@ -592,12 +602,12 @@ const Waiver = ({ onNext, onBack, data, onChange }: any) => {
   return (
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Waiver</h2>
-        <p className="text-gray-500 dark:text-gray-400 text-sm">Please review and sign.</p>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-[#EDEDED]">Waiver</h2>
+        <p className="text-gray-500 dark:text-[#9CA3AF] text-sm">Please review and sign.</p>
       </div>
 
-      <div className="bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-6 rounded text-xs text-gray-500 dark:text-gray-300 leading-relaxed">
-        <p className="mb-4 font-bold text-gray-700 dark:text-gray-200 uppercase tracking-tight">Liability Waiver and Release</p>
+      <div className="bg-gray-50 dark:bg-[#111113] border border-gray-100 dark:border-white/6 p-6 rounded text-xs text-gray-500 dark:text-[#9CA3AF] leading-relaxed">
+        <p className="mb-4 font-bold text-gray-700 dark:text-[#EDEDED] uppercase tracking-tight">Liability Waiver and Release</p>
         <div className="space-y-3">
           <p>1. I acknowledge that I am voluntarily participating in the activities offered by Airborne Fitness.</p>
           <p>2. I recognize that these activities involve physical exertion and potential risks of injury.</p>
@@ -607,23 +617,23 @@ const Waiver = ({ onNext, onBack, data, onChange }: any) => {
       </div>
 
       <div className="space-y-3 pt-2">
-        <label className="flex items-center gap-3 p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded cursor-pointer hover:border-gray-200 dark:hover:border-gray-600 transition-colors">
+        <label className="flex items-center gap-3 p-4 bg-white dark:bg-[#111113] border border-gray-100 dark:border-white/6 rounded cursor-pointer hover:border-gray-200 dark:hover:border-white/10 transition-colors">
           <input type="checkbox" checked={data.agreedTerms} onChange={e => onChange("agreedTerms", e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-airborne-teal focus:ring-airborne-teal" data-testid="checkbox-waiver-agree" />
-          <span className="text-sm text-gray-600 dark:text-gray-300">I have read and agree to the waiver terms. *</span>
+          <span className="text-sm text-gray-600 dark:text-[#9CA3AF]">I have read and agree to the waiver terms. *</span>
         </label>
-        <label className="flex items-center gap-3 p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded cursor-pointer hover:border-gray-200 dark:hover:border-gray-600 transition-colors">
+        <label className="flex items-center gap-3 p-4 bg-white dark:bg-[#111113] border border-gray-100 dark:border-white/6 rounded cursor-pointer hover:border-gray-200 dark:hover:border-white/10 transition-colors">
           <input type="checkbox" checked={data.agreedAge} onChange={e => onChange("agreedAge", e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-airborne-teal focus:ring-airborne-teal" data-testid="checkbox-age-confirm" />
-          <span className="text-sm text-gray-600 dark:text-gray-300">I am 18 years of age or older.</span>
+          <span className="text-sm text-gray-600 dark:text-[#9CA3AF]">I am 18 years of age or older.</span>
         </label>
 
         <div className="space-y-1 pt-2">
-          <label className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Digital Signature (Full Name) *</label>
+          <label className="text-[10px] font-bold text-gray-400 dark:text-[#6B7280] uppercase tracking-wider">Digital Signature (Full Name) *</label>
           <Input
             placeholder="Type Full Name"
             value={data.signatureName || ""}
             onChange={e => onChange("signatureName", e.target.value)}
             className={cn(
-              "bg-gray-50 dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 h-12 rounded focus-visible:ring-airborne-teal",
+              "bg-gray-50 dark:bg-[#111113] border-gray-100 dark:border-white/6 text-gray-900 dark:text-[#EDEDED] placeholder:text-gray-400 dark:placeholder:text-[#6B7280] h-12 rounded focus-visible:ring-airborne-teal",
               touched && !waiverValid && !data.signatureName?.trim() && "border-red-300"
             )}
             data-testid="input-signature"
@@ -635,7 +645,7 @@ const Waiver = ({ onNext, onBack, data, onChange }: any) => {
       )}
 
       <div className="flex gap-3 mt-6">
-        <Button variant="outline" onClick={onBack} className="flex-1 h-12 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-200 rounded" data-testid="button-back-waiver">Back</Button>
+        <Button variant="outline" onClick={onBack} className="flex-1 h-12 border-gray-200 dark:border-white/10 text-gray-600 dark:text-[#EDEDED] rounded" data-testid="button-back-waiver">Back</Button>
         <Button onClick={handleNext} className="flex-1 h-12 bg-airborne-teal hover:bg-airborne-deep text-white rounded shadow-lg shadow-teal-100" data-testid="button-next-waiver">To Payment</Button>
       </div>
     </motion.div>
@@ -649,27 +659,27 @@ const Payment = ({ onBack, onPay, plans, loading, loadingError }: any) => {
   const amountPaise = Math.round(total * 100);
   return (
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Payment</h2>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-[#EDEDED]">Payment</h2>
         {loadingError && (
           <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 p-3 rounded border border-red-100 dark:border-red-800" data-testid="payment-error">{loadingError}</p>
         )}
-        <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 border-l-2 border-l-airborne-teal dark:border-l-teal-400 p-6 rounded shadow-sm">
+        <div className="bg-white dark:bg-[#111113] border border-gray-100 dark:border-white/6 border-l-2 border-l-airborne-teal dark:border-l-teal-400 p-6 rounded shadow-sm dark:shadow-black/30">
             {plans.map((item: any) => (
                 <div key={item.category} className="flex justify-between mb-2">
                   <div>
-                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{item.category}</span>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{item.plan.name} ({item.plan.sessions} Sessions)</p>
+                    <span className="text-sm font-medium text-gray-900 dark:text-[#EDEDED]">{item.category}</span>
+                    <p className="text-xs text-gray-500 dark:text-[#9CA3AF]">{item.plan.name} ({item.plan.sessions} Sessions)</p>
                   </div>
-                  <span className="font-bold text-sm text-gray-900 dark:text-gray-100">₹{item.plan.price.toLocaleString()}</span>
+                  <span className="font-bold text-sm text-gray-900 dark:text-[#EDEDED]">₹{item.plan.price.toLocaleString()}</span>
                 </div>
             ))}
-            <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300 mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+            <div className="space-y-2 text-sm text-gray-600 dark:text-[#9CA3AF] mt-4 pt-4 border-t border-gray-100 dark:border-white/6">
               <div className="flex justify-between"><span>Subtotal</span><span>₹{subtotal.toLocaleString()}</span></div>
               <div className="flex justify-between"><span>GST (5%)</span><span>₹{tax.toLocaleString()}</span></div>
-              <div className="flex justify-between text-airborne-teal font-bold pt-2 border-t border-gray-100 dark:border-gray-700 text-lg"><span>Total</span><span>₹{total.toLocaleString()}</span></div>
+              <div className="flex justify-between text-airborne-teal font-bold pt-2 border-t border-gray-100 dark:border-white/6 text-lg"><span>Total</span><span>₹{total.toLocaleString()}</span></div>
             </div>
         </div>
-        <Button onClick={() => onPay(amountPaise)} disabled={loading} className="w-full h-14 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 font-bold rounded" data-testid="button-pay-razorpay">
+        <Button onClick={() => onPay(amountPaise)} disabled={loading} className="w-full h-14 bg-gray-900 dark:bg-[#EDEDED] text-white dark:text-[#0B0B0C] font-bold rounded" data-testid="button-pay-razorpay">
             {loading ? "Processing..." : "Pay Securely"}
         </Button>
         <Button variant="ghost" onClick={onBack} className="w-full" data-testid="button-cancel-payment">Back</Button>
@@ -718,6 +728,13 @@ export default function Enroll() {
   const [classTypes, setClassTypes] = useState<ClassType[]>([]);
   const [selectedClassType, setSelectedClassType] = useState<ClassType | null>(null);
   const [plansByClassType, setPlansByClassType] = useState<Record<string, MembershipPlan[]>>({});
+  const [startModalOpen, setStartModalOpen] = useState(false);
+  const [startMode, setStartMode] = useState<"today" | "custom">("today");
+  const [modalBounds, setModalBounds] = useState(() => membershipEnrollmentStartBounds(new Date()));
+  const [pickerDate, setPickerDate] = useState<Date>(() =>
+    parseISO(`${membershipEnrollmentStartBounds(new Date()).min}T12:00:00`)
+  );
+  const [enrollmentStartDate, setEnrollmentStartDate] = useState(() => membershipEnrollmentStartBounds(new Date()).min);
 
   useEffect(() => {
     apiFetch<ClassType[]>("/api/class-types").then((r) => {
@@ -759,6 +776,25 @@ export default function Enroll() {
     else setStep(step + 1);
   };
 
+  const openMembershipStartModal = () => {
+    const b = membershipEnrollmentStartBounds(new Date());
+    setModalBounds(b);
+    setStartMode("today");
+    setPickerDate(parseISO(`${b.min}T12:00:00`));
+    setStartModalOpen(true);
+  };
+
+  const confirmMembershipStart = () => {
+    const b = membershipEnrollmentStartBounds(new Date());
+    const chosen = startMode === "today" ? b.min : format(pickerDate, "yyyy-MM-dd");
+    if (chosen < b.min || chosen > b.max) {
+      return;
+    }
+    setEnrollmentStartDate(chosen);
+    setStartModalOpen(false);
+    nextStep();
+  };
+
   const prevStep = () => {
     if (step === 4 && !hasKidsCategory) setStep(2);
     else setStep(step - 1);
@@ -776,7 +812,9 @@ export default function Enroll() {
         formData,
         selectedPlans,
         waiverData,
-        hasKidsCategory ? kidInfo : undefined
+        hasKidsCategory ? kidInfo : undefined,
+        undefined,
+        enrollmentStartDate
       );
       setLocation("/enroll/success");
     } catch {
@@ -856,7 +894,8 @@ export default function Enroll() {
                 selectedPlans,
                 waiverData,
                 hasKidsCategory ? kidInfo : undefined,
-                transactionId
+                transactionId,
+                enrollmentStartDate
               );
               setLocation("/enroll/success");
             } catch (enrollErr) {
@@ -909,12 +948,12 @@ export default function Enroll() {
         <div className="p-6">
             <div className="flex gap-2 mb-8">
                 {Array.from({ length: totalSteps }).map((_, i) => (
-                    <div key={i} className={cn("h-1 flex-1 rounded transition-colors", i + 1 <= step ? "bg-airborne-teal" : "bg-gray-200 dark:bg-gray-700")} />
+                    <div key={i} className={cn("h-1 flex-1 rounded transition-colors", i + 1 <= step ? "bg-airborne-teal" : "bg-gray-200 dark:bg-[#18181B]")} />
                 ))}
             </div>
             <AnimatePresence mode="wait">
               {step === 1 && <PersonalDetails key="step1" data={formData} onChange={(k: any, v: any) => setFormData(p => ({...p, [k]: v}))} onNext={() => setStep(2)} />}
-              {step === 2 && <MembershipSelection key="step2" classTypes={classTypes} plansByClassType={plansByClassType} selectedClassType={selectedClassType} onSelectClassType={setSelectedClassType} selectedPlans={selectedPlans} onAddPlan={handleAddPlan} onRemovePlan={(c: string) => setSelectedPlans(p => p.filter(x => x.category !== c))} onNext={nextStep} onBack={() => setStep(1)} onViewSchedule={() => setScheduleSheetOpen(true)} />}
+              {step === 2 && <MembershipSelection key="step2" classTypes={classTypes} plansByClassType={plansByClassType} selectedClassType={selectedClassType} onSelectClassType={setSelectedClassType} selectedPlans={selectedPlans} onAddPlan={handleAddPlan} onRemovePlan={(c: string) => setSelectedPlans(p => p.filter(x => x.category !== c))} onNext={openMembershipStartModal} onBack={() => setStep(1)} onViewSchedule={() => setScheduleSheetOpen(true)} />}
               {step === 3 && <KidDetails key="step3" data={kidInfo} onChange={(k: any, v: any) => setKidInfo(p => ({...p, [k]: v}))} onNext={() => setStep(4)} onBack={() => setStep(2)} />}
               {step === 4 && <Waiver key="step4" data={waiverData} onChange={(k: any, v: any) => setWaiverData(p => ({...p, [k]: v}))} onNext={() => setStep(5)} onBack={prevStep} />}
               {step === 5 && <Payment key="step5" plans={selectedPlans} loading={isLoading} loadingError={loadingError} onBack={() => setStep(4)} onPay={handlePay} />}
@@ -922,15 +961,100 @@ export default function Enroll() {
         </div>
 
         <Sheet open={scheduleSheetOpen} onOpenChange={setScheduleSheetOpen}>
-          <SheetContent side="bottom" className="rounded-t-2xl max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden bg-white dark:bg-gray-800">
-            <SheetHeader className="flex flex-row items-center justify-between space-y-0 px-6 pt-6 pb-4 pr-12 border-b border-gray-100 dark:border-gray-700 shrink-0">
-              <SheetTitle className="text-left text-lg text-gray-900 dark:text-gray-100">Schedule</SheetTitle>
+          <SheetContent side="bottom" className="rounded-t-2xl max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden bg-white dark:bg-[#111113]">
+            <SheetHeader className="flex flex-row items-center justify-between space-y-0 px-6 pt-6 pb-4 pr-12 border-b border-gray-100 dark:border-white/6 shrink-0">
+              <SheetTitle className="text-left text-lg text-gray-900 dark:text-[#EDEDED]">Schedule</SheetTitle>
             </SheetHeader>
             <div className="flex-1 overflow-hidden flex flex-col px-6 py-4 min-h-0">
               <EnrollScheduleSheetContent initialBranch={selectedBranch} classTypes={classTypes} />
             </div>
           </SheetContent>
         </Sheet>
+
+        <Dialog open={startModalOpen} onOpenChange={setStartModalOpen}>
+          <DialogContent className="max-w-[calc(100%-2rem)] rounded-2xl border-0 bg-white dark:bg-[#111113]">
+            <DialogHeader>
+              <DialogTitle className="text-gray-900 dark:text-[#EDEDED] font-bold text-xl">
+                Membership start date
+              </DialogTitle>
+              <DialogDescription className="text-gray-600 dark:text-[#9CA3AF] text-left text-sm leading-relaxed">
+                Choose when you want your membership to begin. You can book sessions with this membership only from that
+                date onward. Your plan length and expiry are calculated from the start date you pick.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStartMode("today");
+                    setPickerDate(parseISO(`${modalBounds.min}T12:00:00`));
+                  }}
+                  className={cn(
+                    "rounded-xl border px-3 py-3 text-sm font-semibold transition-colors",
+                    startMode === "today"
+                      ? "border-airborne-teal bg-teal-50 dark:bg-teal-900/30 text-airborne-teal dark:text-teal-300"
+                      : "border-gray-200 dark:border-white/10 text-gray-700 dark:text-[#EDEDED]"
+                  )}
+                >
+                  Start from today
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStartMode("custom")}
+                  className={cn(
+                    "rounded-xl border px-3 py-3 text-sm font-semibold transition-colors",
+                    startMode === "custom"
+                      ? "border-airborne-teal bg-teal-50 dark:bg-teal-900/30 text-airborne-teal dark:text-teal-300"
+                      : "border-gray-200 dark:border-white/10 text-gray-700 dark:text-[#EDEDED]"
+                  )}
+                >
+                  Choose a date
+                </button>
+              </div>
+              {startMode === "custom" && (
+                <div className="flex justify-center rounded-xl border border-gray-100 dark:border-white/10 p-2">
+                  <DayPickerCalendar
+                    mode="single"
+                    selected={pickerDate}
+                    onSelect={(d: Date | undefined) => {
+                      if (d) {
+                        setPickerDate(d);
+                        setStartMode("custom");
+                      }
+                    }}
+                    disabled={(date: Date) => {
+                      const ds = format(date, "yyyy-MM-dd");
+                      return ds < modalBounds.min || ds > modalBounds.max;
+                    }}
+                    defaultMonth={pickerDate}
+                    className="mx-auto"
+                  />
+                </div>
+              )}
+              <p className="text-xs text-gray-500 dark:text-[#6B7280]">
+                You can pick any date from today through the next 4 weeks ({modalBounds.min} – {modalBounds.max}).
+              </p>
+            </div>
+            <DialogFooter className="gap-2 sm:gap-2 flex-col sm:flex-row">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full sm:w-auto border-gray-200 dark:border-white/10"
+                onClick={() => setStartModalOpen(false)}
+              >
+                Close
+              </Button>
+              <Button
+                type="button"
+                className="w-full sm:w-auto bg-airborne-teal hover:bg-airborne-deep text-white"
+                onClick={confirmMembershipStart}
+              >
+                Continue
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
     </MobileLayout>
   );
 }

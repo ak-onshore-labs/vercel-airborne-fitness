@@ -65,7 +65,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-[#F9FAFB] dark:bg-gray-900 px-6">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-[#F9FAFB] dark:bg-[#0B0B0C] px-6">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -76,9 +76,9 @@ export default function Login() {
           <AirborneLogo className="h-24 object-contain" alt="Airborne Aerial Fitness" />
         </div>
 
-        <div className="w-full bg-white dark:bg-gray-800 p-8 rounded shadow-sm border border-gray-100 dark:border-gray-700 border-l-2 border-l-airborne-teal dark:border-l-teal-400">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2 text-center">Welcome</h2>
-          <p className="text-gray-500 dark:text-gray-400 text-center text-sm mb-8">
+        <div className="w-full bg-white dark:bg-[#111113] p-8 rounded shadow-sm dark:shadow-black/30 border border-gray-100 dark:border-white/6 border-l-2 border-l-airborne-teal dark:border-l-teal-400">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-[#EDEDED] mb-2 text-center">Welcome</h2>
+          <p className="text-gray-500 dark:text-[#9CA3AF] text-center text-sm mb-8">
             {step === 'phone' ? 'Enter your mobile number to continue' : 'Enter the verification code sent to your phone'}
           </p>
 
@@ -93,9 +93,9 @@ export default function Login() {
                 className="space-y-4"
               >
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Mobile Number</label>
+                  <label className="text-xs font-semibold text-gray-500 dark:text-[#9CA3AF] uppercase tracking-wider">Mobile Number</label>
                   <div className="flex gap-2">
-                    <div className="flex items-center justify-center px-3 bg-gray-50 rounded border border-gray-200 text-gray-500 text-sm font-medium">
+                    <div className="flex items-center justify-center px-3 bg-gray-50 dark:bg-[#18181B] rounded border border-gray-200 dark:border-white/6 text-gray-500 dark:text-[#9CA3AF] text-sm font-medium">
                       +91
                     </div>
                     <Input 
@@ -104,7 +104,7 @@ export default function Login() {
                       placeholder="99999 99999" 
                       value={phone}
                       onChange={e => setPhone(e.target.value.replace(/\D/g, ''))}
-                      className="h-12 bg-gray-50 border-gray-200 text-gray-900 placeholder:text-gray-400 focus-visible:ring-airborne-teal rounded"
+                      className="h-12 bg-gray-50 dark:bg-[#18181B] border-gray-200 dark:border-white/6 text-gray-900 dark:text-[#EDEDED] placeholder:text-gray-400 dark:placeholder:text-[#6B7280] focus-visible:ring-airborne-teal rounded"
                       maxLength={10}
                       required
                     />
@@ -131,7 +131,7 @@ export default function Login() {
               >
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Enter OTP</label>
+                    <label className="text-xs font-semibold text-gray-500 dark:text-[#9CA3AF] uppercase tracking-wider">Enter OTP</label>
                     <button 
                       type="button" 
                       onClick={() => setStep("phone")}
@@ -146,11 +146,11 @@ export default function Login() {
                     placeholder="• • • •" 
                     value={otp}
                     onChange={e => setOtp(e.target.value.replace(/\D/g, ''))}
-                    className="h-12 bg-gray-50 border-gray-200 text-gray-900 placeholder:text-gray-300 focus-visible:ring-airborne-teal text-center tracking-[1em] text-lg rounded"
+                    className="h-12 bg-gray-50 dark:bg-[#18181B] border-gray-200 dark:border-white/6 text-gray-900 dark:text-[#EDEDED] placeholder:text-gray-300 dark:placeholder:text-[#6B7280] focus-visible:ring-airborne-teal text-center tracking-[1em] text-lg rounded"
                     maxLength={6}
                     required
                   />
-                  <p className="text-xs text-center text-gray-400">Enter the 6-digit code sent via SMS</p>
+                  <p className="text-xs text-center text-gray-400 dark:text-[#6B7280]">Enter the 6-digit code sent via SMS</p>
                 </div>
                 <Button 
                   data-testid="button-verify-otp"

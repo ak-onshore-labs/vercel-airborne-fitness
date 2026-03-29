@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { format, isSameDay, addDays, startOfToday } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import {
   Table,
   TableBody,
@@ -33,6 +34,7 @@ import { adminApiFetch, type ListResponse } from "../api";
 import { AdminTablePagination } from "../components/AdminTablePagination";
 import { useAdminPermissions } from "../useAdminPermissions";
 import { useToast } from "@/hooks/use-toast";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Loader2 } from "lucide-react";
 
 type MemberOption = { id: string; name?: string | null; mobile?: string };
@@ -64,6 +66,7 @@ type BookingItem = {
   sessionDate: string;
   status: string;
   memberMobile?: string;
+  memberName?: string;
   classTypeName?: string;
   startTime?: string;
   endTime?: string;
@@ -83,6 +86,18 @@ type UpcomingDay = {
   }>;
 };
 
+type SessionCard = UpcomingDay["sessions"][number];
+
+type BookingAdminAction = "CANCELLED" | "ATTENDED" | "ABSENT";
+
+function formatBookingTime(b: BookingItem): string {
+  return b.startTime && b.endTime ? `${b.startTime} – ${b.endTime}` : "—";
+}
+
+function isBookingStatusEditable(status: string): boolean {
+  return status === "BOOKED" || status === "WAITLIST";
+}
+
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr + "T12:00:00");
   return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
@@ -93,8 +108,88 @@ function getNext7Days(): Date[] {
   return Array.from({ length: 7 }).map((_, i) => addDays(today, i));
 }
 
+type BookingStatusEditorPanelProps = {
+  booking: BookingItem;
+  submitting: { bookingId: string; action: BookingAdminAction } | null;
+  error: string | null;
+  onAction: (action: BookingAdminAction) => void;
+};
+
+function BookingStatusEditorPanel({ booking, submitting, error, onAction }: BookingStatusEditorPanelProps) {
+  const busy = !!submitting && submitting.bookingId === booking.id;
+  const isBooked = booking.status === "BOOKED";
+  const isWaitlist = booking.status === "WAITLIST";
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-[minmax(0,100px)_1fr] gap-x-3 gap-y-2 text-sm">
+        <span className="text-muted-foreground">Member</span>
+        <span className="font-medium break-words">{booking.memberName || "—"}</span>
+        <span className="text-muted-foreground">Mobile</span>
+        <span>{booking.memberMobile ?? "—"}</span>
+        <span className="text-muted-foreground">Class</span>
+        <span>{booking.classTypeName ?? "—"}</span>
+        <span className="text-muted-foreground">Branch</span>
+        <span>{booking.branch ?? "—"}</span>
+        <span className="text-muted-foreground">Date</span>
+        <span>{booking.sessionDate}</span>
+        <span className="text-muted-foreground">Time</span>
+        <span>{formatBookingTime(booking)}</span>
+        <span className="text-muted-foreground">Current status</span>
+        <span className="font-medium">{booking.status}</span>
+      </div>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      <div className="space-y-2 pt-1 border-t">
+        <p className="text-sm font-medium">Update status</p>
+        <div className="flex flex-col sm:flex-row flex-wrap gap-2">
+          {(isBooked || isWaitlist) && (
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              className="w-full sm:w-auto justify-center gap-2"
+              disabled={busy}
+              onClick={() => onAction("CANCELLED")}
+            >
+              {busy && submitting?.action === "CANCELLED" ? <Loader2 className="h-4 w-4 animate-spin shrink-0" /> : null}
+              Mark as cancelled
+            </Button>
+          )}
+          {isBooked && (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full sm:w-auto justify-center gap-2"
+                disabled={busy}
+                onClick={() => onAction("ATTENDED")}
+              >
+                {busy && submitting?.action === "ATTENDED" ? <Loader2 className="h-4 w-4 animate-spin shrink-0" /> : null}
+                Mark as attended
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full sm:w-auto justify-center gap-2"
+                disabled={busy}
+                onClick={() => onAction("ABSENT")}
+              >
+                {busy && submitting?.action === "ABSENT" ? <Loader2 className="h-4 w-4 animate-spin shrink-0" /> : null}
+                Mark as absent
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminBookings() {
   const { ADD } = useAdminPermissions("bookings");
+  const isMobile = useIsMobile();
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [sessionDate, setSessionDate] = useState("");
@@ -129,6 +224,66 @@ export default function AdminBookings() {
   const [addBookingLoadingId, setAddBookingLoadingId] = useState<string | null>(null);
   const [addMemberBookings, setAddMemberBookings] = useState<Array<{ scheduleId: string; sessionDate: string }>>([]);
   const { toast } = useToast();
+  const [sessionViewOpen, setSessionViewOpen] = useState(false);
+  const [sessionViewSession, setSessionViewSession] = useState<SessionCard | null>(null);
+  const [sessionViewLoading, setSessionViewLoading] = useState(false);
+  const [sessionViewError, setSessionViewError] = useState<string | null>(null);
+  const [sessionViewBookings, setSessionViewBookings] = useState<BookingItem[]>([]);
+  const sessionViewCacheRef = useRef<Record<string, BookingItem[]>>({});
+  const sessionViewRequestKeyRef = useRef<string | null>(null);
+
+  const [editorBooking, setEditorBooking] = useState<BookingItem | null>(null);
+  const [editorSubmitting, setEditorSubmitting] = useState<{ bookingId: string; action: BookingAdminAction } | null>(null);
+  const [editorError, setEditorError] = useState<string | null>(null);
+
+  const openBookingEditor = (booking: BookingItem) => {
+    if (!isBookingStatusEditable(booking.status)) return;
+    setEditorError(null);
+    setEditorBooking(booking);
+  };
+
+  const closeBookingEditor = () => {
+    setEditorBooking(null);
+    setEditorError(null);
+  };
+
+  const openSessionBookings = async (session: SessionCard) => {
+    const key = `${session.scheduleId}_${session.sessionDate}`;
+    sessionViewRequestKeyRef.current = key;
+    setSessionViewSession(session);
+    setSessionViewOpen(true);
+    setSessionViewError(null);
+    setSessionViewBookings([]);
+
+    const cached = sessionViewCacheRef.current[key];
+    if (cached) {
+      setSessionViewBookings(cached);
+      setSessionViewLoading(false);
+      return;
+    }
+
+    setSessionViewLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: "1",
+        limit: "100",
+        scheduleId: session.scheduleId,
+        sessionDate: session.sessionDate,
+      });
+      const res = await adminApiFetch<ListResponse<BookingItem>>(`/api/admin/bookings?${params}`);
+      if (sessionViewRequestKeyRef.current !== key) return;
+      if (!res.ok) {
+        setSessionViewError(res.message);
+        setSessionViewBookings([]);
+        return;
+      }
+      const items = res.data?.items ?? [];
+      sessionViewCacheRef.current[key] = items;
+      setSessionViewBookings(items);
+    } finally {
+      if (sessionViewRequestKeyRef.current === key) setSessionViewLoading(false);
+    }
+  };
 
   const fetchBookings = useCallback(async () => {
     setLoading(true);
@@ -142,6 +297,48 @@ export default function AdminBookings() {
     else setError(res.message);
     setLoading(false);
   }, [page, limit, searchSessionDate, searchMemberMobile, searchClassTypeName]);
+
+  const applyBookingStatusFromEditor = async (action: BookingAdminAction) => {
+    if (!editorBooking) return;
+    const bookingId = editorBooking.id;
+
+    setEditorSubmitting({ bookingId, action });
+    setEditorError(null);
+    try {
+      const endpoint =
+        action === "CANCELLED"
+          ? `/api/admin/bookings/${bookingId}/cancel`
+          : action === "ATTENDED"
+            ? `/api/admin/bookings/${bookingId}/attend`
+            : `/api/admin/bookings/${bookingId}/absent`;
+
+      const res = await adminApiFetch<{ ok: true }>(endpoint, { method: "POST" });
+      if (!res.ok) {
+        setEditorError(res.message);
+        return;
+      }
+
+      toast({
+        title:
+          action === "CANCELLED"
+            ? "Booking cancelled"
+            : action === "ATTENDED"
+              ? "Marked attended"
+              : "Marked absent",
+      });
+
+      await fetchBookings();
+
+      sessionViewCacheRef.current = {};
+      if (sessionViewOpen && sessionViewSession) {
+        await openSessionBookings(sessionViewSession);
+      }
+
+      closeBookingEditor();
+    } finally {
+      setEditorSubmitting(null);
+    }
+  };
 
   useEffect(() => {
     fetchBookings();
@@ -546,31 +743,48 @@ export default function AdminBookings() {
                 <TableRow>
                   <TableHead>Date</TableHead>
                   <TableHead>Time</TableHead>
+                  <TableHead>Member Name</TableHead>
                   <TableHead>Member mobile</TableHead>
                   <TableHead>Class type</TableHead>
                   <TableHead>Branch</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">Loading…</TableCell>
+                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">Loading…</TableCell>
                   </TableRow>
                 ) : data?.items.length ? (
                   data.items.map((b) => (
                     <TableRow key={b.id}>
                       <TableCell>{b.sessionDate}</TableCell>
                       <TableCell>{b.startTime && b.endTime ? `${b.startTime} – ${b.endTime}` : "—"}</TableCell>
+                      <TableCell className="break-words max-w-[180px]">{b.memberName || "—"}</TableCell>
                       <TableCell>{b.memberMobile ?? "—"}</TableCell>
                       <TableCell>{b.classTypeName ?? "—"}</TableCell>
                       <TableCell>{b.branch ?? "—"}</TableCell>
                       <TableCell>{b.status}</TableCell>
+                      <TableCell>
+                        {isBookingStatusEditable(b.status) ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={!!editorSubmitting && editorSubmitting.bookingId === b.id}
+                            onClick={() => openBookingEditor(b)}
+                          >
+                            Edit
+                          </Button>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">No bookings found</TableCell>
+                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">No bookings found</TableCell>
                   </TableRow>
                 )}
               </TableBody>
@@ -632,6 +846,11 @@ export default function AdminBookings() {
                               <p className="text-sm mt-1">
                                 <span className="font-medium">{s.bookingCount}</span> / {s.capacity} bookings
                               </p>
+                              <div className="mt-3">
+                                <Button size="sm" variant="outline" onClick={() => openSessionBookings(s)}>
+                                  View
+                                </Button>
+                              </div>
                             </CardContent>
                           </Card>
                         ))
@@ -644,6 +863,223 @@ export default function AdminBookings() {
           )}
         </TabsContent>
       </Tabs>
+
+      {sessionViewSession && (
+        <>
+          {!isMobile ? (
+            <Dialog
+              open={sessionViewOpen}
+              onOpenChange={(open) => {
+                setSessionViewOpen(open);
+                if (!open) setSessionViewSession(null);
+              }}
+            >
+              <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+                <DialogHeader>
+                  <DialogTitle>Session bookings</DialogTitle>
+                  <DialogDescription>
+                    {formatDate(sessionViewSession.sessionDate)} • {sessionViewSession.startTime} – {sessionViewSession.endTime}
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="flex-1 overflow-y-auto mt-4">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Time</TableHead>
+                        <TableHead>Member Name</TableHead>
+                        <TableHead>Member mobile</TableHead>
+                        <TableHead>Class type</TableHead>
+                        <TableHead>Branch</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {sessionViewLoading ? (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center text-muted-foreground py-8">Loading…</TableCell>
+                        </TableRow>
+                      ) : sessionViewError ? (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center text-destructive py-8">{sessionViewError}</TableCell>
+                        </TableRow>
+                      ) : sessionViewBookings.length ? (
+                        sessionViewBookings.map((b) => (
+                          <TableRow key={b.id}>
+                            <TableCell>{b.sessionDate}</TableCell>
+                            <TableCell>{b.startTime && b.endTime ? `${b.startTime} – ${b.endTime}` : "—"}</TableCell>
+                            <TableCell className="break-words max-w-[180px]">{b.memberName || "—"}</TableCell>
+                            <TableCell>{b.memberMobile ?? "—"}</TableCell>
+                            <TableCell>{b.classTypeName ?? "—"}</TableCell>
+                            <TableCell>{b.branch ?? "—"}</TableCell>
+                            <TableCell>{b.status}</TableCell>
+                            <TableCell>
+                              {isBookingStatusEditable(b.status) ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={!!editorSubmitting && editorSubmitting.bookingId === b.id}
+                                  onClick={() => openBookingEditor(b)}
+                                >
+                                  Edit
+                                </Button>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                            No bookings found for this session
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </DialogContent>
+            </Dialog>
+          ) : (
+            <Sheet
+              open={sessionViewOpen}
+              onOpenChange={(open) => {
+                setSessionViewOpen(open);
+                if (!open) setSessionViewSession(null);
+              }}
+            >
+              <SheetContent side="bottom" className="rounded-t-2xl max-h-[85vh] flex flex-col p-0 overflow-hidden">
+                <SheetHeader className="px-6 pt-5 pb-3 border-b">
+                  <SheetTitle>
+                    {formatDate(sessionViewSession.sessionDate)} • {sessionViewSession.startTime} – {sessionViewSession.endTime}
+                  </SheetTitle>
+                </SheetHeader>
+
+                <div className="flex-1 overflow-y-auto px-6 py-4">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Time</TableHead>
+                        <TableHead>Member Name</TableHead>
+                        <TableHead>Member mobile</TableHead>
+                        <TableHead>Class type</TableHead>
+                        <TableHead>Branch</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {sessionViewLoading ? (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center text-muted-foreground py-8">Loading…</TableCell>
+                        </TableRow>
+                      ) : sessionViewError ? (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center text-destructive py-8">{sessionViewError}</TableCell>
+                        </TableRow>
+                      ) : sessionViewBookings.length ? (
+                        sessionViewBookings.map((b) => (
+                          <TableRow key={b.id}>
+                            <TableCell>{b.sessionDate}</TableCell>
+                            <TableCell>{b.startTime && b.endTime ? `${b.startTime} – ${b.endTime}` : "—"}</TableCell>
+                            <TableCell className="break-words max-w-[180px]">{b.memberName || "—"}</TableCell>
+                            <TableCell>{b.memberMobile ?? "—"}</TableCell>
+                            <TableCell>{b.classTypeName ?? "—"}</TableCell>
+                            <TableCell>{b.branch ?? "—"}</TableCell>
+                            <TableCell>{b.status}</TableCell>
+                            <TableCell>
+                              {isBookingStatusEditable(b.status) ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={!!editorSubmitting && editorSubmitting.bookingId === b.id}
+                                  onClick={() => openBookingEditor(b)}
+                                >
+                                  Edit
+                                </Button>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                            No bookings found for this session
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </SheetContent>
+            </Sheet>
+          )}
+        </>
+      )}
+
+      {editorBooking &&
+        (!isMobile ? (
+          <Dialog
+            open
+            onOpenChange={(open) => {
+              if (!open) closeBookingEditor();
+            }}
+          >
+            <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Edit booking</DialogTitle>
+                <DialogDescription>
+                  Update status for this booking. Changes apply immediately.
+                </DialogDescription>
+              </DialogHeader>
+              <BookingStatusEditorPanel
+                booking={editorBooking}
+                submitting={editorSubmitting}
+                error={editorError}
+                onAction={applyBookingStatusFromEditor}
+              />
+              <DialogFooter className="sm:justify-start gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={closeBookingEditor} disabled={!!editorSubmitting}>
+                  Close
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        ) : (
+          <Sheet
+            open
+            onOpenChange={(open) => {
+              if (!open) closeBookingEditor();
+            }}
+          >
+            <SheetContent side="bottom" className="rounded-t-2xl max-h-[85vh] flex flex-col p-0 overflow-hidden">
+              <SheetHeader className="px-6 pt-5 pb-3 border-b text-left">
+                <SheetTitle>Edit booking</SheetTitle>
+                <SheetDescription>Update status for this booking. Changes apply immediately.</SheetDescription>
+              </SheetHeader>
+              <div className="flex-1 overflow-y-auto px-6 py-4">
+                <BookingStatusEditorPanel
+                  booking={editorBooking}
+                  submitting={editorSubmitting}
+                  error={editorError}
+                  onAction={applyBookingStatusFromEditor}
+                />
+              </div>
+              <div className="border-t px-6 py-4">
+                <Button type="button" variant="outline" className="w-full" onClick={closeBookingEditor} disabled={!!editorSubmitting}>
+                  Close
+                </Button>
+              </div>
+            </SheetContent>
+          </Sheet>
+        ))}
+
     </div>
   );
 }

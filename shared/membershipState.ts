@@ -1,4 +1,6 @@
-export type MembershipUsabilityState = "active" | "paused" | "expired_extendable" | "renew_only";
+import { isBeforeMembershipStartDay } from "./membershipDates";
+
+export type MembershipUsabilityState = "active" | "paused" | "upcoming" | "expired_extendable" | "renew_only";
 
 export type MembershipRenewOnlyReason = "expired" | "no_sessions" | "defensive_negative";
 
@@ -9,6 +11,8 @@ export type MembershipStateInput = {
   pauseUsed?: boolean | null;
   pauseStart?: string | Date | null;
   pauseEnd?: string | Date | null;
+  /** When set, membership is not usable until this calendar day (IST) is reached. */
+  startDate?: string | Date | null;
 };
 
 function toDate(d: string | Date): Date {
@@ -25,6 +29,7 @@ export function getMembershipUsabilityState(
 ):
   | { state: "active" }
   | { state: "paused" }
+  | { state: "upcoming" }
   | { state: "expired_extendable" }
   | { state: "renew_only"; reason: MembershipRenewOnlyReason } {
   const expiry = toDate(input.expiryDate);
@@ -38,6 +43,10 @@ export function getMembershipUsabilityState(
     if (nowMs >= pauseStart.getTime() && nowMs <= pauseEnd.getTime()) {
       return { state: "paused" };
     }
+  }
+
+  if (isBeforeMembershipStartDay(input.startDate ?? null, now)) {
+    return { state: "upcoming" };
   }
 
   if (expiry.getTime() > now.getTime() && sessions > 0) {
@@ -58,5 +67,14 @@ export function getMembershipUsabilityState(
   }
 
   return { state: "renew_only", reason: "expired" };
+}
+
+/** Lower is better for picking the “primary” membership per category (auth / enroll maps). */
+export function membershipStateTierRank(state: MembershipUsabilityState): number {
+  if (state === "active") return 0;
+  if (state === "upcoming") return 1;
+  if (state === "paused") return 2;
+  if (state === "expired_extendable") return 3;
+  return 4;
 }
 

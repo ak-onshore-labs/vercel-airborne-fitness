@@ -196,10 +196,10 @@ export default function Book() {
         )}
         
         <div className="flex justify-between items-center mb-6">
-             <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Book Class</h1>
-             <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-700 p-1 rounded">
-               <button onClick={() => setSelectedBranch('Lower Parel')} data-testid="button-branch-lp" className={cn("px-3 py-1 text-xs font-medium rounded", selectedBranch === 'Lower Parel' ? "bg-airborne-teal/10 dark:bg-airborne-teal/25 border border-airborne-teal dark:border-teal-400 text-airborne-deep dark:text-teal-200" : "text-gray-500 dark:text-gray-400")}>Lower Parel</button>
-               <button onClick={() => setSelectedBranch('Mazgaon')} data-testid="button-branch-maz" className={cn("px-3 py-1 text-xs font-medium rounded", selectedBranch === 'Mazgaon' ? "bg-airborne-teal/10 dark:bg-airborne-teal/25 border border-airborne-teal dark:border-teal-400 text-airborne-deep dark:text-teal-200" : "text-gray-500 dark:text-gray-400")}>Mazgaon</button>
+             <h1 className="text-2xl font-bold text-gray-900 dark:text-[#EDEDED]">Book Class</h1>
+             <div className="flex items-center gap-2 bg-gray-100 dark:bg-[#18181B] p-1 rounded">
+               <button onClick={() => setSelectedBranch('Lower Parel')} data-testid="button-branch-lp" className={cn("px-3 py-1 text-xs font-medium rounded", selectedBranch === 'Lower Parel' ? "bg-airborne-teal/10 dark:bg-airborne-teal/25 border border-airborne-teal dark:border-teal-400 text-airborne-deep dark:text-teal-200" : "text-gray-500 dark:text-[#9CA3AF]")}>Lower Parel</button>
+               <button onClick={() => setSelectedBranch('Mazgaon')} data-testid="button-branch-maz" className={cn("px-3 py-1 text-xs font-medium rounded", selectedBranch === 'Mazgaon' ? "bg-airborne-teal/10 dark:bg-airborne-teal/25 border border-airborne-teal dark:border-teal-400 text-airborne-deep dark:text-teal-200" : "text-gray-500 dark:text-[#9CA3AF]")}>Mazgaon</button>
              </div>
         </div>
 
@@ -207,7 +207,7 @@ export default function Book() {
         {dates.map((d, i) => {
             const isSelected = isSameDay(d, selectedDate);
             return (
-            <button key={i} onClick={() => setSelectedDate(d)} data-testid={`button-date-${format(d, 'yyyy-MM-dd')}`} className={cn("flex flex-col items-center justify-center min-w-[70px] h-20 rounded border transition-all", isSelected ? "bg-airborne-teal border-airborne-teal text-white shadow-md shadow-teal-100 dark:shadow-teal-900/30" : "bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:border-gray-200 dark:hover:border-gray-600")}>
+            <button key={i} onClick={() => setSelectedDate(d)} data-testid={`button-date-${format(d, 'yyyy-MM-dd')}`} className={cn("flex flex-col items-center justify-center min-w-[70px] h-20 rounded border transition-all", isSelected ? "bg-airborne-teal border-airborne-teal text-white shadow-md shadow-teal-100 dark:shadow-teal-900/30" : "bg-white dark:bg-[#111113] border-gray-100 dark:border-white/6 text-gray-400 dark:text-[#6B7280] hover:border-gray-200 dark:hover:border-white/10")}>
                 <span className="text-[10px] font-bold uppercase tracking-wider">{format(d, 'EEE')}</span>
                 <span className="text-2xl font-bold">{format(d, 'd')}</span>
             </button>
@@ -217,7 +217,7 @@ export default function Book() {
 
         <div className="flex gap-2 mb-6 overflow-x-auto pb-2 -mx-6 px-6 scrollbar-hide">
             {filterChips.map((chip) => (
-                <button key={chip} onClick={() => setFilter(chip)} data-testid={`button-filter-${chip}`} className={cn("px-4 py-2 rounded-full text-xs font-medium whitespace-nowrap transition-all border", filter === chip ? "bg-airborne-teal/10 dark:bg-airborne-teal/25 border-airborne-teal dark:border-teal-400 text-airborne-deep dark:text-teal-200" : "bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-600")}>{chip}</button>
+                <button key={chip} onClick={() => setFilter(chip)} data-testid={`button-filter-${chip}`} className={cn("px-4 py-2 rounded-full text-xs font-medium whitespace-nowrap transition-all border", filter === chip ? "bg-airborne-teal/10 dark:bg-airborne-teal/25 border-airborne-teal dark:border-teal-400 text-airborne-deep dark:text-teal-200" : "bg-white dark:bg-[#111113] text-gray-500 dark:text-[#9CA3AF] border-gray-200 dark:border-white/10")}>{chip}</button>
             ))}
         </div>
 
@@ -240,10 +240,10 @@ export default function Book() {
 
         <div className="space-y-4">
         {loadingSchedule ? (
-          <div className="text-center py-12"><Loader2 className="animate-spin mx-auto text-gray-400 dark:text-gray-500" /></div>
+          <div className="text-center py-12"><Loader2 className="animate-spin mx-auto text-gray-400 dark:text-[#6B7280]" /></div>
         ) : filteredSessions.length === 0 ? (
-            <div className="text-center py-12 bg-gray-50 dark:bg-gray-800/50 rounded border border-dashed border-gray-200 dark:border-gray-600">
-                <p className="text-gray-500 dark:text-gray-400 text-sm">No classes found.</p>
+            <div className="text-center py-12 bg-gray-50 dark:bg-[#111113] rounded border border-dashed border-gray-200 dark:border-white/10">
+                <p className="text-gray-500 dark:text-[#9CA3AF] text-sm">No classes found.</p>
             </div>
         ) : (
             filteredSessions.map(session => {
@@ -261,28 +261,28 @@ export default function Book() {
                 <div
                   key={key}
                   className={cn(
-                    "rounded p-5 flex gap-5 transition-shadow duration-200 border-l-2 border-l-airborne-teal dark:border-l-teal-400 hover:shadow-md",
+                    "rounded p-5 flex gap-5 transition-shadow duration-200 border-l-2 border-l-airborne-teal dark:border-l-teal-400 hover:shadow-md dark:hover:shadow-black/30",
                     bookable
-                      ? "bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm hover:shadow-md"
-                      : "bg-gray-50 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-600"
+                      ? "bg-white dark:bg-[#111113] border border-gray-100 dark:border-white/6 shadow-sm dark:shadow-black/30 hover:shadow-md"
+                      : "bg-gray-50 dark:bg-[#18181B] border border-gray-200 dark:border-white/10"
                   )}
                   data-testid={`card-session-${key}`}
                 >
-                    <div className="flex flex-col items-center justify-center w-16 border-r border-gray-100 dark:border-gray-600 pr-5 text-center">
-                        <span className={cn("text-lg font-bold", bookable ? "text-gray-900 dark:text-gray-100" : "text-gray-600 dark:text-gray-400")}>{formatTime12h(session.startTime)}</span>
-                        <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase">{formatTime12h(session.endTime)}</span>
+                    <div className="flex flex-col items-center justify-center w-16 border-r border-gray-100 dark:border-white/10 pr-5 text-center">
+                        <span className={cn("text-lg font-bold", bookable ? "text-gray-900 dark:text-[#EDEDED]" : "text-gray-600 dark:text-[#9CA3AF]")}>{formatTime12h(session.startTime)}</span>
+                        <span className="text-[10px] font-medium text-gray-400 dark:text-[#6B7280] uppercase">{formatTime12h(session.endTime)}</span>
                     </div>
                     <div className="flex-1">
                         <div className="flex justify-between items-start mb-1">
-                          <h3 className={cn("font-bold text-base", bookable ? "text-gray-900 dark:text-gray-100" : "text-gray-600 dark:text-gray-400")} data-testid={`text-class-${key}`}>{session.category}</h3>
+                          <h3 className={cn("font-bold text-base", bookable ? "text-gray-900 dark:text-[#EDEDED]" : "text-gray-600 dark:text-[#9CA3AF]")} data-testid={`text-class-${key}`}>{session.category}</h3>
                           <div className="flex flex-col items-end gap-1">
                             <span className="text-[10px] bg-teal-50 dark:bg-teal-900/40 text-airborne-teal dark:text-teal-300 px-1 rounded">{selectedBranch}</span>
                             {isFull && !booking && <span className="text-[10px] font-bold text-red-500 dark:text-red-400 px-1 bg-red-50 dark:bg-red-900/30 rounded">FULL</span>}
-                            {!bookable && <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-600" data-testid={`label-booking-closed-${key}`}>Booking closed</span>}
+                            {!bookable && <span className="text-[10px] font-medium text-gray-500 dark:text-[#9CA3AF] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-[#18181B]" data-testid={`label-booking-closed-${key}`}>Booking closed</span>}
                           </div>
                         </div>
                         <div className="flex justify-between items-center mt-4">
-                        <span className={cn("text-xs font-medium px-2 py-1 rounded-md", slotsLeft > 0 ? "text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-700" : "text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/30")} data-testid={`text-slots-${key}`}>
+                        <span className={cn("text-xs font-medium px-2 py-1 rounded-md", slotsLeft > 0 ? "text-gray-400 dark:text-[#6B7280] bg-gray-50 dark:bg-[#18181B]" : "text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/30")} data-testid={`text-slots-${key}`}>
                           {slotsLeft > 0 ? `${slotsLeft} slots left` : "0 slots left"}
                         </span>
 
@@ -294,18 +294,29 @@ export default function Book() {
                              <Button
                                disabled
                                size="sm"
-                               className="h-9 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 text-xs px-5 rounded border border-gray-200 dark:border-gray-600 shadow-none"
+                               className="h-9 bg-gray-100 dark:bg-[#18181B] text-gray-500 dark:text-[#9CA3AF] text-xs px-5 rounded border border-gray-200 dark:border-white/10 shadow-none"
                                data-testid={`button-paused-${key}`}
                              >
                                Paused
                              </Button>
+                        ) : membershipState === "upcoming" ? (
+                             <Button
+                               disabled
+                               size="sm"
+                               className="h-9 bg-gray-100 dark:bg-[#18181B] text-gray-500 dark:text-[#9CA3AF] text-xs px-5 rounded border border-gray-200 dark:border-white/10 shadow-none"
+                               data-testid={`button-upcoming-${key}`}
+                             >
+                               {membershipDetails?.startDate
+                                 ? `Starts on ${format(new Date(membershipDetails.startDate), "dd MMM yyyy")}`
+                                 : "Starts soon"}
+                             </Button>
                         ) : !hasMembership ? (
-                             <Button size="sm" onClick={() => setLocation('/enroll')} className="h-9 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-xs px-5 rounded" data-testid={`button-enroll-${key}`}>Enroll</Button>
+                             <Button size="sm" onClick={() => setLocation('/enroll')} className="h-9 bg-gray-900 dark:bg-[#EDEDED] text-white dark:text-[#0B0B0C] text-xs px-5 rounded" data-testid={`button-enroll-${key}`}>Enroll</Button>
                         ) : membershipState !== "active" ? (
                              <Button
                                size="sm"
                                onClick={() => setLocation(getRenewUrl(session.category))}
-                               className="h-9 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-xs px-5 rounded"
+                               className="h-9 bg-gray-900 dark:bg-[#EDEDED] text-white dark:text-[#0B0B0C] text-xs px-5 rounded"
                                data-testid={`button-renew-${key}`}
                              >
                                Renew

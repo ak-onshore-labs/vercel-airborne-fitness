@@ -3,7 +3,7 @@ import { asyncHandler, requireAuth } from "../middleware";
 import { storage } from "../storage";
 import { signToken } from "../lib/jwt";
 import { log } from "../lib/log";
-import { getMembershipUsabilityState } from "@shared/membershipState";
+import { getMembershipUsabilityState, membershipStateTierRank } from "@shared/membershipState";
 
 function tierRank(
   x: {
@@ -13,6 +13,7 @@ function tierRank(
     pauseUsed?: boolean | null;
     pauseStart?: string | null;
     pauseEnd?: string | null;
+    startDate?: string | null;
   },
   now: Date
 ): number {
@@ -24,10 +25,11 @@ function tierRank(
       pauseUsed: x.pauseUsed,
       pauseStart: x.pauseStart,
       pauseEnd: x.pauseEnd,
+      startDate: x.startDate ?? null,
     },
     now
   ).state;
-  return state === "active" ? 0 : state === "paused" ? 1 : state === "expired_extendable" ? 2 : 3;
+  return membershipStateTierRank(state);
 }
 
 function isCandidateBetter(
@@ -39,6 +41,7 @@ function isCandidateBetter(
     pauseUsed?: boolean | null;
     pauseStart?: string | null;
     pauseEnd?: string | null;
+    startDate?: string | null;
   },
   existing: {
     id: string;
@@ -48,6 +51,7 @@ function isCandidateBetter(
     pauseUsed?: boolean | null;
     pauseStart?: string | null;
     pauseEnd?: string | null;
+    startDate?: string | null;
   },
   now: Date
 ): boolean {
@@ -258,6 +262,7 @@ export function registerAuthRoutes(app: Express): void {
           pauseStart: string | null;
           pauseEnd: string | null;
           validityDays?: number;
+          startDate: string | null;
         }
       > = {};
       const { MembershipPlanModel, ClassTypeModel } = await import("../models");
@@ -283,6 +288,7 @@ export function registerAuthRoutes(app: Express): void {
             pauseStart: (m as any).pauseStart ? new Date((m as any).pauseStart).toISOString() : null,
             pauseEnd: (m as any).pauseEnd ? new Date((m as any).pauseEnd).toISOString() : null,
             validityDays: typeof (plan as any)?.validityDays === "number" ? (plan as any).validityDays : undefined,
+            startDate: (m as any).startDate ? new Date((m as any).startDate).toISOString() : null,
           };
 
           const existing = membershipMap[category];
@@ -359,6 +365,7 @@ export function registerAuthRoutes(app: Express): void {
           pauseStart: string | null;
           pauseEnd: string | null;
           validityDays?: number;
+          startDate: string | null;
         }
       > = {};
       const { MembershipPlanModel, ClassTypeModel } = await import("../models");
@@ -384,6 +391,7 @@ export function registerAuthRoutes(app: Express): void {
             pauseStart: (m as any).pauseStart ? new Date((m as any).pauseStart).toISOString() : null,
             pauseEnd: (m as any).pauseEnd ? new Date((m as any).pauseEnd).toISOString() : null,
             validityDays: typeof (plan as any)?.validityDays === "number" ? (plan as any).validityDays : undefined,
+            startDate: (m as any).startDate ? new Date((m as any).startDate).toISOString() : null,
           };
 
           const existing = membershipMap[category];

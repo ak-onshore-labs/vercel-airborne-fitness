@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, ReactNode, useCallback, use
 import { useToast } from '@/hooks/use-toast';
 import { useLocation } from 'wouter';
 import { apiFetch, setStoredToken, getStoredToken } from '@/lib/api';
+import { membershipEnrollmentStartBounds } from '@shared/membershipDates';
 
 export interface MembershipDetails {
   id: string;
@@ -13,6 +14,7 @@ export interface MembershipDetails {
   pauseStart?: string | null;
   pauseEnd?: string | null;
   validityDays?: number;
+  startDate?: string | null;
 }
 
 export type MembershipMap = Record<string, MembershipDetails>;
@@ -71,7 +73,7 @@ interface MemberContextType {
   login: (phone: string) => Promise<LoginResult>;
   loginWithPayload: (payload: VerifyOtpPayload) => Promise<LoginResult>;
   logout: () => void;
-  enroll: (details: any, selectedPlans: SelectedPlan[], waiver?: any, kidInfo?: any, transactionId?: string) => Promise<void>;
+  enroll: (details: any, selectedPlans: SelectedPlan[], waiver?: any, kidInfo?: any, transactionId?: string, membershipStartDate?: string) => Promise<void>;
   bookSession: (session: any, categoryName: string) => Promise<boolean>;
   joinWaitlist: (session: any, categoryName: string) => Promise<boolean>;
   cancelBooking: (bookingId: string) => Promise<void>;
@@ -112,6 +114,7 @@ export function MemberProvider({ children }: { children: ReactNode }) {
             pauseStart: (v as any).pauseStart ?? null,
             pauseEnd: (v as any).pauseEnd ?? null,
             validityDays: typeof (v as any).validityDays === "number" ? (v as any).validityDays : undefined,
+            startDate: (v as any).startDate ?? null,
           },
         ])
       );
@@ -161,8 +164,9 @@ export function MemberProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const enroll = async (details: any, selectedPlans: SelectedPlan[], waiver?: any, kidInfo?: any, transactionId?: string) => {
+  const enroll = async (details: any, selectedPlans: SelectedPlan[], waiver?: any, kidInfo?: any, transactionId?: string, membershipStartDate?: string) => {
     if (!user) return;
+    const start = membershipStartDate ?? membershipEnrollmentStartBounds(new Date()).min;
     const result = await apiFetch<{ memberships: MembershipMap }>('/api/enroll', {
       method: 'POST',
       body: JSON.stringify({
@@ -185,6 +189,7 @@ export function MemberProvider({ children }: { children: ReactNode }) {
         })),
         waiver,
         kidDetails: kidInfo,
+        membershipStartDate: start,
         ...(transactionId && { transactionId }),
       }),
     });

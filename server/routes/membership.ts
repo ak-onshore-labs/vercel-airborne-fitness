@@ -3,7 +3,15 @@ import { storage } from "../storage";
 import { asyncHandler, requireAuth } from "../middleware";
 import { BookingModel, MembershipModel, MembershipPlanModel, ScheduleSlotModel } from "../models";
 import mongoose from "mongoose";
-import { getMembershipUsabilityState } from "@shared/membershipState";
+import {
+  getMembershipUsabilityState,
+  membershipStateTierRank,
+} from "@shared/membershipState";
+import {
+  computeMembershipExpiryExclusiveEnd,
+  membershipEnrollmentStartBounds,
+  parseMembershipStartDateFromInput,
+} from "@shared/membershipDates";
 
 const PAUSE_DAYS = 14;
 const PAUSE_MS = PAUSE_DAYS * 24 * 60 * 60 * 1000;
@@ -142,6 +150,7 @@ export function registerMembershipRoutes(app: Express): void {
           pauseUsed: (existing as any).pauseUsed,
           pauseStart: (existing as any).pauseStart,
           pauseEnd: (existing as any).pauseEnd,
+          startDate: (existing as any).startDate ?? null,
         },
         now
       );
@@ -196,6 +205,7 @@ export function registerMembershipRoutes(app: Express): void {
               pauseUsed: (m as any).pauseUsed,
               pauseStart: (m as any).pauseStart,
               pauseEnd: (m as any).pauseEnd,
+              startDate: (m as any).startDate ?? null,
             },
             now2
           );
@@ -377,6 +387,24 @@ export function registerMembershipRoutes(app: Express): void {
         return;
       }
 
+      const { membershipStartDate } = req.body;
+      if (typeof membershipStartDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(membershipStartDate.trim())) {
+        res.status(400).json({
+          message: "Membership start date required (YYYY-MM-DD)",
+          fields: ["membershipStartDate"],
+        });
+        return;
+      }
+      const startDay = membershipStartDate.trim();
+      const bounds = membershipEnrollmentStartBounds(new Date());
+      if (startDay < bounds.min || startDay > bounds.max) {
+        res.status(400).json({
+          message: "Membership start date must be from today through the next 28 days",
+          fields: ["membershipStartDate"],
+        });
+        return;
+      }
+
       await storage.updateMember(memberId, {
         name: pd.name,
         email: pd.email,
@@ -426,13 +454,17 @@ export function registerMembershipRoutes(app: Express): void {
         if (!p) continue;
         const sessionsTotal = p.sessionsTotal ?? plan.sessions;
         const validityDays = p.validityDays ?? plan.validityDays ?? 30;
+        const expiryDate = computeMembershipExpiryExclusiveEnd(startDay, validityDays);
+        const startDate = parseMembershipStartDateFromInput(startDay);
         await storage.createMembership({
           memberId,
           membershipPlanId: planId,
           sessionsRemaining: sessionsTotal,
-          expiryDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * validityDays),
+          expiryDate,
           carryForward: 0,
           extensionApplied: false,
+          pauseUsed: false,
+          startDate,
         });
       }
 
@@ -460,6 +492,7 @@ export function registerMembershipRoutes(app: Express): void {
           pauseStart: string | null;
           pauseEnd: string | null;
           validityDays?: number;
+          startDate: string | null;
         }
       > = {};
       const now = new Date();
@@ -471,6 +504,7 @@ export function registerMembershipRoutes(app: Express): void {
         pauseUsed?: boolean | null;
         pauseStart?: string | null;
         pauseEnd?: string | null;
+        startDate?: string | null;
       }): number {
         const state = getMembershipUsabilityState(
           {
@@ -480,10 +514,11 @@ export function registerMembershipRoutes(app: Express): void {
             pauseUsed: x.pauseUsed,
             pauseStart: x.pauseStart,
             pauseEnd: x.pauseEnd,
+            startDate: x.startDate ?? null,
           },
           now
         ).state;
-        return state === "active" ? 0 : state === "paused" ? 1 : state === "expired_extendable" ? 2 : 3;
+        return membershipStateTierRank(state);
       }
 
       function isCandidateBetter(
@@ -495,6 +530,7 @@ export function registerMembershipRoutes(app: Express): void {
           pauseUsed?: boolean | null;
           pauseStart?: string | null;
           pauseEnd?: string | null;
+          startDate?: string | null;
         },
         existing: {
           id: string;
@@ -504,6 +540,7 @@ export function registerMembershipRoutes(app: Express): void {
           pauseUsed?: boolean | null;
           pauseStart?: string | null;
           pauseEnd?: string | null;
+          startDate?: string | null;
         }
       ): boolean {
         const ra = tierRank(candidate);
@@ -528,6 +565,7 @@ export function registerMembershipRoutes(app: Express): void {
           pauseStart: (m as any).pauseStart ? new Date((m as any).pauseStart).toISOString() : null,
           pauseEnd: (m as any).pauseEnd ? new Date((m as any).pauseEnd).toISOString() : null,
           validityDays: typeof (plan as any)?.validityDays === "number" ? (plan as any).validityDays : undefined,
+          startDate: (m as any).startDate ? new Date((m as any).startDate).toISOString() : null,
         };
         const existing = membershipMap[category];
         if (!existing) {

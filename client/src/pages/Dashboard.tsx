@@ -39,14 +39,14 @@ export default function Dashboard() {
       <div className="p-6 space-y-8">
         <HeroWithAccent>
           <div className="space-y-1">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100" data-testid="text-greeting">Hi, {user.name.split(' ')[0]}</h1>
-            <p className="text-gray-500 dark:text-gray-400 text-sm">Welcome back to Airborne.</p>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-[#EDEDED]" data-testid="text-greeting">Hi, {user.name.split(' ')[0]}</h1>
+            <p className="text-gray-500 dark:text-[#9CA3AF] text-sm">Welcome back to Airborne.</p>
           </div>
         </HeroWithAccent>
 
         <div className="space-y-4">
             <div className="flex justify-between items-center">
-                <h2 className="font-semibold text-gray-900 dark:text-gray-100">Your Memberships</h2>
+                <h2 className="font-semibold text-gray-900 dark:text-[#EDEDED]">Your Memberships</h2>
                 {hasAnyMembership && (
                     <Link href="/enroll">
                         <Button variant="ghost" size="sm" className="text-airborne-teal text-xs h-8 hover:bg-teal-50 dark:hover:bg-teal-900/30" data-testid="button-add-membership">
@@ -59,19 +59,20 @@ export default function Dashboard() {
           {hasAnyMembership ? (
             <div className="space-y-3">
               {Object.entries(user.memberships).map(([category, details]) => (
-                <div key={category} className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 border-l-[3px] border-l-airborne-teal dark:border-l-teal-400 p-5 rounded shadow-sm relative overflow-hidden group transition-shadow duration-200 hover:shadow-md" data-testid={`card-membership-${category}`}>
+                <div key={category} className="bg-white dark:bg-[#111113] border border-gray-100 dark:border-white/6 border-l-[3px] border-l-airborne-teal dark:border-l-teal-400 p-5 rounded shadow-sm dark:shadow-black/30 relative overflow-hidden group transition-shadow duration-200 hover:shadow-md dark:hover:shadow-black/30" data-testid={`card-membership-${category}`}>
                   <div className="relative z-10">
                     <div className="flex justify-between items-start mb-2">
-                        <h3 className="font-bold text-gray-900 dark:text-gray-100 text-lg">{category}</h3>
+                        <h3 className="font-bold text-gray-900 dark:text-[#EDEDED] text-lg">{category}</h3>
                         {isMembershipActive(details) && (
                           <span className="bg-teal-50 dark:bg-teal-900/40 text-airborne-teal dark:text-teal-300 text-[10px] px-2 py-1 rounded font-medium uppercase tracking-wide">Active</span>
                         )}
                     </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">{details.planName}</p>
+                    <p className="text-xs text-gray-500 dark:text-[#9CA3AF] mb-4">{details.planName}</p>
                     {getMembershipHeadline(details) && (
                       <p
                         className={
-                          getMembershipUsability(details).state === "paused"
+                          getMembershipUsability(details).state === "paused" ||
+                          getMembershipUsability(details).state === "upcoming"
                             ? "text-xs font-semibold text-airborne-teal dark:text-teal-300 mb-4"
                             : "text-xs font-semibold text-amber-700 dark:text-amber-300 mb-4"
                         }
@@ -84,9 +85,9 @@ export default function Dashboard() {
                         <div>
                             <div className="flex items-baseline gap-1">
                             <span className="text-3xl font-bold text-airborne-teal" data-testid={`text-sessions-${category}`}>{details.sessionsRemaining}</span>
-                            <span className="text-xs text-gray-400 dark:text-gray-500 font-medium">sessions left</span>
+                            <span className="text-xs text-gray-400 dark:text-[#6B7280] font-medium">sessions left</span>
                             </div>
-                            <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">Expires {format(new Date(details.expiryDate), 'dd MMM yyyy')}</p>
+                            <p className="text-[10px] text-gray-400 dark:text-[#6B7280] mt-1">Expires {format(new Date(details.expiryDate), 'dd MMM yyyy')}</p>
                         </div>
                         <div className="flex items-center gap-2">
                           {isPauseCtaVisible(details) && (
@@ -117,7 +118,7 @@ export default function Dashboard() {
                           {getMembershipCtas(details).showRenew && (
                             <Button
                               size="sm"
-                              className="h-9 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded"
+                              className="h-9 bg-gray-900 dark:bg-[#EDEDED] text-white dark:text-[#0B0B0C] rounded"
                               onClick={() => setLocation(getRenewUrl(category))}
                               data-testid={`button-renew-${category}`}
                             >
@@ -126,7 +127,7 @@ export default function Dashboard() {
                           )}
                           {getMembershipCtas(details).showBook && (
                             <Link href="/book">
-                              <Button size="sm" className="h-9 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded" data-testid={`button-book-${category}`}>Book Class</Button>
+                              <Button size="sm" className="h-9 bg-gray-900 dark:bg-[#EDEDED] text-white dark:text-[#0B0B0C] rounded" data-testid={`button-book-${category}`}>Book Class</Button>
                             </Link>
                           )}
                         </div>
@@ -136,12 +137,12 @@ export default function Dashboard() {
               ))}
             </div>
           ) : (
-            <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 border-l-[3px] border-l-airborne-teal dark:border-l-teal-400 p-6 rounded shadow-sm text-center transition-shadow duration-200 hover:shadow-md" data-testid="card-membership-inactive">
-              <div className="w-12 h-12 bg-gray-50 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-3 text-gray-400 dark:text-gray-500">
+            <div className="bg-white dark:bg-[#111113] border border-gray-100 dark:border-white/6 border-l-[3px] border-l-airborne-teal dark:border-l-teal-400 p-6 rounded shadow-sm dark:shadow-black/30 text-center transition-shadow duration-200 hover:shadow-md dark:hover:shadow-black/30" data-testid="card-membership-inactive">
+              <div className="w-12 h-12 bg-gray-50 dark:bg-[#18181B] rounded-full flex items-center justify-center mx-auto mb-3 text-gray-400 dark:text-[#6B7280]">
                   <Calendar size={24} />
               </div>
-              <h3 className="text-gray-900 dark:text-gray-100 font-medium mb-2">No Active Memberships</h3>
-              <p className="text-gray-500 dark:text-gray-400 text-xs mb-6 max-w-[200px] mx-auto">Enroll in a class category to start booking sessions.</p>
+              <h3 className="text-gray-900 dark:text-[#EDEDED] font-medium mb-2">No Active Memberships</h3>
+              <p className="text-gray-500 dark:text-[#9CA3AF] text-xs mb-6 max-w-[200px] mx-auto">Enroll in a class category to start booking sessions.</p>
               <Link href="/enroll">
                 <Button className="w-full bg-airborne-teal text-white rounded shadow-lg shadow-teal-100 dark:shadow-none" data-testid="button-view-plans">Browse Memberships</Button>
               </Link>
@@ -184,7 +185,7 @@ export default function Dashboard() {
         {hasAnyMembership && (
             <div>
             <div className="flex justify-between items-center mb-4">
-                <h2 className="font-semibold text-gray-900 dark:text-gray-100">Today's Bookings</h2>
+                <h2 className="font-semibold text-gray-900 dark:text-[#EDEDED]">Today's Bookings</h2>
                 <Link href="/book">
                   <span className="text-xs text-airborne-teal font-medium" data-testid="link-view-all">View Schedule</span>
                 </Link>
@@ -192,18 +193,18 @@ export default function Dashboard() {
             {todaysBookings.length > 0 ? (
                 <div className="space-y-3">
                     {todaysBookings.map(booking => (
-                    <div key={booking.id} className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 border-l-2 border-l-airborne-teal dark:border-l-teal-400 p-4 rounded shadow-sm flex justify-between items-center transition-shadow duration-200 hover:shadow-md" data-testid={`card-today-booking-${booking.id}`}>
+                    <div key={booking.id} className="bg-white dark:bg-[#111113] border border-gray-100 dark:border-white/6 border-l-2 border-l-airborne-teal dark:border-l-teal-400 p-4 rounded shadow-sm dark:shadow-black/30 flex justify-between items-center transition-shadow duration-200 hover:shadow-md dark:hover:shadow-black/30" data-testid={`card-today-booking-${booking.id}`}>
                         <div>
-                          <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-1 capitalize">{booking.category}</h3>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">{formatTime12h(booking.startTime)} - {formatTime12h(booking.endTime)} | {booking.branch}</p>
+                          <h3 className="font-semibold text-gray-900 dark:text-[#EDEDED] mb-1 capitalize">{booking.category}</h3>
+                          <p className="text-xs text-gray-500 dark:text-[#9CA3AF]">{formatTime12h(booking.startTime)} - {formatTime12h(booking.endTime)} | {booking.branch}</p>
                         </div>
                         <Button disabled className="h-9 bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 border border-green-100 dark:border-green-800 shadow-none"><CheckCircle2 size={14} className="mr-1"/> Booked</Button>
                     </div>
                     ))}
                 </div>
             ) : (
-                <div className="bg-gray-50 dark:bg-gray-800/50 rounded p-6 text-center border border-dashed border-gray-200 dark:border-gray-600">
-                    <p className="text-gray-500 dark:text-gray-400 text-sm">No bookings for today. <Link href="/book"><span className="text-airborne-teal font-medium cursor-pointer">Book a class</span></Link></p>
+                <div className="bg-gray-50 dark:bg-[#111113] rounded p-6 text-center border border-dashed border-gray-200 dark:border-white/10">
+                    <p className="text-gray-500 dark:text-[#9CA3AF] text-sm">No bookings for today. <Link href="/book"><span className="text-airborne-teal font-medium cursor-pointer">Book a class</span></Link></p>
                 </div>
             )}
             </div>

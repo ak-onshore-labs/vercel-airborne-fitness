@@ -35,6 +35,10 @@ async function findMembershipForSlot(memberId: string, scheduleId: string): Prom
         expiryDate: m.expiryDate,
         sessionsRemaining: m.sessionsRemaining,
         extensionApplied: (m as any).extensionApplied,
+        pauseUsed: (m as any).pauseUsed,
+        pauseStart: (m as any).pauseStart,
+        pauseEnd: (m as any).pauseEnd,
+        startDate: (m as any).startDate,
       },
       now
     )
@@ -78,6 +82,7 @@ async function findMembershipForSlotForBooking(
         pauseUsed: (m as any).pauseUsed,
         pauseStart: (m as any).pauseStart,
         pauseEnd: (m as any).pauseEnd,
+        startDate: (m as any).startDate,
       },
       now
     );
