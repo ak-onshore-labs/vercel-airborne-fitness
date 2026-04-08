@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode, useCallback, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { useLocation } from 'wouter';
 import { apiFetch, setStoredToken, getStoredToken } from '@/lib/api';
 import { membershipEnrollmentStartBounds } from '@shared/membershipDates';
 
@@ -84,6 +83,8 @@ interface MemberContextType {
   refreshBookings: () => Promise<void>;
   getSessionCounts: (scheduleId: string, date: string) => Promise<{ bookedCount: number; waitlistCount: number }>;
   updateProfile: (data: Partial<Pick<UserProfile, 'name' | 'email' | 'dob' | 'emergencyContactName' | 'emergencyContactPhone' | 'medicalConditions'>>) => Promise<boolean>;
+  /** False until the first `/api/auth/me` (or no-token) bootstrap finishes. */
+  sessionRestored: boolean;
 }
 
 const MemberContext = createContext<MemberContextType | undefined>(undefined);
@@ -93,7 +94,7 @@ export function MemberProvider({ children }: { children: ReactNode }) {
   const [bookedSessions, setBookedSessions] = useState<Booking[]>([]);
   const [selectedBranch, setSelectedBranch] = useState<'Lower Parel' | 'Mazgaon'>('Lower Parel');
   const { toast } = useToast();
-  const [, setLocation] = useLocation();
+  const [sessionRestored, setSessionRestored] = useState(false);
 
   const login = async (_phone: string): Promise<LoginResult> => {
     toast({ variant: "destructive", title: "Use OTP to sign in" });
@@ -150,18 +151,31 @@ export function MemberProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    const token = getStoredToken();
-    if (token) {
-      apiFetch<Omit<VerifyOtpPayload, 'token'>>('/api/auth/me').then((result) => {
-        if (result.ok) {
-          loginWithPayload({ token, ...result.data });
-        } else if (result.status === 401) {
-          logout();
-        }
-      });
-    } else {
-      logout();
-    }
+    let cancelled = false;
+
+    void (async () => {
+      const token = getStoredToken();
+      if (!token) {
+        logout();
+        if (!cancelled) setSessionRestored(true);
+        return;
+      }
+
+      const result = await apiFetch<Omit<VerifyOtpPayload, "token">>("/api/auth/me");
+      if (cancelled) return;
+
+      if (result.ok) {
+        await loginWithPayload({ token, ...result.data });
+      } else if (result.status === 401) {
+        logout();
+      }
+      if (!cancelled) setSessionRestored(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time session bootstrap
   }, []);
 
   const enroll = async (details: any, selectedPlans: SelectedPlan[], waiver?: any, kidInfo?: any, transactionId?: string, membershipStartDate?: string) => {
@@ -399,7 +413,8 @@ export function MemberProvider({ children }: { children: ReactNode }) {
     <MemberContext.Provider value={{ 
       user, bookedSessions, selectedBranch, setSelectedBranch,
       login, loginWithPayload, logout, enroll, bookSession, joinWaitlist, cancelBooking, leaveWaitlist, 
-      hasMembershipFor, selfExtendMembership, pauseMembership, refreshBookings, getSessionCounts, updateProfile
+      hasMembershipFor, selfExtendMembership, pauseMembership, refreshBookings, getSessionCounts, updateProfile,
+      sessionRestored,
     }}>
       {children}
     </MemberContext.Provider>

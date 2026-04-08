@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMember } from "@/context/MemberContext";
 import MobileLayout from "@/components/layout/MobileLayout";
 import { HeroWithAccent } from "@/components/HeroWithAccent";
@@ -18,13 +18,23 @@ import {
 import { MemberDialogContent } from "@/components/MemberDialogContent";
 
 export default function Dashboard() {
-  const { user, bookedSessions, selfExtendMembership, pauseMembership } = useMember();
+  const { user, bookedSessions, selfExtendMembership, pauseMembership, sessionRestored } = useMember();
   const [, setLocation] = useLocation();
   const [pauseConfirmOpen, setPauseConfirmOpen] = useState(false);
   const [pausePending, setPausePending] = useState<{ category: string; membershipId: string } | null>(null);
 
-  if (!user) {
-    return <div className="flex items-center justify-center h-full">Loading... <Loader2 size={16} /></div>;
+  useEffect(() => {
+    if (sessionRestored && !user) {
+      setLocation("/");
+    }
+  }, [sessionRestored, user, setLocation]);
+
+  if (!sessionRestored || !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F9FAFB] dark:bg-[#0B0B0C]">
+        <Loader2 className="h-8 w-8 animate-spin text-airborne-teal" aria-label="Loading" />
+      </div>
+    );
   }
 
   const activeMemberships = Object.keys(user.memberships);

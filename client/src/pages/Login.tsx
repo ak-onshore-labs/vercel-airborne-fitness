@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useMember, type VerifyOtpPayload } from "@/context/MemberContext";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
@@ -10,13 +10,23 @@ import { apiFetch } from "@/lib/api";
 import { AirborneLogo } from "@/components/AirborneLogo";
 
 export default function Login() {
-  const { loginWithPayload } = useMember();
+  const { loginWithPayload, user, sessionRestored } = useMember();
   const [, setLocation] = useLocation();
+  const prevAuth = useRef({ sessionRestored: false, user: null as typeof user });
   const { toast } = useToast();
   const [step, setStep] = useState<"phone" | "otp">("phone");
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    const wasWaitingOnBootstrap = !prevAuth.current.sessionRestored;
+    const hasSession = sessionRestored && !!user;
+    if (wasWaitingOnBootstrap && hasSession) {
+      setLocation("/dashboard");
+    }
+    prevAuth.current = { sessionRestored, user };
+  }, [sessionRestored, user, setLocation]);
 
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,6 +73,14 @@ export default function Login() {
       setLocation(isNew ? "/enroll" : "/dashboard");
     }
   };
+
+  if (!sessionRestored) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#F9FAFB] dark:bg-[#0B0B0C] px-6">
+        <Loader2 className="h-8 w-8 animate-spin text-airborne-teal" aria-label="Loading" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-[#F9FAFB] dark:bg-[#0B0B0C] px-6">
