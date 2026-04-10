@@ -85,6 +85,8 @@ interface MemberContextType {
   updateProfile: (data: Partial<Pick<UserProfile, 'name' | 'email' | 'dob' | 'emergencyContactName' | 'emergencyContactPhone' | 'medicalConditions'>>) => Promise<boolean>;
   /** False until the first `/api/auth/me` (or no-token) bootstrap finishes. */
   sessionRestored: boolean;
+  /** Permanently deletes the member account (server-side). Caller should logout and redirect on success. */
+  deleteAccount: () => Promise<{ ok: boolean; message?: string }>;
 }
 
 const MemberContext = createContext<MemberContextType | undefined>(undefined);
@@ -148,6 +150,12 @@ export function MemberProvider({ children }: { children: ReactNode }) {
     setStoredToken(null);
     setUser(null);
     setBookedSessions([]);
+  };
+
+  const deleteAccount = async (): Promise<{ ok: boolean; message?: string }> => {
+    const result = await apiFetch<null>("/api/account", { method: "DELETE" });
+    if (result.ok) return { ok: true };
+    return { ok: false, message: result.message };
   };
 
   useEffect(() => {
@@ -415,6 +423,7 @@ export function MemberProvider({ children }: { children: ReactNode }) {
       login, loginWithPayload, logout, enroll, bookSession, joinWaitlist, cancelBooking, leaveWaitlist, 
       hasMembershipFor, selfExtendMembership, pauseMembership, refreshBookings, getSessionCounts, updateProfile,
       sessionRestored,
+      deleteAccount,
     }}>
       {children}
     </MemberContext.Provider>

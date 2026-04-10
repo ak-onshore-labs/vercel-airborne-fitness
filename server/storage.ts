@@ -67,6 +67,8 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, data: Partial<InsertUser>): Promise<User | undefined>;
+  /** Hard-delete member app account data for userId. Does not remove Transaction rows (v1). Idempotent if user already absent. */
+  deleteAccountByUserId(userId: string): Promise<void>;
 
   getMembersByUserId(userId: string): Promise<Member[]>;
   getMember(id: string): Promise<Member | undefined>;
@@ -122,6 +124,7 @@ export interface IStorage {
   getTransactionById(id: string): Promise<Transaction | undefined>;
   updateTransaction(id: string, data: Partial<Pick<Transaction, "status" | "paymentId" | "signature">>): Promise<Transaction | undefined>;
   getTransactionByOrderId(orderId: string): Promise<Transaction | undefined>;
+  listTransactionsForUser(userId: string, opts: { limit: number }): Promise<Transaction[]>;
 
   getAppSetting(key: string): Promise<string | null>;
   setAppSetting(key: string, value: string): Promise<void>;
@@ -195,6 +198,22 @@ export class MongoStorage implements IStorage {
   async updateUser(id: string, data: Partial<InsertUser>): Promise<User | undefined> {
     const doc = await UserModel.findByIdAndUpdate(id, { $set: data }, { new: true });
     return toApi<User>(doc) ?? undefined;
+  }
+
+  async deleteAccountByUserId(userId: string): Promise<void> {
+    const existing = await UserModel.findById(userId).select("_id").lean();
+    if (!existing) return;
+
+    const members = await MemberModel.find({ userId }).select("_id").lean();
+    const memberIds = members.map((m) => String(m._id));
+
+    if (memberIds.length > 0) {
+      await BookingModel.deleteMany({ memberId: { $in: memberIds } });
+      await MembershipModel.deleteMany({ memberId: { $in: memberIds } });
+    }
+    await MemberModel.deleteMany({ userId });
+    await WaiverSignatureModel.deleteMany({ userId });
+    await UserModel.findByIdAndDelete(userId);
   }
 
   async getMembersByUserId(userId: string): Promise<Member[]> {
@@ -516,6 +535,14 @@ export class MongoStorage implements IStorage {
   async getTransactionByOrderId(orderId: string): Promise<Transaction | undefined> {
     const doc = await TransactionModel.findOne({ orderId });
     return toApi<Transaction>(doc) ?? undefined;
+  }
+
+  async listTransactionsForUser(userId: string, opts: { limit: number }): Promise<Transaction[]> {
+    const docs = await TransactionModel.find({ userId })
+      .sort({ createdAt: -1 })
+      .limit(opts.limit)
+      .exec();
+    return toApiList<Transaction>(docs);
   }
 
   async getAppSetting(key: string): Promise<string | null> {

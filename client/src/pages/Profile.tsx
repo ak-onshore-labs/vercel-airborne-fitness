@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useMember } from "@/context/MemberContext";
 import { useTheme } from "@/context/ThemeContext";
 import MobileLayout from "@/components/layout/MobileLayout";
@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
 import { addDays, format } from "date-fns";
 import { LogOut, Settings, ChevronRight, Loader2 } from "lucide-react";
+import { apiFetch } from "@/lib/api";
 import { Switch } from "@/components/ui/switch";
 import { getMembershipCtas, getMembershipHeadline, getMembershipUsability, getRenewUrl, isPauseCtaVisible } from "@/lib/membershipUi";
 import {
@@ -18,12 +19,67 @@ import {
 } from "@/components/ui/dialog";
 import { MemberDialogContent } from "@/components/MemberDialogContent";
 
+type MemberTxStatus = "CREATED" | "PENDING" | "SUCCESS" | "FAILED";
+
+interface MemberTransactionRow {
+  id: string;
+  createdAt: string | null;
+  amount: number;
+  currency: string;
+  status: MemberTxStatus;
+  orderId: string;
+  paymentId: string | null;
+  receipt: string;
+}
+
+function formatPaiseInr(paise: number): string {
+  if (paise % 100 === 0) {
+    return `₹${(paise / 100).toLocaleString("en-IN")}`;
+  }
+  return `₹${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function transactionDisplayStatus(status: MemberTxStatus): { label: string; className: string } {
+  if (status === "SUCCESS") return { label: "Paid", className: "text-emerald-600 dark:text-emerald-400" };
+  if (status === "FAILED") return { label: "Failed", className: "text-red-600 dark:text-red-400" };
+  return { label: "Pending", className: "text-gray-500 dark:text-[#9CA3AF]" };
+}
+
+function transactionRef(row: MemberTransactionRow): string | null {
+  const p = row.paymentId?.trim();
+  if (p) return p;
+  const r = row.receipt?.trim();
+  if (r) return r;
+  return row.orderId?.trim() || null;
+}
+
 export default function Profile() {
   const { user, logout, selfExtendMembership, pauseMembership } = useMember();
   const { darkMode, setDarkMode } = useTheme();
   const [, setLocation] = useLocation();
   const [pauseConfirmOpen, setPauseConfirmOpen] = useState(false);
   const [pausePending, setPausePending] = useState<{ category: string; membershipId: string } | null>(null);
+  const [txLoading, setTxLoading] = useState(true);
+  const [txError, setTxError] = useState<string | null>(null);
+  const [txItems, setTxItems] = useState<MemberTransactionRow[]>([]);
+
+  const loadTransactions = useCallback(async () => {
+    setTxLoading(true);
+    setTxError(null);
+    const res = await apiFetch<{ items: MemberTransactionRow[] }>("/api/payments/transactions?limit=5");
+    if (!res.ok) {
+      setTxError(res.message || "Could not load transactions");
+      setTxItems([]);
+      setTxLoading(false);
+      return;
+    }
+    setTxItems(Array.isArray(res.data?.items) ? res.data.items : []);
+    setTxLoading(false);
+  }, []);
+
+  useEffect(() => {
+    void loadTransactions();
+  }, [loadTransactions]);
 
   const handleLogout = () => {
     logout();
@@ -127,6 +183,62 @@ export default function Profile() {
                     <p className="text-gray-400 dark:text-[#6B7280] text-sm">No active memberships</p>
                 </div>
             )}
+        </div>
+
+        {/* Transactions */}
+        <div className="mb-8">
+          <h2 className="text-xs font-bold text-gray-400 dark:text-[#6B7280] uppercase tracking-wider mb-3 px-1">Transactions</h2>
+          {txLoading && (
+            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-[#9CA3AF] py-2">
+              <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+              Loading transactions…
+            </div>
+          )}
+          {!txLoading && txError && (
+            <div className="space-y-2">
+              <p className="text-sm text-red-600 dark:text-red-400">{txError}</p>
+              <Button type="button" variant="outline" size="sm" className="rounded" onClick={() => void loadTransactions()}>
+                Retry
+              </Button>
+            </div>
+          )}
+          {!txLoading && !txError && txItems.length === 0 && (
+            <div className="bg-gray-50 dark:bg-[#111113] rounded p-4 text-center border border-dashed border-gray-200 dark:border-white/10">
+              <p className="text-gray-400 dark:text-[#6B7280] text-sm">No transactions yet</p>
+            </div>
+          )}
+          {!txLoading && !txError && txItems.length > 0 && (
+            <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+              {txItems.map((row) => {
+                const st = transactionDisplayStatus(row.status);
+                const refStr = transactionRef(row);
+                const dateLabel = row.createdAt
+                  ? format(new Date(row.createdAt), "dd MMM yyyy")
+                  : "—";
+                return (
+                  <div
+                    key={row.id}
+                    className="bg-white dark:bg-[#111113] border border-gray-100 dark:border-white/6 border-l-[3px] border-l-airborne-teal dark:border-l-teal-400 p-4 rounded shadow-sm dark:shadow-black/30"
+                  >
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="min-w-0">
+                        <p className="text-xs text-gray-500 dark:text-[#9CA3AF]">{dateLabel}</p>
+                        {refStr && (
+                          <p className="text-[11px] text-gray-400 dark:text-[#6B7280] mt-1 truncate" title={refStr}>
+                            Ref: {refStr}
+                          </p>
+                        )}
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="font-bold text-sm text-gray-900 dark:text-[#EDEDED]">{formatPaiseInr(row.amount)}</p>
+                        <p className={`text-xs font-medium mt-0.5 ${st.className}`}>{st.label}</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <Dialog open={pauseConfirmOpen} onOpenChange={setPauseConfirmOpen}>

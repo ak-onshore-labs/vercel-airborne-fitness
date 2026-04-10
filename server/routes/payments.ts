@@ -10,6 +10,38 @@ function log(message: string): void {
 
 export function registerPaymentRoutes(app: Express): void {
   /**
+   * GET /api/payments/transactions?limit=
+   * Lists recent transactions for the authenticated user (newest first). limit defaults to 5, max 10.
+   */
+  app.get(
+    "/api/payments/transactions",
+    requireAuth,
+    asyncHandler(async (req: Request, res: Response) => {
+      const userId = req.auth!.userId;
+      const raw = req.query.limit;
+      let limit = 5;
+      if (raw !== undefined && raw !== "") {
+        const n = parseInt(String(raw), 10);
+        if (!Number.isNaN(n)) {
+          limit = Math.min(10, Math.max(1, n));
+        }
+      }
+      const rows = await storage.listTransactionsForUser(userId, { limit });
+      const items = rows.map((t) => ({
+        id: t.id,
+        createdAt: t.createdAt ? new Date(t.createdAt).toISOString() : null,
+        amount: t.amount,
+        currency: t.currency,
+        status: t.status,
+        orderId: t.orderId,
+        paymentId: t.paymentId ?? null,
+        receipt: t.receipt,
+      }));
+      res.json({ items });
+    })
+  );
+
+  /**
    * POST /api/payments/create-order
    * Body: { amount, currency?, receipt? }
    * Returns: { orderId, amount, currency, transactionId }

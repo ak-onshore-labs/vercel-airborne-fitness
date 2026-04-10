@@ -31,6 +31,10 @@ export async function apiFetch<T = unknown>(
       headers,
     });
 
+    if (res.status === 204 || res.status === 205) {
+      return { ok: true, data: null as T };
+    }
+
     const contentType = res.headers.get("content-type");
     const isJson = contentType?.includes("application/json");
 

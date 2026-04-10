@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useLocation } from "wouter";
 import { X, Calendar as CalendarIcon, Info, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { buildRazorpayCheckoutPrefill } from "@/lib/razorpayPrefill";
 import MobileLayout from "@/components/layout/MobileLayout";
 import { apiFetch } from "@/lib/api";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -859,6 +860,12 @@ export default function Enroll() {
         setLoadingError("Payment was cancelled. You can try again.");
       };
 
+      const prefill = buildRazorpayCheckoutPrefill({
+        accountPhone: user?.phone,
+        formDataEmail: formData.email,
+        userEmail: user?.email,
+      });
+
       const options: Record<string, unknown> = {
         key: keyRes.data.keyId,
         amount,
@@ -866,6 +873,8 @@ export default function Enroll() {
         order_id: orderId,
         name: "Airborne Fitness",
         description: "Membership enrollment",
+        webview_intent: true,
+        ...(prefill ? { prefill } : {}),
         modal: {
           ondismiss: () => clearLoadingAndShowCancel(),
         },
