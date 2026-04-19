@@ -442,12 +442,6 @@ export function registerAuthRoutes(app: Express): void {
         res.status(204).send();
         return;
       }
-      if (user.userRole === "ADMIN" || user.userRole === "STAFF") {
-        res.status(403).json({
-          message: "Staff accounts cannot be deleted from the app. Please contact support.",
-        });
-        return;
-      }
       await storage.deleteAccountByUserId(userId);
       res.status(204).send();
     })

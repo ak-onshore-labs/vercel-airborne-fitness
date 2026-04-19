@@ -55,8 +55,6 @@ export default function ProfileSettings() {
     return <div className="flex items-center justify-center h-full">Loading... <Loader2 size={16} /></div>;
   }
 
-  const isMemberOnly = user.userRole === "MEMBER";
-
   const handleDeleteDialogOpenChange = (open: boolean) => {
     if (deleteLoading) return;
     setDeleteDialogOpen(open);
@@ -175,24 +173,22 @@ export default function ProfileSettings() {
           </Button>
         </form>
 
-        {isMemberOnly && (
-          <section className="mt-10 pt-8 border-t border-gray-200 dark:border-white/10" aria-labelledby="danger-zone-heading">
-            <h2 id="danger-zone-heading" className="text-sm font-semibold text-red-600 dark:text-red-400 mb-2">
-              Danger zone
-            </h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-              Permanently delete your account and profile data from this app. This cannot be undone from your phone.
-            </p>
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full h-12 rounded-xl border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-950/40"
-              onClick={() => setDeleteDialogOpen(true)}
-            >
-              Delete account
-            </Button>
-          </section>
-        )}
+        <section className="mt-10 pt-8 border-t border-gray-200 dark:border-white/10" aria-labelledby="danger-zone-heading">
+          <h2 id="danger-zone-heading" className="text-sm font-semibold text-red-600 dark:text-red-400 mb-2">
+            Danger zone
+          </h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+            Permanently delete your account and profile data from this app. This cannot be undone from your phone.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full h-12 rounded-xl border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-950/40"
+            onClick={() => setDeleteDialogOpen(true)}
+          >
+            Delete account
+          </Button>
+        </section>
 
         <Dialog open={deleteDialogOpen} onOpenChange={handleDeleteDialogOpenChange}>
           <MemberDialogContent
