@@ -62,6 +62,28 @@ export interface ScheduleSlotWithCategory extends ScheduleSlot {
   classId: string;
 }
 
+export interface AdminTransactionsFilters {
+  dateFrom?: string;
+  dateTo?: string;
+  q?: string;
+  paymentMode?: string;
+}
+
+export interface AdminTransactionRow {
+  id: string;
+  date: string;
+  memberName: string;
+  memberMobile: string;
+  plan: string;
+  classType: string;
+  paymentMode: string;
+  subtotal: string;
+  gst: string;
+  totalAmount: string;
+  reference: string;
+  source: string;
+}
+
 export interface IStorage {
   getUserByMobile(mobile: string): Promise<User | undefined>;
   getUser(id: string): Promise<User | undefined>;
@@ -125,6 +147,12 @@ export interface IStorage {
   updateTransaction(id: string, data: Partial<Pick<Transaction, "status" | "paymentId" | "signature">>): Promise<Transaction | undefined>;
   getTransactionByOrderId(orderId: string): Promise<Transaction | undefined>;
   listTransactionsForUser(userId: string, opts: { limit: number }): Promise<Transaction[]>;
+  listAdminTransactions(params: {
+    page: number;
+    limit: number;
+    filters: AdminTransactionsFilters;
+  }): Promise<{ items: AdminTransactionRow[]; total: number }>;
+  listAdminTransactionsForExport(filters: AdminTransactionsFilters): Promise<AdminTransactionRow[]>;
 
   getAppSetting(key: string): Promise<string | null>;
   setAppSetting(key: string, value: string): Promise<void>;
@@ -180,6 +208,181 @@ export interface IStorage {
 export const ALMOST_FULL_OCCUPANCY_THRESHOLD = 0.8;
 
 export class MongoStorage implements IStorage {
+  private amountPaiseToInrString(amountPaise: number): string {
+    const inr = Number.isFinite(amountPaise) ? amountPaise / 100 : 0;
+    return inr.toFixed(2);
+  }
+
+  private normalizeDayStartUtc(day: string): Date | null {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day.trim())) return null;
+    return new Date(`${day.trim()}T00:00:00.000Z`);
+  }
+
+  private normalizeDayEndUtc(day: string): Date | null {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day.trim())) return null;
+    return new Date(`${day.trim()}T23:59:59.999Z`);
+  }
+
+  private pickReference(tx: Transaction): string {
+    const paymentId = tx.paymentId?.trim();
+    if (paymentId) return paymentId;
+    const receipt = tx.receipt?.trim();
+    if (receipt) return receipt;
+    return tx.orderId?.trim() || "—";
+  }
+
+  private detectRazorpay(tx: Transaction): boolean {
+    return tx.orderId.startsWith("order_") || !!(tx.paymentId && tx.paymentId.startsWith("pay_"));
+  }
+
+  private async buildAdminTransactionRows(filters: AdminTransactionsFilters): Promise<AdminTransactionRow[]> {
+    const txFilter: Record<string, unknown> = { status: "SUCCESS" };
+    const createdAt: Record<string, Date> = {};
+    if (filters.dateFrom?.trim()) {
+      const from = this.normalizeDayStartUtc(filters.dateFrom);
+      if (from) createdAt.$gte = from;
+    }
+    if (filters.dateTo?.trim()) {
+      const to = this.normalizeDayEndUtc(filters.dateTo);
+      if (to) createdAt.$lte = to;
+    }
+    if (Object.keys(createdAt).length > 0) txFilter.createdAt = createdAt;
+
+    const txDocs = await TransactionModel.find(txFilter).sort({ createdAt: -1 }).lean();
+    if (txDocs.length === 0) return [];
+
+    const transactions = txDocs.map((d) => {
+      const obj = d as any;
+      const id = String(obj._id);
+      const row = { ...obj, id };
+      delete (row as any)._id;
+      return row as Transaction;
+    });
+
+    const userIds = Array.from(new Set(transactions.map((t) => t.userId))).filter(
+      (id): id is string => Boolean(id) && mongoose.Types.ObjectId.isValid(id)
+    );
+    const users = await UserModel.find({ _id: { $in: userIds.map((id) => new mongoose.Types.ObjectId(id)) } }).lean();
+    const userMobileMap: Record<string, string> = {};
+    for (const u of users as any[]) {
+      const id = u._id.toString();
+      userMobileMap[id] = u.mobile ?? "";
+    }
+
+    const memberIdSet = new Set<string>();
+    const planIdSet = new Set<string>();
+    const classTypeIdSet = new Set<string>();
+    for (const t of transactions) {
+      const md = (t.metadata ?? {}) as Record<string, unknown>;
+      if (typeof md.memberId === "string" && md.memberId.trim()) memberIdSet.add(md.memberId.trim());
+      if (typeof md.membershipPlanId === "string" && md.membershipPlanId.trim()) planIdSet.add(md.membershipPlanId.trim());
+      if (typeof md.classTypeId === "string" && md.classTypeId.trim()) classTypeIdSet.add(md.classTypeId.trim());
+    }
+
+    const memberIds = Array.from(memberIdSet).filter((id) => mongoose.Types.ObjectId.isValid(id));
+    const planIds = Array.from(planIdSet).filter((id) => mongoose.Types.ObjectId.isValid(id));
+    const classTypeIds = Array.from(classTypeIdSet).filter((id) => mongoose.Types.ObjectId.isValid(id));
+
+    const [members, plans, classTypes] = await Promise.all([
+      memberIds.length > 0
+        ? MemberModel.find({ _id: { $in: memberIds.map((id) => new mongoose.Types.ObjectId(id)) } }).lean()
+        : Promise.resolve([]),
+      planIds.length > 0
+        ? MembershipPlanModel.find({ _id: { $in: planIds.map((id) => new mongoose.Types.ObjectId(id)) } }).lean()
+        : Promise.resolve([]),
+      classTypeIds.length > 0
+        ? ClassTypeModel.find({ _id: { $in: classTypeIds.map((id) => new mongoose.Types.ObjectId(id)) } }).lean()
+        : Promise.resolve([]),
+    ]);
+
+    const memberMap: Record<string, { name: string; userId: string }> = {};
+    for (const m of members as any[]) {
+      const id = m._id.toString();
+      memberMap[id] = { name: m.name ?? "", userId: m.userId };
+    }
+    const planMap: Record<string, { name: string; classTypeId: string }> = {};
+    for (const p of plans as any[]) {
+      planMap[p._id.toString()] = { name: p.name ?? "", classTypeId: p.classTypeId };
+      if (p.classTypeId) classTypeIdSet.add(p.classTypeId);
+    }
+    const classTypeMap: Record<string, string> = {};
+    for (const c of classTypes as any[]) {
+      classTypeMap[c._id.toString()] = c.name ?? "";
+    }
+
+    const rows: AdminTransactionRow[] = transactions.map((t) => {
+      const md = (t.metadata ?? {}) as Record<string, unknown>;
+      const memberId = typeof md.memberId === "string" ? md.memberId.trim() : "";
+      const planId = typeof md.membershipPlanId === "string" ? md.membershipPlanId.trim() : "";
+      const explicitClassTypeId = typeof md.classTypeId === "string" ? md.classTypeId.trim() : "";
+
+      const memberFromMetadata = memberId ? memberMap[memberId] : undefined;
+      const userId = t.userId;
+      const userMobile = userMobileMap[userId] || "";
+
+      const memberName = memberFromMetadata?.name?.trim()
+        ? memberFromMetadata.name.trim()
+        : memberFromMetadata
+          ? "—"
+          : "—";
+      const memberMobile = userMobile || "—";
+
+      const planFromMetadata = typeof md.planName === "string" && md.planName.trim() ? md.planName.trim() : "";
+      const planLookup = planId ? planMap[planId]?.name ?? "" : "";
+      const plan = planFromMetadata || planLookup || "—";
+
+      const classTypeFromExplicit = explicitClassTypeId ? classTypeMap[explicitClassTypeId] ?? "" : "";
+      const classTypeFromPlan = planId ? classTypeMap[planMap[planId]?.classTypeId ?? ""] ?? "" : "";
+      const classType = classTypeFromExplicit || classTypeFromPlan || "—";
+
+      const metadataMode = typeof md.mode === "string" && md.mode.trim() ? md.mode.trim() : "";
+      const paymentMode = metadataMode || (this.detectRazorpay(t) ? "Razorpay" : "—");
+
+      const subtotal = typeof md.subtotalInr === "number" ? Number(md.subtotalInr).toFixed(2) : "—";
+      const gst = typeof md.gstInr === "number" ? Number(md.gstInr).toFixed(2) : "—";
+      const totalAmount =
+        typeof md.totalInr === "number"
+          ? Number(md.totalInr).toFixed(2)
+          : this.amountPaiseToInrString(t.amount);
+
+      const source = metadataMode.toLowerCase() === "cash" || t.orderId.startsWith("cash_")
+        ? "Admin Cash"
+        : this.detectRazorpay(t)
+          ? "Razorpay"
+          : "Unknown";
+
+      const reference = this.pickReference(t);
+      const date = t.createdAt ? new Date(t.createdAt).toISOString() : "—";
+
+      return {
+        id: t.id,
+        date,
+        memberName: memberName || "—",
+        memberMobile,
+        plan,
+        classType,
+        paymentMode,
+        subtotal,
+        gst,
+        totalAmount,
+        reference: reference || "—",
+        source,
+      };
+    });
+
+    const paymentModeNeedle = filters.paymentMode?.trim().toLowerCase();
+    const qNeedle = filters.q?.trim().toLowerCase();
+    const filtered = rows.filter((r) => {
+      if (paymentModeNeedle && r.paymentMode.toLowerCase() !== paymentModeNeedle) return false;
+      if (qNeedle) {
+        const hay = [r.memberName, r.memberMobile, r.reference].join(" ").toLowerCase();
+        if (!hay.includes(qNeedle)) return false;
+      }
+      return true;
+    });
+    return filtered;
+  }
+
   async getUserByMobile(mobile: string): Promise<User | undefined> {
     const doc = await UserModel.findOne({ mobile });
     return toApi<User>(doc) ?? undefined;
@@ -543,6 +746,22 @@ export class MongoStorage implements IStorage {
       .limit(opts.limit)
       .exec();
     return toApiList<Transaction>(docs);
+  }
+
+  async listAdminTransactions(params: {
+    page: number;
+    limit: number;
+    filters: AdminTransactionsFilters;
+  }): Promise<{ items: AdminTransactionRow[]; total: number }> {
+    const all = await this.buildAdminTransactionRows(params.filters);
+    const total = all.length;
+    const start = (params.page - 1) * params.limit;
+    const items = all.slice(start, start + params.limit);
+    return { items, total };
+  }
+
+  async listAdminTransactionsForExport(filters: AdminTransactionsFilters): Promise<AdminTransactionRow[]> {
+    return this.buildAdminTransactionRows(filters);
   }
 
   async getAppSetting(key: string): Promise<string | null> {

@@ -9,6 +9,7 @@ export const ADMIN_MENU: { id: AdminSection; label: string }[] = [
   { id: "members", label: "Members" },
   { id: "memberships", label: "Memberships" },
   { id: "bookings", label: "Bookings" },
+  { id: "transactions", label: "Transactions" },
   { id: "settings", label: "Settings" },
 ];
 
@@ -25,6 +26,7 @@ export function hashToSection(hash: string): AdminSection {
     "members",
     "memberships",
     "bookings",
+    "transactions",
     "settings",
   ];
   return valid.includes(normalized as AdminSection)

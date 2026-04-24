@@ -1,11 +1,13 @@
 import type { Express, Request, Response } from "express";
 import { storage } from "../storage";
-import { asyncHandler, requireAdmin } from "../middleware";
+import type { AdminTransactionsFilters } from "../storage";
+import { asyncHandler, requireAdmin, requireAdminOnly } from "../middleware";
 import { MembershipPlanModel } from "../models";
 import { isMembershipBookable } from "@shared/membershipState";
 import { calendarDateInIST, computeMembershipExpiryExclusiveEnd, parseMembershipStartDateFromInput } from "@shared/membershipDates";
 
 const requireAdminAsync = asyncHandler(requireAdmin);
+const requireAdminOnlyAsync = asyncHandler(requireAdminOnly);
 const ADMIN_MEMBERSHIP_GST_PERCENT = 5;
 
 /** Find a membership for this member that matches the slot's class type. Only active memberships (expiry in future, sessions > 0). */
@@ -72,6 +74,26 @@ function parseIntParam(v: unknown, def: number): number {
   if (v === undefined || v === null) return def;
   const n = typeof v === "string" ? parseInt(v, 10) : Number(v);
   return Number.isFinite(n) && n > 0 ? n : def;
+}
+
+function parseAdminTransactionFilters(req: Request): AdminTransactionsFilters {
+  const dateFrom = typeof req.query.dateFrom === "string" ? req.query.dateFrom.trim() : "";
+  const dateTo = typeof req.query.dateTo === "string" ? req.query.dateTo.trim() : "";
+  const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  const paymentMode = typeof req.query.paymentMode === "string" ? req.query.paymentMode.trim() : "";
+  return {
+    ...(dateFrom ? { dateFrom } : {}),
+    ...(dateTo ? { dateTo } : {}),
+    ...(q ? { q } : {}),
+    ...(paymentMode ? { paymentMode } : {}),
+  };
+}
+
+function csvCell(v: string): string {
+  if (v.includes(",") || v.includes('"') || v.includes("\n") || v.includes("\r")) {
+    return `"${v.replace(/"/g, '""')}"`;
+  }
+  return v;
 }
 
 export function registerAdminRoutes(app: Express): void {
@@ -438,6 +460,63 @@ export function registerAdminRoutes(app: Express): void {
       const memberMobile = typeof req.query.memberMobile === "string" ? req.query.memberMobile : undefined;
       const result = await storage.listMemberships({ page, limit, memberId, membershipPlanId, memberMobile });
       res.json(result);
+    })
+  );
+
+  app.get(
+    "/api/admin/transactions",
+    requireAdminOnlyAsync,
+    asyncHandler(async (req: Request, res: Response) => {
+      const page = parseIntParam(req.query.page, 1);
+      const limit = Math.min(parseIntParam(req.query.limit, 10), 100);
+      const filters = parseAdminTransactionFilters(req);
+      const result = await storage.listAdminTransactions({ page, limit, filters });
+      res.json(result);
+    })
+  );
+
+  app.get(
+    "/api/admin/transactions/export.csv",
+    requireAdminOnlyAsync,
+    asyncHandler(async (req: Request, res: Response) => {
+      const filters = parseAdminTransactionFilters(req);
+      const rows = await storage.listAdminTransactionsForExport(filters);
+      const headers = [
+        "Date",
+        "Member Name",
+        "Member Mobile",
+        "Plan",
+        "Class Type",
+        "Payment Mode",
+        "Subtotal",
+        "GST",
+        "Total Amount",
+        "Reference",
+        "Source",
+      ];
+      const lines = [headers.join(",")];
+      for (const row of rows) {
+        lines.push(
+          [
+            row.date,
+            row.memberName,
+            row.memberMobile,
+            row.plan,
+            row.classType,
+            row.paymentMode,
+            row.subtotal,
+            row.gst,
+            row.totalAmount,
+            row.reference,
+            row.source,
+          ].map((x) => csvCell(x ?? "—")).join(",")
+        );
+      }
+      const csv = `${lines.join("\n")}\n`;
+      const filename = `transactions-${new Date().toISOString().slice(0, 10)}.csv`;
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.status(200).send(csv);
     })
   );
 

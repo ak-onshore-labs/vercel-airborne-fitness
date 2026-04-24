@@ -57,3 +57,25 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
   req.auth = payload;
   next();
 }
+
+/** Strict admin-only: require valid JWT and user.userRole === "ADMIN". */
+export async function requireAdminOnly(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const header = req.headers.authorization;
+  const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
+  if (!token) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const payload = verifyToken(token);
+  if (!payload) {
+    res.status(401).json({ message: "Invalid or expired token" });
+    return;
+  }
+  const user = await storage.getUser(payload.userId);
+  if (!user || user.userRole !== "ADMIN") {
+    res.status(403).json({ message: "Forbidden" });
+    return;
+  }
+  req.auth = payload;
+  next();
+}

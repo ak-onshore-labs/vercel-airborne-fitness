@@ -9,6 +9,7 @@ export type AdminSection =
   | "members"
   | "memberships"
   | "bookings"
+  | "transactions"
   | "settings";
 
 export interface AdminUiState {

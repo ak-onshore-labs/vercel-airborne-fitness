@@ -8,6 +8,7 @@ import AdminPlans from "./pages/AdminPlans";
 import AdminMembers from "./pages/AdminMembers";
 import AdminMemberships from "./pages/AdminMemberships";
 import AdminBookings from "./pages/AdminBookings";
+import AdminTransactions from "./pages/AdminTransactions";
 import AdminSettings from "./pages/AdminSettings";
 
 export const ADMIN_SECTION_COMPONENTS: Record<AdminSection, ComponentType> = {
@@ -19,5 +20,6 @@ export const ADMIN_SECTION_COMPONENTS: Record<AdminSection, ComponentType> = {
   members: AdminMembers,
   memberships: AdminMemberships,
   bookings: AdminBookings,
+  transactions: AdminTransactions,
   settings: AdminSettings,
 };

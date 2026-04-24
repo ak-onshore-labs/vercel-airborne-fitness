@@ -43,6 +43,10 @@ export const ADMIN_ACCESS: Record<AdminSection, { screen: string; functionality:
     screen: "Bookings",
     functionality: { VIEW: true, ADD: true, EDIT: true, DELETE: true },
   },
+  transactions: {
+    screen: "Transactions",
+    functionality: { VIEW: true, ADD: true, EDIT: true, DELETE: true },
+  },
   settings: {
     screen: "Settings",
     functionality: { VIEW: true, ADD: true, EDIT: true, DELETE: true },
@@ -81,6 +85,10 @@ export const STAFF_ACCESS: Record<AdminSection, { screen: string; functionality:
   bookings: {
     screen: "Bookings",
     functionality: { VIEW: true, ADD: true, EDIT: true, DELETE: true },
+  },
+  transactions: {
+    screen: "Transactions",
+    functionality: { VIEW: false, ADD: false, EDIT: false, DELETE: false },
   },
   settings: {
     screen: "Settings",
