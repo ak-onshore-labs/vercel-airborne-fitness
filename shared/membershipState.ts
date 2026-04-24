@@ -1,4 +1,4 @@
-import { isBeforeMembershipStartDay } from "./membershipDates";
+import { isBeforeMembershipStartDay } from "./membershipDates.js";
 
 export type MembershipUsabilityState = "active" | "paused" | "upcoming" | "expired_extendable" | "renew_only";
 
