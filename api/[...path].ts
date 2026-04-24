@@ -1,8 +1,8 @@
 import "dotenv/config";
 import dns from "node:dns";
 import type { Request, Response } from "express";
-import { createApp } from "../server/app";
-import { connectDb } from "../server/db";
+import { createApp } from "../server/app.js";
+import { connectDb } from "../server/db.js";
 
 export const config = { runtime: "nodejs" };
 

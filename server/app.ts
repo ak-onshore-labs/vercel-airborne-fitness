@@ -1,8 +1,8 @@
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { createServer, type Server } from "http";
-import { registerRoutes } from "./routes";
-import { serveStatic } from "./static";
-import { log } from "./lib/log";
+import { registerRoutes } from "./routes.js";
+import { serveStatic } from "./static.js";
+import { log } from "./lib/log.js";
 
 declare module "http" {
   interface IncomingMessage {
@@ -70,7 +70,7 @@ export async function createApp(options: CreateAppOptions): Promise<CreatedApp> 
     if (process.env.NODE_ENV === "production") {
       serveStatic(app);
     } else {
-      const { setupVite } = await import("./vite");
+      const { setupVite } = await import("./vite.js");
       await setupVite(httpServer, app);
     }
   }

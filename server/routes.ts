@@ -1,15 +1,15 @@
 import type { Express, Request, Response } from "express";
 import { type Server } from "http";
-import { storage } from "./storage";
-import { seedDatabase } from "./seed";
-import { asyncHandler, requireAuth } from "./middleware";
-import { registerAdminRoutes } from "./routes/admin";
-import { registerAuthRoutes } from "./routes/auth";
-import { registerManageSessionRoutes } from "./routes/manage-session";
-import { registerMembershipRoutes } from "./routes/membership";
-import { registerMembershipPlansRoutes } from "./routes/membership-plans";
-import { registerMasterDataRoutes } from "./routes/master-data";
-import { registerPaymentRoutes } from "./routes/payments";
+import { storage } from "./storage.js";
+import { seedDatabase } from "./seed.js";
+import { asyncHandler, requireAuth } from "./middleware.js";
+import { registerAdminRoutes } from "./routes/admin.js";
+import { registerAuthRoutes } from "./routes/auth.js";
+import { registerManageSessionRoutes } from "./routes/manage-session.js";
+import { registerMembershipRoutes } from "./routes/membership.js";
+import { registerMembershipPlansRoutes } from "./routes/membership-plans.js";
+import { registerMasterDataRoutes } from "./routes/master-data.js";
+import { registerPaymentRoutes } from "./routes/payments.js";
 
 export async function registerRoutes(
   httpServer: Server,

@@ -34,7 +34,7 @@ import {
   WaiverSignatureModel,
   AppSettingModel,
   TransactionModel,
-} from "./models";
+} from "./models/index.js";
 import mongoose from "mongoose";
 import type { Document } from "mongoose";
 

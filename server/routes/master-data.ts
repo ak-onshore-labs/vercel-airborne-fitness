@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
-import { storage } from "../storage";
-import { asyncHandler } from "../middleware";
+import { storage } from "../storage.js";
+import { asyncHandler } from "../middleware.js";
 
 export function registerMasterDataRoutes(app: Express): void {
   // Class types (DB-driven), sorted alphabetically by name for member-facing flows

@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
-import { storage } from "../storage";
-import { asyncHandler, requireAuth } from "../middleware";
-import { BookingModel, MembershipModel, MembershipPlanModel, ScheduleSlotModel } from "../models";
+import { storage } from "../storage.js";
+import { asyncHandler, requireAuth } from "../middleware.js";
+import { BookingModel, MembershipModel, MembershipPlanModel, ScheduleSlotModel } from "../models/index.js";
 import mongoose from "mongoose";
 import {
   getMembershipUsabilityState,
@@ -476,7 +476,7 @@ export function registerMembershipRoutes(app: Express): void {
       });
 
       const allMemberships = await storage.getMemberMemberships(memberId);
-      const { ClassTypeModel } = await import("../models");
+      const { ClassTypeModel } = await import("../models/index.js");
       const classTypeDocs = await ClassTypeModel.find({});
       const typeIdToName: Record<string, string> = {};
       for (const t of classTypeDocs) typeIdToName[(t as any)._id.toString()] = t.name;

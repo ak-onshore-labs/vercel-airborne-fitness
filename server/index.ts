@@ -1,13 +1,13 @@
 import "dotenv/config";
 import dns from "node:dns";
-import { createApp } from "./app";
+import { createApp } from "./app.js";
 
 // Some cloud hosts have broken IPv6 egress; MSG91 and other APIs then fail only in production.
 if (process.env.NODE_ENV === "production") {
   dns.setDefaultResultOrder("ipv4first");
 }
-import { connectDb } from "./db";
-import { log } from "./lib/log";
+import { connectDb } from "./db.js";
+import { log } from "./lib/log.js";
 
 export { log };
 

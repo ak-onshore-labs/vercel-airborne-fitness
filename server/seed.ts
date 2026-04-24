@@ -1,4 +1,4 @@
-import { connectDb } from "./db";
+import { connectDb } from "./db.js";
 import {
   UserModel,
   ClassTypeModel,
@@ -7,7 +7,7 @@ import {
   MemberModel,
   MembershipModel,
   AppSettingModel,
-} from "./models";
+} from "./models/index.js";
 
 const CLASS_TYPE_DATA: Array<{
   name: string;

@@ -1,8 +1,8 @@
 import type { Express, Request, Response } from "express";
-import { asyncHandler, requireAuth } from "../middleware";
-import { storage } from "../storage";
-import { signToken } from "../lib/jwt";
-import { log } from "../lib/log";
+import { asyncHandler, requireAuth } from "../middleware.js";
+import { storage } from "../storage.js";
+import { signToken } from "../lib/jwt.js";
+import { log } from "../lib/log.js";
 import { getMembershipUsabilityState, membershipStateTierRank } from "@shared/membershipState";
 
 function tierRank(
@@ -265,7 +265,7 @@ export function registerAuthRoutes(app: Express): void {
           startDate: string | null;
         }
       > = {};
-      const { MembershipPlanModel, ClassTypeModel } = await import("../models");
+      const { MembershipPlanModel, ClassTypeModel } = await import("../models/index.js");
       const planDocs = await MembershipPlanModel.find({});
       const types = await ClassTypeModel.find({});
       const typeIdToName: Record<string, string> = {};
@@ -368,7 +368,7 @@ export function registerAuthRoutes(app: Express): void {
           startDate: string | null;
         }
       > = {};
-      const { MembershipPlanModel, ClassTypeModel } = await import("../models");
+      const { MembershipPlanModel, ClassTypeModel } = await import("../models/index.js");
       const planDocs = await MembershipPlanModel.find({});
       const types = await ClassTypeModel.find({});
       const typeIdToName: Record<string, string> = {};

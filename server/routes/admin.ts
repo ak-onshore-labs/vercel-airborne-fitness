@@ -1,8 +1,8 @@
 import type { Express, Request, Response } from "express";
-import { storage } from "../storage";
-import type { AdminTransactionsFilters } from "../storage";
-import { asyncHandler, requireAdmin, requireAdminOnly } from "../middleware";
-import { MembershipPlanModel } from "../models";
+import { storage } from "../storage.js";
+import type { AdminTransactionsFilters } from "../storage.js";
+import { asyncHandler, requireAdmin, requireAdminOnly } from "../middleware.js";
+import { MembershipPlanModel } from "../models/index.js";
 import { isMembershipBookable } from "@shared/membershipState";
 import { calendarDateInIST, computeMembershipExpiryExclusiveEnd, parseMembershipStartDateFromInput } from "@shared/membershipDates";
 

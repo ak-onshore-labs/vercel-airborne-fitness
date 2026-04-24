@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
-import { storage } from "../storage";
-import { asyncHandler, requireAuth } from "../middleware";
-import * as razorpay from "../services/razorpay";
+import { storage } from "../storage.js";
+import { asyncHandler, requireAuth } from "../middleware.js";
+import * as razorpay from "../services/razorpay.js";
 
 function log(message: string): void {
   const t = new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
