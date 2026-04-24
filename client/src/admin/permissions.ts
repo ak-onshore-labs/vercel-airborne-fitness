@@ -52,7 +52,7 @@ export const ADMIN_ACCESS: Record<AdminSection, { screen: string; functionality:
 export const STAFF_ACCESS: Record<AdminSection, { screen: string; functionality: ScreenPermission }> = {
   dashboard: {
     screen: "Dashboard",
-    functionality: { VIEW: false, ADD: false, EDIT: false, DELETE: false },
+    functionality: { VIEW: true, ADD: false, EDIT: false, DELETE: false },
   },
   users: {
     screen: "Users",
@@ -60,7 +60,7 @@ export const STAFF_ACCESS: Record<AdminSection, { screen: string; functionality:
   },
   schedule: {
     screen: "Schedule",
-    functionality: { VIEW: true, ADD: false, EDIT: false, DELETE: false },
+    functionality: { VIEW: true, ADD: true, EDIT: true, DELETE: true },
   },
   "class-types": {
     screen: "Class Types",
