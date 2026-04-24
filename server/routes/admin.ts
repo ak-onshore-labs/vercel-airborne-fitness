@@ -6,6 +6,7 @@ import { isMembershipBookable } from "@shared/membershipState";
 import { calendarDateInIST, computeMembershipExpiryExclusiveEnd, parseMembershipStartDateFromInput } from "@shared/membershipDates";
 
 const requireAdminAsync = asyncHandler(requireAdmin);
+const ADMIN_MEMBERSHIP_GST_PERCENT = 5;
 
 /** Find a membership for this member that matches the slot's class type. Only active memberships (expiry in future, sessions > 0). */
 async function findMembershipForSlot(memberId: string, scheduleId: string): Promise<{ id: string; sessionsRemaining: number } | null> {
@@ -497,7 +498,7 @@ export function registerAdminRoutes(app: Express): void {
       // Optional: record a cash transaction for admin-created memberships
       if (paymentMode.toLowerCase() === "cash") {
         const subtotalInr = typeof (planDoc as any).price === "number" ? (planDoc as any).price : 0;
-        const gstPercent = 18;
+        const gstPercent = ADMIN_MEMBERSHIP_GST_PERCENT;
         const gstInr = subtotalInr * (gstPercent / 100);
         const totalInr = subtotalInr + gstInr;
         const totalPaise = Math.round(totalInr * 100);

@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useCallback } from "react";
+import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,6 +24,7 @@ import { useAdminPermissions } from "../useAdminPermissions";
 
 type MemberOption = { id: string; name?: string | null; mobile?: string };
 type PlanOption = { id: string; name: string; classTypeName: string; sessionsTotal: number; validityDays: number; price: number };
+type CreatedMember = { id: string; memberType: "Adult" | "Kid"; name?: string | null; email?: string | null };
 
 type MembershipItem = {
   id: string;
@@ -39,6 +40,14 @@ type MembershipItem = {
   planName?: string;
   classTypeName?: string;
 };
+
+const ADMIN_MEMBERSHIP_GST_PERCENT = 5;
+
+function normalizeAdminMobile(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 12 && digits.startsWith("91")) return digits.slice(-10);
+  return digits;
+}
 
 export default function AdminMemberships() {
   const { ADD } = useAdminPermissions("memberships");
@@ -66,6 +75,20 @@ export default function AdminMemberships() {
   const [addSubmitting, setAddSubmitting] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [planClassTypeTab, setPlanClassTypeTab] = useState<string>("");
+  const [showAddMemberForm, setShowAddMemberForm] = useState(false);
+  const [createMemberSubmitting, setCreateMemberSubmitting] = useState(false);
+  const [createMemberError, setCreateMemberError] = useState<string | null>(null);
+  const [createMemberSuccess, setCreateMemberSuccess] = useState<string | null>(null);
+  const [createName, setCreateName] = useState("");
+  const [createMobile, setCreateMobile] = useState("");
+  const [createGender, setCreateGender] = useState<"Male" | "Female">("Male");
+  const [createUserRole, setCreateUserRole] = useState<"MEMBER" | "STAFF" | "ADMIN">("MEMBER");
+  const [createMemberType, setCreateMemberType] = useState<"Adult" | "Kid">("Adult");
+  const [createMemberName, setCreateMemberName] = useState("");
+  const [createMemberEmail, setCreateMemberEmail] = useState("");
+  const [createMemberDob, setCreateMemberDob] = useState("");
+  const [createMemberGender, setCreateMemberGender] = useState("");
+  const createAdvanceTimeoutRef = useRef<number | null>(null);
 
   const fetchMemberships = useCallback(async () => {
     setLoading(true);
@@ -90,6 +113,9 @@ export default function AdminMemberships() {
       setMemberSearch("");
       setPlanSearch("");
       setMembers([]);
+      setShowAddMemberForm(false);
+      setCreateMemberError(null);
+      setCreateMemberSuccess(null);
       adminApiFetch<ListResponse<PlanOption>>("/api/admin/plans?limit=200").then((r) => {
         if (r.ok) setPlans(r.data.items);
       });
@@ -118,16 +144,45 @@ export default function AdminMemberships() {
   }, [addOpen, memberSearch]);
 
   const openAdd = () => {
+    if (createAdvanceTimeoutRef.current !== null) {
+      window.clearTimeout(createAdvanceTimeoutRef.current);
+      createAdvanceTimeoutRef.current = null;
+    }
     setAddMemberId("");
     setAddPlanId("");
     setAddError(null);
+    setShowAddMemberForm(false);
+    setCreateMemberSubmitting(false);
+    setCreateMemberError(null);
+    setCreateMemberSuccess(null);
+    setCreateName("");
+    setCreateMobile("");
+    setCreateGender("Male");
+    setCreateUserRole("MEMBER");
+    setCreateMemberType("Adult");
+    setCreateMemberName("");
+    setCreateMemberEmail("");
+    setCreateMemberDob("");
+    setCreateMemberGender("");
     setAddOpen(true);
   };
 
   const closeAdd = () => {
+    if (createAdvanceTimeoutRef.current !== null) {
+      window.clearTimeout(createAdvanceTimeoutRef.current);
+      createAdvanceTimeoutRef.current = null;
+    }
     setAddOpen(false);
     setAddError(null);
   };
+
+  useEffect(() => {
+    return () => {
+      if (createAdvanceTimeoutRef.current !== null) {
+        window.clearTimeout(createAdvanceTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const submitAdd = async () => {
     if (!addMemberId || !addPlanId) {
@@ -147,6 +202,75 @@ export default function AdminMemberships() {
     } else {
       setAddError(res.message);
     }
+  };
+
+  const submitCreateMember = async () => {
+    const name = createName.trim();
+    const mobile = normalizeAdminMobile(createMobile);
+    if (!name) {
+      setCreateMemberError("Name is required");
+      return;
+    }
+    if (createGender !== "Male" && createGender !== "Female") {
+      setCreateMemberError("Gender must be Male or Female");
+      return;
+    }
+    if (mobile.length !== 10) {
+      setCreateMemberError("Valid phone number required (exactly 10 digits)");
+      return;
+    }
+    setCreateMemberSubmitting(true);
+    setCreateMemberError(null);
+    setCreateMemberSuccess(null);
+    const response = await adminApiFetch<CreatedMember>("/api/admin/members", {
+      method: "POST",
+      body: JSON.stringify({
+        name,
+        mobile,
+        gender: createGender,
+        userRole: createUserRole,
+        memberType: createMemberType,
+        memberName: createMemberName.trim() || undefined,
+        memberEmail: createMemberEmail.trim() || undefined,
+        memberDob: createMemberDob.trim() || undefined,
+        memberGender: createMemberGender.trim() || undefined,
+      }),
+    });
+    setCreateMemberSubmitting(false);
+    if (!response.ok) {
+      setCreateMemberError(response.message);
+      return;
+    }
+    const displayName =
+      response.data.name ??
+      (createMemberType === "Kid" ? createMemberName.trim() || name : name);
+    const createdMember: MemberOption = {
+      id: response.data.id,
+      name: displayName,
+      mobile,
+    };
+    setMembers((prev) => [createdMember, ...prev.filter((m) => m.id !== createdMember.id)]);
+    setAddMemberId(createdMember.id);
+    setCreateMemberSuccess(
+      `Created and selected ${displayName}. Continuing to plan selection...`
+    );
+    setShowAddMemberForm(false);
+    setCreateName("");
+    setCreateMobile("");
+    setCreateGender("Male");
+    setCreateUserRole("MEMBER");
+    setCreateMemberType("Adult");
+    setCreateMemberName("");
+    setCreateMemberEmail("");
+    setCreateMemberDob("");
+    setCreateMemberGender("");
+    if (createAdvanceTimeoutRef.current !== null) {
+      window.clearTimeout(createAdvanceTimeoutRef.current);
+    }
+    createAdvanceTimeoutRef.current = window.setTimeout(() => {
+      setAddStep(2);
+      createAdvanceTimeoutRef.current = null;
+    }, 800);
   };
 
   const selectedMember = useMemo(
@@ -182,7 +306,7 @@ export default function AdminMemberships() {
   }, [addStep, planGroups]);
 
   const subtotal = selectedPlan?.price ?? 0;
-  const gst = subtotal * 0.18;
+  const gst = subtotal * (ADMIN_MEMBERSHIP_GST_PERCENT / 100);
   const total = subtotal + gst;
 
   const onSearch = () => {
@@ -262,7 +386,154 @@ export default function AdminMemberships() {
                   </p>
                 </div>
                 <div className="grid gap-2">
-                  <Label>Select member</Label>
+                  <div className="flex items-center justify-between gap-2">
+                    <Label>Select member</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setShowAddMemberForm((prev) => !prev);
+                        setCreateMemberError(null);
+                      }}
+                    >
+                      {showAddMemberForm ? "Close" : "Add New Member"}
+                    </Button>
+                  </div>
+                  {createMemberSuccess && (
+                    <p className="text-xs text-emerald-700 dark:text-emerald-300 rounded-md border border-emerald-300/50 bg-emerald-50 dark:bg-emerald-950/30 px-2 py-1">
+                      {createMemberSuccess}
+                    </p>
+                  )}
+                  {showAddMemberForm && (
+                    <div className="rounded-md border p-3 bg-muted/40 grid gap-3">
+                      <div className="grid gap-2">
+                        <Label htmlFor="create-member-name">Name</Label>
+                        <Input
+                          id="create-member-name"
+                          value={createName}
+                          onChange={(e) => setCreateName(e.target.value)}
+                          placeholder="Full name"
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="create-member-mobile">Mobile (10 digits)</Label>
+                        <Input
+                          id="create-member-mobile"
+                          type="tel"
+                          value={createMobile}
+                          onChange={(e) => setCreateMobile(e.target.value)}
+                          placeholder="e.g. 9876543210 or 919876543210"
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Gender</Label>
+                        <select
+                          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                          value={createGender}
+                          onChange={(e) => setCreateGender(e.target.value as "Male" | "Female")}
+                        >
+                          <option value="Male">Male</option>
+                          <option value="Female">Female</option>
+                        </select>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>User role</Label>
+                        <select
+                          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                          value={createUserRole}
+                          onChange={(e) =>
+                            setCreateUserRole(
+                              e.target.value as "MEMBER" | "STAFF" | "ADMIN"
+                            )
+                          }
+                        >
+                          <option value="MEMBER">Member</option>
+                          <option value="STAFF">Staff</option>
+                          <option value="ADMIN">Admin</option>
+                        </select>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Member type</Label>
+                        <select
+                          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                          value={createMemberType}
+                          onChange={(e) =>
+                            setCreateMemberType(e.target.value as "Adult" | "Kid")
+                          }
+                        >
+                          <option value="Adult">Adult</option>
+                          <option value="Kid">Kid</option>
+                        </select>
+                      </div>
+                      {createMemberType === "Kid" && (
+                        <>
+                          <div className="grid gap-2">
+                            <Label htmlFor="create-kid-name">Kid&apos;s name</Label>
+                            <Input
+                              id="create-kid-name"
+                              value={createMemberName}
+                              onChange={(e) => setCreateMemberName(e.target.value)}
+                              placeholder="Child's name"
+                            />
+                          </div>
+                          <div className="grid gap-2">
+                            <Label htmlFor="create-kid-dob">Kid&apos;s date of birth</Label>
+                            <Input
+                              id="create-kid-dob"
+                              type="date"
+                              value={createMemberDob}
+                              onChange={(e) => setCreateMemberDob(e.target.value)}
+                            />
+                          </div>
+                          <div className="grid gap-2">
+                            <Label htmlFor="create-kid-gender">Kid&apos;s gender</Label>
+                            <Input
+                              id="create-kid-gender"
+                              value={createMemberGender}
+                              onChange={(e) => setCreateMemberGender(e.target.value)}
+                              placeholder="Optional"
+                            />
+                          </div>
+                        </>
+                      )}
+                      <div className="grid gap-2">
+                        <Label htmlFor="create-member-email">Email (optional)</Label>
+                        <Input
+                          id="create-member-email"
+                          type="email"
+                          value={createMemberEmail}
+                          onChange={(e) => setCreateMemberEmail(e.target.value)}
+                          placeholder="Member email"
+                        />
+                      </div>
+                      {createMemberError && (
+                        <p className="text-xs text-destructive">{createMemberError}</p>
+                      )}
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setShowAddMemberForm(false);
+                            setCreateMemberError(null);
+                          }}
+                          disabled={createMemberSubmitting}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={submitCreateMember}
+                          disabled={createMemberSubmitting}
+                        >
+                          {createMemberSubmitting ? "Creating..." : "Create Member"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                   <div className="max-h-48 overflow-auto rounded-md border">
                     {memberSearchLoading ? (
                       <div className="p-3 text-sm text-muted-foreground">Searching…</div>
@@ -375,7 +646,7 @@ export default function AdminMemberships() {
                     <span>₹{subtotal.toFixed(2)}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">GST (18%)</span>
+                    <span className="text-muted-foreground">GST ({ADMIN_MEMBERSHIP_GST_PERCENT}%)</span>
                     <span>₹{gst.toFixed(2)}</span>
                   </div>
                   <div className="flex items-center justify-between font-semibold border-t pt-2">
