@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import type { MembershipPlan } from "@shared/schema";
+import type { MembershipPlan } from "../../shared/schema.js";
 
 const membershipPlanSchema = new mongoose.Schema<MembershipPlan & { _id: mongoose.Types.ObjectId }>(
   {

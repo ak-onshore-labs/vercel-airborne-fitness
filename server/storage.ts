@@ -22,7 +22,7 @@ import type {
   DashboardRecentEnrollment,
   DashboardBranchStats,
   DashboardMembershipRow,
-} from "@shared/schema";
+} from "../shared/schema.js";
 import {
   UserModel,
   MemberModel,

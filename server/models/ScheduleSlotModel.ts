@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import type { ScheduleSlot } from "@shared/schema";
+import type { ScheduleSlot } from "../../shared/schema.js";
 
 const scheduleSlotSchema = new mongoose.Schema<ScheduleSlot & { _id: mongoose.Types.ObjectId }>(
   {

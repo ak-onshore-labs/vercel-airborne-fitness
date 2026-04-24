@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { storage } from "../storage.js";
 import { asyncHandler, requireAuth } from "../middleware.js";
 import { MembershipPlanModel } from "../models/index.js";
-import { getMembershipUsabilityState, isMembershipBookable } from "@shared/membershipState";
+import { getMembershipUsabilityState, isMembershipBookable } from "../../shared/membershipState.js";
 
 const MEMBER_BOOKING_CUTOFF_MINUTES = 5;
 

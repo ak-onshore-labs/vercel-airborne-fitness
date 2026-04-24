@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import type { WaiverSignature } from "@shared/schema";
+import type { WaiverSignature } from "../../shared/schema.js";
 
 const waiverSignatureSchema = new mongoose.Schema<WaiverSignature & { _id: mongoose.Types.ObjectId }>(
   {

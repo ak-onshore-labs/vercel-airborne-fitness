@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import type { TransactionStatus } from "@shared/schema";
+import type { TransactionStatus } from "../../shared/schema.js";
 
 interface ITransactionDoc {
   _id: mongoose.Types.ObjectId;

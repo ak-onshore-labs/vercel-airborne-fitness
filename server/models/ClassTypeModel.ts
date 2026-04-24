@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import type { ClassType } from "@shared/schema";
+import type { ClassType } from "../../shared/schema.js";
 
 const classTypeSchema = new mongoose.Schema<ClassType & { _id: mongoose.Types.ObjectId }>(
   {

@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import type { User, UserRole } from "@shared/schema";
+import type { User, UserRole } from "../../shared/schema.js";
 
 const userSchema = new mongoose.Schema<User & { _id: mongoose.Types.ObjectId }>(
   {

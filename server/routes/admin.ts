@@ -3,8 +3,8 @@ import { storage } from "../storage.js";
 import type { AdminTransactionsFilters } from "../storage.js";
 import { asyncHandler, requireAdmin, requireAdminOnly } from "../middleware.js";
 import { MembershipPlanModel } from "../models/index.js";
-import { isMembershipBookable } from "@shared/membershipState";
-import { calendarDateInIST, computeMembershipExpiryExclusiveEnd, parseMembershipStartDateFromInput } from "@shared/membershipDates";
+import { isMembershipBookable } from "../../shared/membershipState.js";
+import { calendarDateInIST, computeMembershipExpiryExclusiveEnd, parseMembershipStartDateFromInput } from "../../shared/membershipDates.js";
 
 const requireAdminAsync = asyncHandler(requireAdmin);
 const requireAdminOnlyAsync = asyncHandler(requireAdminOnly);

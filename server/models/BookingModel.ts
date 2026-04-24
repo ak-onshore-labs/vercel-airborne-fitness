@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import type { BookingRecord, BookingStatus } from "@shared/schema";
+import type { BookingRecord, BookingStatus } from "../../shared/schema.js";
 
 const bookingSchema = new mongoose.Schema<BookingRecord & { _id: mongoose.Types.ObjectId }>(
   {

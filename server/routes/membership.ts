@@ -6,12 +6,13 @@ import mongoose from "mongoose";
 import {
   getMembershipUsabilityState,
   membershipStateTierRank,
-} from "@shared/membershipState";
+} from "../../shared/membershipState.js";
 import {
+  calendarDateInIST,
   computeMembershipExpiryExclusiveEnd,
   membershipEnrollmentStartBounds,
   parseMembershipStartDateFromInput,
-} from "@shared/membershipDates";
+} from "../../shared/membershipDates.js";
 
 const PAUSE_DAYS = 14;
 const PAUSE_MS = PAUSE_DAYS * 24 * 60 * 60 * 1000;

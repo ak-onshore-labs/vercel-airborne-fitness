@@ -3,7 +3,7 @@ import { asyncHandler, requireAuth } from "../middleware.js";
 import { storage } from "../storage.js";
 import { signToken } from "../lib/jwt.js";
 import { log } from "../lib/log.js";
-import { getMembershipUsabilityState, membershipStateTierRank } from "@shared/membershipState";
+import { getMembershipUsabilityState, membershipStateTierRank } from "../../shared/membershipState.js";
 
 function tierRank(
   x: {
