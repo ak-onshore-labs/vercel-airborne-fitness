@@ -46,6 +46,28 @@ type ScheduleItem = {
   endTime: string;
   capacity: number;
   isActive: boolean;
+  genderRestriction: "NONE" | "FEMALE_ONLY";
+};
+
+type UpcomingBookingPreviewItem = {
+  bookingId: string;
+  memberId: string;
+  memberName: string;
+  memberMobile: string;
+  sessionDate: string;
+  status: "BOOKED" | "WAITLIST";
+  waitlistPosition?: number | null;
+};
+
+type UpcomingBookingPreviewResponse = {
+  items: UpcomingBookingPreviewItem[];
+  summary: {
+    confirmedCount: number;
+    waitlistCount: number;
+    totalUpcomingAffected: number;
+    displayedCount: number;
+    remainingCount: number;
+  };
 };
 
 export default function AdminSchedule() {
@@ -68,8 +90,12 @@ export default function AdminSchedule() {
   const [editingSlot, setEditingSlot] = useState<ScheduleItem | null>(null);
   const [editCapacity, setEditCapacity] = useState(10);
   const [editIsActive, setEditIsActive] = useState(true);
+  const [editGenderRestriction, setEditGenderRestriction] = useState<"NONE" | "FEMALE_ONLY">("NONE");
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+  const [upcomingPreview, setUpcomingPreview] = useState<UpcomingBookingPreviewResponse | null>(null);
+  const [upcomingPreviewLoading, setUpcomingPreviewLoading] = useState(false);
+  const [upcomingPreviewError, setUpcomingPreviewError] = useState<string | null>(null);
 
   const [addOpen, setAddOpen] = useState(false);
   const [classTypes, setClassTypes] = useState<ClassTypeOption[]>([]);
@@ -80,6 +106,7 @@ export default function AdminSchedule() {
   const [addStartHour, setAddStartHour] = useState(9);
   const [addEndHour, setAddEndHour] = useState(10);
   const [addCapacity, setAddCapacity] = useState(14);
+  const [addGenderRestriction, setAddGenderRestriction] = useState<"NONE" | "FEMALE_ONLY">("NONE");
   const [addSubmitting, setAddSubmitting] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
@@ -108,15 +135,18 @@ export default function AdminSchedule() {
   }, []);
 
   useEffect(() => {
-    if (addOpen) {
-      adminApiFetch<string[]>("/api/admin/branches").then((r) => {
-        if (r.ok) {
-          setBranches(r.data);
-          setAddBranch((prev) => (prev === "" && r.data.length > 0 ? r.data[0] : prev));
-        }
-      });
+    adminApiFetch<string[]>("/api/admin/branches").then((r) => {
+      if (r.ok) {
+        setBranches(r.data);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (addOpen && addBranch === "" && branches.length > 0) {
+      setAddBranch(branches[0]);
     }
-  }, [addOpen]);
+  }, [addOpen, addBranch, branches]);
 
   useEffect(() => {
     const nextEnd = addStartHour + 1;
@@ -132,6 +162,7 @@ export default function AdminSchedule() {
     setAddStartHour(9);
     setAddEndHour(10);
     setAddCapacity(14);
+    setAddGenderRestriction("NONE");
     setAddError(null);
     setAddOpen(true);
   };
@@ -167,6 +198,7 @@ export default function AdminSchedule() {
         endHour: addEndHour === 24 ? 24 : addEndHour,
         endMinute: 0,
         capacity: addCapacity,
+        genderRestriction: addGenderRestriction,
       }),
     });
     setAddSubmitting(false);
@@ -190,6 +222,18 @@ export default function AdminSchedule() {
     setEditingSlot(slot);
     setEditCapacity(slot.capacity);
     setEditIsActive(slot.isActive);
+    setEditGenderRestriction(slot.genderRestriction ?? "NONE");
+    setUpcomingPreview(null);
+    setUpcomingPreviewError(null);
+    setUpcomingPreviewLoading(true);
+    adminApiFetch<UpcomingBookingPreviewResponse>(`/api/admin/schedule-slots/${slot.id}/upcoming-bookings`).then((res) => {
+      if (res.ok) {
+        setUpcomingPreview(res.data);
+      } else {
+        setUpcomingPreviewError(res.message);
+      }
+      setUpcomingPreviewLoading(false);
+    });
     setEditError(null);
     setEditOpen(true);
   };
@@ -198,6 +242,9 @@ export default function AdminSchedule() {
     setEditOpen(false);
     setEditingSlot(null);
     setEditError(null);
+    setUpcomingPreview(null);
+    setUpcomingPreviewError(null);
+    setUpcomingPreviewLoading(false);
   };
 
   const submitEdit = async () => {
@@ -210,7 +257,11 @@ export default function AdminSchedule() {
     setEditSubmitting(true);
     const res = await adminApiFetch<ScheduleItem>(`/api/admin/schedule-slots/${editingSlot.id}`, {
       method: "PATCH",
-      body: JSON.stringify({ capacity: editCapacity, isActive: editIsActive }),
+      body: JSON.stringify({
+        capacity: editCapacity,
+        isActive: editIsActive,
+        genderRestriction: editGenderRestriction,
+      }),
     });
     setEditSubmitting(false);
     if (res.ok) {
@@ -239,12 +290,16 @@ export default function AdminSchedule() {
             <option key={ct.id} value={ct.name}>{ct.name}</option>
           ))}
         </select>
-        <Input
-          placeholder="Branch"
+        <select
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm min-w-[140px]"
           value={branch}
           onChange={(e) => setBranch(e.target.value)}
-          className="max-w-[140px]"
-        />
+        >
+          <option value="">Any branch</option>
+          {branches.map((b) => (
+            <option key={b} value={b}>{b}</option>
+          ))}
+        </select>
         <select
           className="h-9 rounded-md border border-input bg-background px-3 text-sm"
           value={dayOfWeek}
@@ -300,18 +355,77 @@ export default function AdminSchedule() {
                   onChange={(e) => setEditCapacity(parseInt(e.target.value, 10) || 1)}
                 />
               </div>
+              <div className="grid gap-2">
+                <Label>Gender restriction</Label>
+                <select
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                  value={editGenderRestriction}
+                  onChange={(e) => setEditGenderRestriction(e.target.value as "NONE" | "FEMALE_ONLY")}
+                >
+                  <option value="NONE">None</option>
+                  <option value="FEMALE_ONLY">Female only</option>
+                </select>
+              </div>
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <Label>Active</Label>
-                  <p className="text-xs text-muted-foreground">Inactive slots cannot receive new bookings.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Inactive slots are hidden from new member bookings. Existing bookings are not automatically cancelled.
+                  </p>
                 </div>
                 <Switch checked={editIsActive} onCheckedChange={setEditIsActive} />
               </div>
-              {!editIsActive && (
-                <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40 p-3 text-sm text-amber-800 dark:text-amber-200">
-                  Future bookings for this slot will be disabled. Existing bookings are not affected.
-                </div>
-              )}
+              <div className="grid gap-2">
+                <Label>Upcoming bookings for this slot</Label>
+                {upcomingPreviewLoading ? (
+                  <p className="text-xs text-muted-foreground">Loading upcoming bookings…</p>
+                ) : upcomingPreviewError ? (
+                  <p className="text-xs text-destructive">{upcomingPreviewError}</p>
+                ) : upcomingPreview ? (
+                  <div className="rounded-md border p-3 space-y-3">
+                    {upcomingPreview.summary.totalUpcomingAffected > 0 && (
+                      <p className="text-xs text-amber-700 dark:text-amber-300">
+                        This schedule slot already has upcoming bookings. If you make changes, these members may need to be informed manually.
+                      </p>
+                    )}
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      <span className="rounded bg-muted px-2 py-1">Confirmed: {upcomingPreview.summary.confirmedCount}</span>
+                      <span className="rounded bg-muted px-2 py-1">Waitlist: {upcomingPreview.summary.waitlistCount}</span>
+                    </div>
+                    {upcomingPreview.items.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">No upcoming affected bookings.</p>
+                    ) : (
+                      <div className="max-h-48 overflow-auto rounded border">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Member</TableHead>
+                              <TableHead>Mobile</TableHead>
+                              <TableHead>Date</TableHead>
+                              <TableHead>Status</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {upcomingPreview.items.map((booking) => (
+                              <TableRow key={booking.bookingId}>
+                                <TableCell>{booking.memberName || "—"}</TableCell>
+                                <TableCell>{booking.memberMobile || "—"}</TableCell>
+                                <TableCell>{booking.sessionDate}</TableCell>
+                                <TableCell>{booking.status}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                    {upcomingPreview.summary.remainingCount > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        + {upcomingPreview.summary.remainingCount} more affected bookings
+                      </p>
+                    )}
+                  </div>
+                ) : null}
+              </div>
             </div>
           )}
           {editError && <p className="text-sm text-destructive">{editError}</p>}
@@ -411,6 +525,17 @@ export default function AdminSchedule() {
                 onChange={(e) => setAddCapacity(parseInt(e.target.value, 10) || 1)}
               />
             </div>
+            <div className="grid gap-2">
+              <Label>Gender restriction</Label>
+              <select
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                value={addGenderRestriction}
+                onChange={(e) => setAddGenderRestriction(e.target.value as "NONE" | "FEMALE_ONLY")}
+              >
+                <option value="NONE">None</option>
+                <option value="FEMALE_ONLY">Female only</option>
+              </select>
+            </div>
           </div>
           {addError && <p className="text-sm text-destructive">{addError}</p>}
           <DialogFooter>
@@ -433,6 +558,7 @@ export default function AdminSchedule() {
               <TableHead>Day</TableHead>
               <TableHead>Time</TableHead>
               <TableHead>Capacity</TableHead>
+              <TableHead>Gender Rule</TableHead>
               <TableHead>Active</TableHead>
               <TableHead className="w-[80px]">Actions</TableHead>
             </TableRow>
@@ -440,7 +566,7 @@ export default function AdminSchedule() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">Loading…</TableCell>
+                <TableCell colSpan={8} className="text-center text-muted-foreground py-8">Loading…</TableCell>
               </TableRow>
             ) : data?.items.length ? (
               data.items.map((s) => (
@@ -450,6 +576,7 @@ export default function AdminSchedule() {
                   <TableCell>{DAYS[s.dayOfWeek] ?? s.dayOfWeek}</TableCell>
                   <TableCell>{s.startTime} – {s.endTime}</TableCell>
                   <TableCell>{s.capacity}</TableCell>
+                  <TableCell>{s.genderRestriction === "FEMALE_ONLY" ? "Female only" : "None"}</TableCell>
                   <TableCell>{s.isActive ? "Yes" : "No"}</TableCell>
                   <TableCell>
                     {EDIT && (
@@ -462,7 +589,7 @@ export default function AdminSchedule() {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">No slots found</TableCell>
+                <TableCell colSpan={8} className="text-center text-muted-foreground py-8">No slots found</TableCell>
               </TableRow>
             )}
           </TableBody>

@@ -22,6 +22,7 @@ export interface UserProfile {
   id: string;
   name: string;
   phone: string;
+  gender?: string;
   email?: string;
   dob?: string | null;
   emergencyContactName?: string | null;
@@ -82,7 +83,7 @@ interface MemberContextType {
   pauseMembership: (membershipId: string) => Promise<boolean>;
   refreshBookings: () => Promise<void>;
   getSessionCounts: (scheduleId: string, date: string) => Promise<{ bookedCount: number; waitlistCount: number }>;
-  updateProfile: (data: Partial<Pick<UserProfile, 'name' | 'email' | 'dob' | 'emergencyContactName' | 'emergencyContactPhone' | 'medicalConditions'>>) => Promise<boolean>;
+  updateProfile: (data: Partial<Pick<UserProfile, 'name' | 'gender' | 'email' | 'dob' | 'emergencyContactName' | 'emergencyContactPhone' | 'medicalConditions'>>) => Promise<boolean>;
   /** False until the first `/api/auth/me` (or no-token) bootstrap finishes. */
   sessionRestored: boolean;
   /** Permanently deletes the member account (server-side). Caller should logout and redirect on success. */
@@ -127,6 +128,7 @@ export function MemberProvider({ children }: { children: ReactNode }) {
         id: memberId,
         name: (apiUser.name || primaryMember?.name) ?? "",
         phone: apiUser.mobile,
+        gender: apiUser.gender ?? "",
         email: primaryMember?.email ?? undefined,
         dob: primaryMember?.dob ?? undefined,
         emergencyContactName: primaryMember?.emergencyContactName ?? undefined,
@@ -195,6 +197,7 @@ export function MemberProvider({ children }: { children: ReactNode }) {
         memberId: user.id,
         personalDetails: {
           name: details.name,
+          gender: details.gender,
           email: details.email,
           dob: details.dob,
           emergencyContactName: details.emergencyContactName,
@@ -222,6 +225,7 @@ export function MemberProvider({ children }: { children: ReactNode }) {
     setUser(prev => prev ? {
       ...prev,
       name: details.name || prev.name,
+      gender: details.gender ?? prev.gender,
       email: details.email,
       dob: details.dob ?? prev.dob,
       emergencyContactName: details.emergencyContactName ?? prev.emergencyContactName,
@@ -405,7 +409,7 @@ export function MemberProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
-  const updateProfile = async (data: Partial<Pick<UserProfile, 'name' | 'email' | 'dob' | 'emergencyContactName' | 'emergencyContactPhone' | 'medicalConditions'>>): Promise<boolean> => {
+  const updateProfile = async (data: Partial<Pick<UserProfile, 'name' | 'gender' | 'email' | 'dob' | 'emergencyContactName' | 'emergencyContactPhone' | 'medicalConditions'>>): Promise<boolean> => {
     if (!user) return false;
     const result = await apiFetch<UserProfile>(`/api/members/${user.id}`, {
       method: 'PATCH',

@@ -12,6 +12,7 @@ const scheduleSlotSchema = new mongoose.Schema<ScheduleSlot & { _id: mongoose.Ty
     endMinute: { type: Number, default: 0 },
     capacity: { type: Number, default: 14 },
     isActive: { type: Boolean, default: true },
+    genderRestriction: { type: String, enum: ["NONE", "FEMALE_ONLY"], default: "NONE" },
     notes: { type: String, default: null },
   },
   { _id: true }

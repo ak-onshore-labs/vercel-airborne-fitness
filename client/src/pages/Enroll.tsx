@@ -231,15 +231,19 @@ const PERSONAL_DETAIL_FRIENDLY_MESSAGES: Record<string, string> = {
   name: "Please enter your name",
   email: "Please enter a valid email address",
   dob: "Please enter your date of birth",
+  gender: "Please select your gender",
   emergencyContactName: "Please enter emergency contact name",
   emergencyContactPhone: "Please enter emergency contact number",
 };
+
+const ALLOWED_GENDERS = new Set(["Male", "Female", "Other", "Prefer not to say"]);
 
 function validatePersonalDetails(data: Record<string, string>): Record<string, string> {
   const err: Record<string, string> = {};
   if (!data.name || data.name.trim().length < 2) err.name = PERSONAL_DETAIL_FRIENDLY_MESSAGES.name;
   if (!data.dob || !data.dob.trim()) err.dob = PERSONAL_DETAIL_FRIENDLY_MESSAGES.dob;
   else if (Number.isNaN(new Date(data.dob).getTime())) err.dob = PERSONAL_DETAIL_FRIENDLY_MESSAGES.dob;
+  if (!data.gender || !ALLOWED_GENDERS.has(data.gender.trim())) err.gender = PERSONAL_DETAIL_FRIENDLY_MESSAGES.gender;
   if (!data.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email.trim())) err.email = PERSONAL_DETAIL_FRIENDLY_MESSAGES.email;
   if (!data.emergencyContactName || data.emergencyContactName.trim().length < 2) err.emergencyContactName = PERSONAL_DETAIL_FRIENDLY_MESSAGES.emergencyContactName;
   const phone = (data.emergencyContactPhone || "").replace(/\s/g, "");
@@ -345,6 +349,26 @@ const PersonalDetails = ({ onNext, data, onChange }: any) => {
             )}
           />
           {errors.dob && <p className="text-xs text-red-500">{errors.dob}</p>}
+        </div>
+        <div className="space-y-1">
+          <label className="text-[10px] font-bold text-gray-400 dark:text-[#6B7280] uppercase tracking-wider">Gender *</label>
+          <select
+            data-testid="select-adult-gender"
+            value={data.gender || ""}
+            onChange={(e) => onChange("gender", e.target.value)}
+            onBlur={() => handleBlur("gender")}
+            className={cn(
+              "w-full h-12 px-3 bg-gray-50 dark:bg-[#111113] border border-gray-100 dark:border-white/6 text-gray-900 dark:text-[#EDEDED] rounded outline-none focus:ring-1 focus:ring-airborne-teal",
+              errors.gender && "border-red-300"
+            )}
+          >
+            <option value="">Select Gender</option>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+            <option value="Other">Other</option>
+            <option value="Prefer not to say">Prefer not to say</option>
+          </select>
+          {errors.gender && <p className="text-xs text-red-500">{errors.gender}</p>}
         </div>
         <div className="space-y-1">
           <label className="text-[10px] font-bold text-gray-400 dark:text-[#6B7280] uppercase tracking-wider">Emergency Contact *</label>
@@ -702,6 +726,7 @@ export default function Enroll() {
       name,
       email: user?.email ?? "",
       dob: user?.dob ?? "",
+      gender: user?.gender ?? "",
       emergencyContactName: user?.emergencyContactName ?? "",
       emergencyContactPhone: user?.emergencyContactPhone ?? "",
       medicalConditions: user?.medicalConditions ?? "",
@@ -716,11 +741,12 @@ export default function Enroll() {
       name: user.name && user.name !== "New Member" ? user.name : prev.name,
       email: user.email ?? prev.email,
       dob: user.dob ?? prev.dob,
+      gender: user.gender ?? prev.gender,
       emergencyContactName: user.emergencyContactName ?? prev.emergencyContactName,
       emergencyContactPhone: user.emergencyContactPhone ?? prev.emergencyContactPhone,
       medicalConditions: user.medicalConditions ?? prev.medicalConditions,
     }));
-  }, [user?.id, user?.name, user?.email, user?.dob, user?.emergencyContactName, user?.emergencyContactPhone, user?.medicalConditions]);
+  }, [user?.id, user?.name, user?.email, user?.dob, user?.gender, user?.emergencyContactName, user?.emergencyContactPhone, user?.medicalConditions]);
   const [kidInfo, setKidInfo] = useState({ name: "", dob: "", gender: "" });
   const [waiverData, setWaiverData] = useState({ agreedTerms: false, agreedAge: false, signatureName: "" });
   const [selectedPlans, setSelectedPlans] = useState<SelectedPlan[]>([]);

@@ -251,9 +251,10 @@ export default function AdminMembers() {
                 onChange={(e) => setAddUserRole(e.target.value as "MEMBER" | "STAFF" | "ADMIN")}
               >
                 <option value="MEMBER">Member</option>
-                <option value="STAFF">Staff</option>
-                <option value="ADMIN">Admin</option>
               </select>
+              <p className="text-xs text-muted-foreground">
+                Admin and Staff users are created from the Users section.
+              </p>
             </div>
             <div className="grid gap-2">
               <Label>Member type</Label>

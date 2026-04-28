@@ -6,13 +6,14 @@
 // ----- Document types (match MongoDB/Mongoose shape; id is string from _id) -----
 
 export type UserRole = "ADMIN" | "STAFF" | "MEMBER";
+export type GenderValue = "Male" | "Female" | "Other" | "Prefer not to say";
 
 /** User: login identity (name, mobile, gender, role). One user can have multiple members (e.g. Adult + Kid). */
 export interface User {
   id: string;
   name: string;
   mobile: string;
-  gender: string;
+  gender: GenderValue | "";
   userRole: UserRole;
   createdAt?: Date | null;
 }
@@ -29,7 +30,7 @@ export interface Member {
   /** For Kid: kid's DOB */
   dob?: string | null;
   /** For Kid: kid's gender */
-  gender?: string | null;
+  gender?: GenderValue | null;
   email?: string | null;
   emergencyContactName?: string | null;
   emergencyContactPhone?: string | null;
@@ -67,8 +68,11 @@ export interface ScheduleSlot {
   endMinute: number;
   capacity: number;
   isActive: boolean;
+  genderRestriction: ScheduleGenderRestriction;
   notes?: string | null;
 }
+
+export type ScheduleGenderRestriction = "NONE" | "FEMALE_ONLY";
 
 /** Membership: links Member to a MembershipPlan; has sessionsRemaining, expiry, carryForward. */
 export interface Membership {
