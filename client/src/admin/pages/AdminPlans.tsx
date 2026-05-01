@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,7 +27,18 @@ import {
 } from "@/components/ui/table";
 import { adminApiFetch, type ListResponse } from "../api";
 import { AdminTablePagination } from "../components/AdminTablePagination";
+import {
+  ActiveFilterSelect,
+  applyActiveFilterAndSort,
+  inactiveRowClass,
+  type ActiveFilter,
+} from "../components/ActiveFilter";
 import { useAdminPermissions } from "../useAdminPermissions";
+
+// Frontend-only filter+sort+paginate phase: fetch a generous page and apply
+// active-first sorting / Active-Inactive-All filtering client-side. Existing
+// server search params (classTypeName, planName) are preserved.
+const FETCH_LIMIT = 500;
 
 type PlanItem = {
   id: string;
@@ -50,6 +61,7 @@ export default function AdminPlans() {
   const [planName, setPlanName] = useState("");
   const [searchClassTypeName, setSearchClassTypeName] = useState("");
   const [searchPlanName, setSearchPlanName] = useState("");
+  const [activeFilter, setActiveFilter] = useState<ActiveFilter>("all");
   const [data, setData] = useState<ListResponse<PlanItem> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -73,18 +85,32 @@ export default function AdminPlans() {
   const fetchPlans = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+    const params = new URLSearchParams({ page: "1", limit: String(FETCH_LIMIT) });
     if (searchClassTypeName) params.set("classTypeName", searchClassTypeName);
     if (searchPlanName) params.set("planName", searchPlanName);
     const res = await adminApiFetch<ListResponse<PlanItem>>(`/api/admin/plans?${params}`);
     if (res.ok) setData(res.data);
     else setError(res.message);
     setLoading(false);
-  }, [page, limit, searchClassTypeName, searchPlanName]);
+  }, [searchClassTypeName, searchPlanName]);
 
   useEffect(() => {
     fetchPlans();
   }, [fetchPlans]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [activeFilter, limit]);
+
+  const filteredSortedItems = useMemo(
+    () => applyActiveFilterAndSort(data?.items ?? [], activeFilter),
+    [data, activeFilter],
+  );
+
+  const pagedItems = useMemo(
+    () => filteredSortedItems.slice((page - 1) * limit, page * limit),
+    [filteredSortedItems, page, limit],
+  );
 
   useEffect(() => {
     adminApiFetch<ListResponse<ClassTypeOption>>("/api/admin/class-types?limit=100").then((r) => {
@@ -194,6 +220,7 @@ export default function AdminPlans() {
           className="max-w-[180px]"
         />
         <Button onClick={onSearch}>Search</Button>
+        <ActiveFilterSelect value={activeFilter} onChange={setActiveFilter} />
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
@@ -290,9 +317,9 @@ export default function AdminPlans() {
               <TableRow>
                 <TableCell colSpan={7} className="text-center text-muted-foreground py-8">Loading…</TableCell>
               </TableRow>
-            ) : data?.items.length ? (
-              data.items.map((p) => (
-                <TableRow key={p.id}>
+            ) : pagedItems.length ? (
+              pagedItems.map((p) => (
+                <TableRow key={p.id} className={inactiveRowClass(p.isActive)}>
                   <TableCell>{p.classTypeName}</TableCell>
                   <TableCell>{p.name}</TableCell>
                   <TableCell>{p.sessionsTotal}</TableCell>
@@ -319,7 +346,7 @@ export default function AdminPlans() {
         <AdminTablePagination
           page={page}
           limit={limit}
-          total={data.total}
+          total={filteredSortedItems.length}
           onPageChange={setPage}
           onLimitChange={setLimit}
         />

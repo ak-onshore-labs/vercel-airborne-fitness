@@ -27,6 +27,7 @@ interface SessionDisplay {
   startTime: string;
   endTime: string;
   capacity: number;
+  genderRestriction?: "NONE" | "FEMALE_ONLY";
 }
 
 interface ClassTypeOption {
@@ -261,9 +262,14 @@ export default function Book() {
                 <div
                   key={key}
                   className={cn(
-                    "rounded p-5 flex gap-5 transition-shadow duration-200 border-l-2 border-l-airborne-teal dark:border-l-teal-400 hover:shadow-md dark:hover:shadow-black/30",
+                    "rounded p-5 flex gap-5 transition-shadow duration-200 border-l-2 hover:shadow-md dark:hover:shadow-black/30",
+                    session.genderRestriction === "FEMALE_ONLY"
+                      ? "border-l-pink-300 dark:border-l-pink-400"
+                      : "border-l-airborne-teal dark:border-l-teal-400",
                     bookable
-                      ? "bg-white dark:bg-[#111113] border border-gray-100 dark:border-white/6 shadow-sm dark:shadow-black/30 hover:shadow-md"
+                      ? session.genderRestriction === "FEMALE_ONLY"
+                        ? "bg-rose-50/35 dark:bg-rose-950/15 border border-rose-100 dark:border-rose-900/30 shadow-sm dark:shadow-black/30 hover:shadow-md"
+                        : "bg-white dark:bg-[#111113] border border-gray-100 dark:border-white/6 shadow-sm dark:shadow-black/30 hover:shadow-md"
                       : "bg-gray-50 dark:bg-[#18181B] border border-gray-200 dark:border-white/10"
                   )}
                   data-testid={`card-session-${key}`}
@@ -277,6 +283,11 @@ export default function Book() {
                           <h3 className={cn("font-bold text-base", bookable ? "text-gray-900 dark:text-[#EDEDED]" : "text-gray-600 dark:text-[#9CA3AF]")} data-testid={`text-class-${key}`}>{session.category}</h3>
                           <div className="flex flex-col items-end gap-1">
                             <span className="text-[10px] bg-teal-50 dark:bg-teal-900/40 text-airborne-teal dark:text-teal-300 px-1 rounded">{selectedBranch}</span>
+                            {session.genderRestriction === "FEMALE_ONLY" && (
+                              <span className="text-[10px] font-medium text-pink-700 dark:text-pink-300 px-1.5 py-0.5 rounded bg-pink-100/80 dark:bg-pink-900/35">
+                                Female only
+                              </span>
+                            )}
                             {isFull && !booking && <span className="text-[10px] font-bold text-red-500 dark:text-red-400 px-1 bg-red-50 dark:bg-red-900/30 rounded">FULL</span>}
                             {!bookable && <span className="text-[10px] font-medium text-gray-500 dark:text-[#9CA3AF] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-[#18181B]" data-testid={`label-booking-closed-${key}`}>Booking closed</span>}
                           </div>
