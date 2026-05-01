@@ -13,9 +13,15 @@ import {
   membershipEnrollmentStartBounds,
   parseMembershipStartDateFromInput,
 } from "../../shared/membershipDates.js";
+import { isEligibleForGenderRestriction, resolveMemberGenderForRestriction } from "../lib/genderEligibility.js";
 
 const PAUSE_DAYS = 14;
 const PAUSE_MS = PAUSE_DAYS * 24 * 60 * 60 * 1000;
+const ALLOWED_GENDERS = new Set(["Male", "Female", "Other", "Prefer not to say"]);
+
+function isAllowedGender(value: string): value is "Male" | "Female" | "Other" | "Prefer not to say" {
+  return ALLOWED_GENDERS.has(value);
+}
 
 function addMs(d: Date, ms: number): Date {
   return new Date(d.getTime() + ms);
@@ -26,13 +32,47 @@ export function registerMembershipRoutes(app: Express): void {
     "/api/members/:id",
     requireAuth,
     asyncHandler(async (req: Request, res: Response): Promise<void> => {
+      const auth = req.auth!;
       const { id } = req.params;
-      const updated = await storage.updateMember(id, req.body);
+      const existing = await storage.getMember(id);
+      if (!existing) {
+        res.status(404).json({ message: "Member not found" });
+        return;
+      }
+      if (existing.userId !== auth.userId) {
+        res.status(403).json({ message: "Not allowed" });
+        return;
+      }
+
+      const body = req.body as Record<string, unknown>;
+      const memberPatch: Record<string, unknown> = {};
+      if (typeof body.name === "string") memberPatch.name = body.name;
+      if (typeof body.email === "string") memberPatch.email = body.email;
+      if (typeof body.dob === "string") memberPatch.dob = body.dob;
+      if (typeof body.emergencyContactName === "string") memberPatch.emergencyContactName = body.emergencyContactName;
+      if (typeof body.emergencyContactPhone === "string") memberPatch.emergencyContactPhone = body.emergencyContactPhone;
+      if (typeof body.medicalConditions === "string") memberPatch.medicalConditions = body.medicalConditions;
+
+      const updated = await storage.updateMember(id, memberPatch);
       if (!updated) {
         res.status(404).json({ message: "Member not found" });
         return;
       }
-      res.json(updated);
+
+      const requestedGender = typeof body.gender === "string" ? body.gender.trim() : undefined;
+      if (requestedGender !== undefined) {
+        if (!isAllowedGender(requestedGender)) {
+          res.status(400).json({ message: "Gender must be Male, Female, Other, or Prefer not to say" });
+          return;
+        }
+        await storage.updateUser(auth.userId, { gender: requestedGender });
+      }
+
+      const user = await storage.getUser(auth.userId);
+      res.json({
+        ...updated,
+        gender: user?.gender ?? "",
+      });
     })
   );
 
@@ -238,17 +278,32 @@ export function registerMembershipRoutes(app: Express): void {
           .filter((b) => b.status === "WAITLIST")
           .sort((a, b) => (a.waitlistPosition ?? 999) - (b.waitlistPosition ?? 999));
         if (waitlist.length === 0) return;
+        const slot = await storage.getScheduleSlot(scheduleId);
+        if (!slot) return;
 
-        const first = waitlist[0];
-        const firstMembership = await findActiveMembershipForSlot(first.memberId, scheduleId);
-        if (!firstMembership || firstMembership.sessionsRemaining <= 0) return;
+        let promotedBookingId: string | null = null;
+        for (const candidate of waitlist) {
+          const resolvedGender = await resolveMemberGenderForRestriction(candidate.memberId);
+          if (!isEligibleForGenderRestriction(slot.genderRestriction, resolvedGender)) {
+            await storage.updateBookingStatus(candidate.id, "CANCELLED", null);
+            continue;
+          }
 
-        const ok = await storage.decrementMembershipSessionsIfPositive(firstMembership.id);
-        if (!ok) return;
+          const membership = await findActiveMembershipForSlot(candidate.memberId, scheduleId);
+          if (!membership || membership.sessionsRemaining <= 0) continue;
 
-        await storage.updateBookingStatus(first.id, "BOOKED", null);
+          const ok = await storage.decrementMembershipSessionsIfPositive(membership.id);
+          if (!ok) continue;
 
-        const remaining = waitlist.slice(1);
+          await storage.updateBookingStatus(candidate.id, "BOOKED", null);
+          promotedBookingId = candidate.id;
+          break;
+        }
+
+        const latest = await storage.getBookingsForSession(scheduleId, sessionDate);
+        const remaining = latest
+          .filter((b) => b.status === "WAITLIST" && b.id !== promotedBookingId)
+          .sort((a, b) => (a.waitlistPosition ?? 999) - (b.waitlistPosition ?? 999));
         for (let i = 0; i < remaining.length; i++) {
           await storage.updateBookingStatus(remaining[i].id, "WAITLIST", i + 1);
         }
@@ -345,6 +400,7 @@ export function registerMembershipRoutes(app: Express): void {
         if (Number.isNaN(d.getTime())) errFields.push("dob");
       }
       if (typeof pd.email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(pd.email.trim())) errFields.push("email");
+      if (typeof pd.gender !== "string" || !isAllowedGender(pd.gender.trim())) errFields.push("gender");
       if (typeof pd.emergencyContactName !== "string" || pd.emergencyContactName.trim().length < 2) errFields.push("emergencyContactName");
       if (typeof pd.emergencyContactPhone !== "string" || !/^\d{10}$/.test(pd.emergencyContactPhone.replace(/\s/g, ""))) errFields.push("emergencyContactPhone");
       if (errFields.length > 0) {
@@ -414,6 +470,7 @@ export function registerMembershipRoutes(app: Express): void {
         emergencyContactPhone: pd.emergencyContactPhone,
         medicalConditions: pd.medicalConditions,
       });
+      await storage.updateUser(auth.userId, { gender: pd.gender.trim() });
 
       if (hasKidsPlan && kidInfo?.name) {
         const kidMember = await storage.getMembersByUserId(auth.userId).then(ms => ms.find(m => m.memberType === "Kid"));
@@ -453,6 +510,13 @@ export function registerMembershipRoutes(app: Express): void {
         if (!planId) continue;
         const p = planById.get(planId);
         if (!p) continue;
+        if ((p as { isActive?: boolean }).isActive === false) {
+          res.status(400).json({
+            message: "This membership plan is no longer available for purchase",
+            fields: ["plans"],
+          });
+          return;
+        }
         const sessionsTotal = p.sessionsTotal ?? plan.sessions;
         const validityDays = p.validityDays ?? plan.validityDays ?? 30;
         const expiryDate = computeMembershipExpiryExclusiveEnd(startDay, validityDays);

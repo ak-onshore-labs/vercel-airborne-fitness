@@ -3,6 +3,8 @@ import { storage } from "../storage.js";
 import { asyncHandler, requireAuth } from "../middleware.js";
 import { MembershipPlanModel } from "../models/index.js";
 import { getMembershipUsabilityState, isMembershipBookable } from "../../shared/membershipState.js";
+import { isEligibleForGenderRestriction, resolveMemberGenderForRestriction } from "../lib/genderEligibility.js";
+import { verifyToken } from "../lib/jwt.js";
 
 const MEMBER_BOOKING_CUTOFF_MINUTES = 5;
 
@@ -105,12 +107,82 @@ async function findMembershipForSlotForBooking(
   return null;
 }
 
+async function assertMemberOwnershipOrReject(req: Request, res: Response, memberId: string): Promise<boolean> {
+  const auth = req.auth!;
+  const member = await storage.getMember(memberId);
+  if (!member || member.userId !== auth.userId) {
+    res.status(403).json({ message: "Not allowed to book for this member." });
+    return false;
+  }
+  return true;
+}
+
+async function isMemberEligibleForSlot(memberId: string, scheduleId: string): Promise<boolean> {
+  const slot = await storage.getScheduleSlot(scheduleId);
+  if (!slot) return false;
+  const resolvedGender = await resolveMemberGenderForRestriction(memberId);
+  return isEligibleForGenderRestriction(slot.genderRestriction, resolvedGender);
+}
+
+async function promoteWaitlistForSession(scheduleId: string, sessionDate: string): Promise<void> {
+  const sessionBookings = await storage.getBookingsForSession(scheduleId, sessionDate);
+  const waitlist = sessionBookings
+    .filter((b) => b.status === "WAITLIST")
+    .sort((a, b) => (a.waitlistPosition ?? 999) - (b.waitlistPosition ?? 999));
+
+  let promotedBookingId: string | null = null;
+  for (const candidate of waitlist) {
+    const eligibleByGender = await isMemberEligibleForSlot(candidate.memberId, scheduleId);
+    if (!eligibleByGender) {
+      await storage.updateBookingStatus(candidate.id, "CANCELLED", null);
+      continue;
+    }
+
+    const membership = await findMembershipForSlot(candidate.memberId, scheduleId);
+    if (!membership || membership.sessionsRemaining <= 0) {
+      continue;
+    }
+
+    const ok = await storage.decrementMembershipSessionsIfPositive(membership.id);
+    if (!ok) {
+      continue;
+    }
+
+    await storage.updateBookingStatus(candidate.id, "BOOKED", null);
+    promotedBookingId = candidate.id;
+    break;
+  }
+
+  const latest = await storage.getBookingsForSession(scheduleId, sessionDate);
+  const waitlistToRenumber = latest
+    .filter((b) => b.status === "WAITLIST" && b.id !== promotedBookingId)
+    .sort((a, b) => (a.waitlistPosition ?? 999) - (b.waitlistPosition ?? 999));
+
+  for (let i = 0; i < waitlistToRenumber.length; i++) {
+    await storage.updateBookingStatus(waitlistToRenumber[i].id, "WAITLIST", i + 1);
+  }
+}
+
 export function registerManageSessionRoutes(app: Express): void {
   app.get("/api/schedule", asyncHandler(async (req: Request, res: Response) => {
     const branch = req.query.branch as string | undefined;
     const date = req.query.date as string | undefined;
     if (branch && date) {
-      const sessions = await storage.getScheduleForBranchAndDate(branch, date);
+      let sessions = await storage.getScheduleForBranchAndDate(branch, date);
+      const header = req.headers.authorization;
+      const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
+      const payload = token ? verifyToken(token) : null;
+      if (payload) {
+        const requester = await storage.getUser(payload.userId);
+        if (requester && requester.userRole === "MEMBER") {
+          const members = await storage.getMembersByUserId(payload.userId);
+          const primaryMember = members.find((m) => m.memberType !== "Kid") ?? members[0];
+          if (primaryMember) {
+            const resolvedGender = await resolveMemberGenderForRestriction(primaryMember.id);
+            sessions = sessions.filter((s) => isEligibleForGenderRestriction(s.genderRestriction, resolvedGender));
+          }
+        }
+      }
       return res.json({ sessions });
     }
     const schedule = await storage.getSchedule();
@@ -159,6 +231,12 @@ export function registerManageSessionRoutes(app: Express): void {
 
       const slot = await storage.getScheduleSlot(scheduleId);
       if (!slot) return res.status(400).json({ message: "Invalid schedule slot" });
+      if (!(await assertMemberOwnershipOrReject(req, res, memberId))) return;
+
+      const resolvedGender = await resolveMemberGenderForRestriction(memberId);
+      if (!isEligibleForGenderRestriction(slot.genderRestriction, resolvedGender)) {
+        return res.status(400).json({ message: "This session is restricted to female members." });
+      }
 
       if (!isWithinMemberBookingWindow(sessionDate, slot.startHour, slot.startMinute)) {
         return res.status(400).json({ message: "This session is no longer available for booking." });
@@ -216,6 +294,12 @@ export function registerManageSessionRoutes(app: Express): void {
 
       const slot = await storage.getScheduleSlot(scheduleId);
       if (!slot) return res.status(400).json({ message: "Invalid schedule slot" });
+      if (!(await assertMemberOwnershipOrReject(req, res, memberId))) return;
+
+      const resolvedGender = await resolveMemberGenderForRestriction(memberId);
+      if (!isEligibleForGenderRestriction(slot.genderRestriction, resolvedGender)) {
+        return res.status(400).json({ message: "This session is restricted to female members." });
+      }
 
       if (!isWithinMemberBookingWindow(sessionDate, slot.startHour, slot.startMinute)) {
         return res.status(400).json({ message: "This session is no longer available for booking." });
@@ -282,7 +366,7 @@ export function registerManageSessionRoutes(app: Express): void {
       const member = await storage.getMember(memberId);
       if (!member) return res.status(404).json({ message: "Member not found" });
       if (!isAdminOrStaff && member.userId !== auth.userId) {
-        return res.status(403).json({ message: "Not allowed to cancel this booking" });
+        return res.status(403).json({ message: "Not allowed to book for this member." });
       }
 
       const memberBookings = await storage.getBookingsForMember(memberId);
@@ -307,25 +391,7 @@ export function registerManageSessionRoutes(app: Express): void {
         if (membership) {
           await storage.incrementMembershipSessions(membership.id, 1);
         }
-
-        const sessionBookings = await storage.getBookingsForSession(booking.scheduleId, booking.sessionDate);
-        const waitlist = sessionBookings
-          .filter(b => b.status === "WAITLIST")
-          .sort((a, b) => (a.waitlistPosition ?? 999) - (b.waitlistPosition ?? 999));
-        if (waitlist.length > 0) {
-          const first = waitlist[0];
-          const firstMembership = await findMembershipForSlot(first.memberId, booking.scheduleId);
-          if (firstMembership && firstMembership.sessionsRemaining > 0) {
-            const ok = await storage.decrementMembershipSessionsIfPositive(firstMembership.id);
-            if (ok) {
-              await storage.updateBookingStatus(first.id, "BOOKED", null);
-            }
-            const remaining = waitlist.slice(1);
-            for (let i = 0; i < remaining.length; i++) {
-              await storage.updateBookingStatus(remaining[i].id, "WAITLIST", i + 1);
-            }
-          }
-        }
+        await promoteWaitlistForSession(booking.scheduleId, booking.sessionDate);
       } else if (booking.status === "WAITLIST") {
         const sessionBookings = await storage.getBookingsForSession(booking.scheduleId, booking.sessionDate);
         const waitlist = sessionBookings

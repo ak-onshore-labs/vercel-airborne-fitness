@@ -18,7 +18,9 @@
     "seed:local": "cross-env DOTENV_CONFIG_PATH=.env tsx scripts/run-seed.ts",
     "seed:staging": "npm run seed",
     "verify:dynamic": "tsx scripts/verify-dynamic.ts",
-    "verify:dynamic:staging": "cross-env DOTENV_CONFIG_PATH=.env.staging tsx scripts/verify-dynamic.ts"
+    "verify:dynamic:staging": "cross-env DOTENV_CONFIG_PATH=.env.staging tsx scripts/verify-dynamic.ts",
+    "pass2:membership-plans": "cross-env DOTENV_CONFIG_PATH=.env tsx scripts/pass2-rebuild-membership-plans.ts",
+    "pass2:membership-plans:staging": "cross-env DOTENV_CONFIG_PATH=.env.staging tsx scripts/pass2-rebuild-membership-plans.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
