@@ -190,6 +190,7 @@ export async function seedDatabase() {
         sessionsTotal: p.sessionsTotal,
         validityDays: p.validityDays,
         price: p.price,
+        gstInclusive: false,
         isActive: true,
       }))
     );

@@ -32,6 +32,7 @@ export default function ProfileSettings() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [formData, setFormData] = useState({
     fullName: "",
+    gender: "",
     email: "",
     dob: "",
     emergencyContactName: "",
@@ -43,6 +44,7 @@ export default function ProfileSettings() {
     if (!user) return;
     setFormData({
       fullName: user.name || "",
+      gender: user.gender || "",
       email: user.email || "",
       dob: user.dob || "",
       emergencyContactName: user.emergencyContactName || "",
@@ -89,6 +91,7 @@ export default function ProfileSettings() {
     try {
       const ok = await updateProfile({
         name: formData.fullName.trim(),
+        gender: formData.gender.trim() || undefined,
         email: formData.email.trim(),
         dob: formData.dob.trim() || undefined,
         emergencyContactName: formData.emergencyContactName.trim() || undefined,
@@ -121,6 +124,20 @@ export default function ProfileSettings() {
               className={ACCOUNT_FIELD_CLASS}
               placeholder="Full name"
             />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-500 block mb-1">Gender</label>
+            <select
+              value={formData.gender}
+              onChange={(e) => setFormData((p) => ({ ...p, gender: e.target.value }))}
+              className={`${ACCOUNT_FIELD_CLASS} h-10 w-full rounded-md border px-3 text-sm outline-none focus:ring-1 focus:ring-airborne-teal`}
+            >
+              <option value="">Select gender</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="Other">Other</option>
+              <option value="Prefer not to say">Prefer not to say</option>
+            </select>
           </div>
           <div>
             <label className="text-xs font-medium text-gray-500 block mb-1">Email</label>

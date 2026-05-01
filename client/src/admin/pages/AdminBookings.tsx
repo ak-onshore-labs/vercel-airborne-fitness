@@ -35,9 +35,11 @@ import { AdminTablePagination } from "../components/AdminTablePagination";
 import { useAdminPermissions } from "../useAdminPermissions";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { getStoredToken } from "@/lib/api";
 import { Loader2 } from "lucide-react";
 
 type MemberOption = { id: string; name?: string | null; mobile?: string };
+type ClassTypeOption = { id: string; name: string };
 
 type SessionDisplay = {
   scheduleId: string;
@@ -192,17 +194,25 @@ export default function AdminBookings() {
   const isMobile = useIsMobile();
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
-  const [sessionDate, setSessionDate] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [memberMobile, setMemberMobile] = useState("");
+  const [memberName, setMemberName] = useState("");
   const [classTypeName, setClassTypeName] = useState("");
-  const [searchSessionDate, setSearchSessionDate] = useState("");
+  const [branchFilter, setBranchFilter] = useState("");
+  const [searchDateFrom, setSearchDateFrom] = useState("");
+  const [searchDateTo, setSearchDateTo] = useState("");
   const [searchMemberMobile, setSearchMemberMobile] = useState("");
+  const [searchMemberName, setSearchMemberName] = useState("");
   const [searchClassTypeName, setSearchClassTypeName] = useState("");
+  const [searchBranchFilter, setSearchBranchFilter] = useState("");
   const [data, setData] = useState<ListResponse<BookingItem> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [downloadLoading, setDownloadLoading] = useState(false);
 
   const [branches, setBranches] = useState<string[]>([]);
+  const [classTypes, setClassTypes] = useState<ClassTypeOption[]>([]);
   const [upcomingBranch, setUpcomingBranch] = useState("");
   const [upcomingData, setUpcomingData] = useState<UpcomingDay[]>([]);
   const [upcomingLoading, setUpcomingLoading] = useState(false);
@@ -285,18 +295,33 @@ export default function AdminBookings() {
     }
   };
 
+  const getAppliedParams = useCallback(
+    (includePagination: boolean) => {
+      const params = new URLSearchParams();
+      if (includePagination) {
+        params.set("page", String(page));
+        params.set("limit", String(limit));
+      }
+      if (searchDateFrom) params.set("dateFrom", searchDateFrom);
+      if (searchDateTo) params.set("dateTo", searchDateTo);
+      if (searchMemberMobile) params.set("memberMobile", searchMemberMobile);
+      if (searchMemberName) params.set("memberName", searchMemberName);
+      if (searchClassTypeName) params.set("classTypeName", searchClassTypeName);
+      if (searchBranchFilter) params.set("branch", searchBranchFilter);
+      return params;
+    },
+    [page, limit, searchDateFrom, searchDateTo, searchMemberMobile, searchMemberName, searchClassTypeName, searchBranchFilter]
+  );
+
   const fetchBookings = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const params = new URLSearchParams({ page: String(page), limit: String(limit) });
-    if (searchSessionDate) params.set("sessionDate", searchSessionDate);
-    if (searchMemberMobile) params.set("memberMobile", searchMemberMobile);
-    if (searchClassTypeName) params.set("classTypeName", searchClassTypeName);
+    const params = getAppliedParams(true);
     const res = await adminApiFetch<ListResponse<BookingItem>>(`/api/admin/bookings?${params}`);
     if (res.ok) setData(res.data);
     else setError(res.message);
     setLoading(false);
-  }, [page, limit, searchSessionDate, searchMemberMobile, searchClassTypeName]);
+  }, [getAppliedParams]);
 
   const applyBookingStatusFromEditor = async (action: BookingAdminAction) => {
     if (!editorBooking) return;
@@ -350,6 +375,12 @@ export default function AdminBookings() {
         setBranches(r.data);
         if (r.data.length > 0 && !upcomingBranch) setUpcomingBranch(r.data[0]);
       }
+    });
+  }, []);
+
+  useEffect(() => {
+    adminApiFetch<ListResponse<ClassTypeOption>>("/api/admin/class-types?limit=200").then((r) => {
+      if (r.ok) setClassTypes(r.data.items);
     });
   }, []);
 
@@ -522,17 +553,66 @@ export default function AdminBookings() {
   }, [addBookingOpen, addStep, addDates, addSelectedDate]);
 
   const onSearch = () => {
-    setSearchSessionDate(sessionDate.trim());
+    const trimmedDateFrom = dateFrom.trim();
+    const trimmedDateTo = dateTo.trim();
+    if (trimmedDateFrom && trimmedDateTo && trimmedDateFrom > trimmedDateTo) {
+      setError("Date From cannot be after Date To");
+      return;
+    }
+    setError(null);
+    setSearchDateFrom(trimmedDateFrom);
+    setSearchDateTo(trimmedDateTo);
     setSearchMemberMobile(memberMobile.trim());
+    setSearchMemberName(memberName.trim());
     setSearchClassTypeName(classTypeName.trim());
+    setSearchBranchFilter(branchFilter.trim());
     setPage(1);
+  };
+
+  const onDownloadCsv = async () => {
+    if (searchDateFrom && searchDateTo && searchDateFrom > searchDateTo) {
+      setError("Date From cannot be after Date To");
+      return;
+    }
+    setDownloadLoading(true);
+    try {
+      const token = getStoredToken();
+      const params = getAppliedParams(false);
+      const res = await fetch(`/api/admin/bookings/export.csv?${params.toString()}`, {
+        method: "GET",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        const msg = await res.text();
+        setError(msg || "CSV export failed");
+        return;
+      }
+      const blob = await res.blob();
+      const contentDisposition = res.headers.get("content-disposition") || "";
+      const filenameMatch = contentDisposition.match(/filename="([^"]+)"/);
+      const filename = filenameMatch?.[1] || "admin-bookings.csv";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "CSV export failed");
+    } finally {
+      setDownloadLoading(false);
+    }
   };
 
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold">Bookings</h1>
-        {ADD && <Button onClick={openAddBooking}>Add booking</Button>}
+        <div className="flex items-center gap-2">
+          {ADD && <Button onClick={openAddBooking}>Add booking</Button>}
+        </div>
       </div>
 
       <Dialog open={addBookingOpen} onOpenChange={(open) => !open && closeAddBooking()}>
@@ -713,11 +793,19 @@ export default function AdminBookings() {
         </TabsList>
 
         <TabsContent value="all" className="space-y-4 mt-4">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-end gap-2">
             <Input
-              placeholder="Date (YYYY-MM-DD)"
-              value={sessionDate}
-              onChange={(e) => setSessionDate(e.target.value)}
+              type="date"
+              aria-label="Date From"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="max-w-[160px]"
+            />
+            <Input
+              type="date"
+              aria-label="Date To"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
               className="max-w-[160px]"
             />
             <Input
@@ -727,12 +815,39 @@ export default function AdminBookings() {
               className="max-w-[160px]"
             />
             <Input
-              placeholder="Class type name"
-              value={classTypeName}
-              onChange={(e) => setClassTypeName(e.target.value)}
+              placeholder="Member name"
+              value={memberName}
+              onChange={(e) => setMemberName(e.target.value)}
               className="max-w-[180px]"
             />
+            <select
+              className="flex h-9 w-[190px] rounded-md border border-input bg-background px-3 py-1 text-sm"
+              value={classTypeName}
+              onChange={(e) => setClassTypeName(e.target.value)}
+            >
+              <option value="">All class types</option>
+              {classTypes.map((ct) => (
+                <option key={ct.id} value={ct.name}>
+                  {ct.name}
+                </option>
+              ))}
+            </select>
+            <select
+              className="flex h-9 w-[180px] rounded-md border border-input bg-background px-3 py-1 text-sm"
+              value={branchFilter}
+              onChange={(e) => setBranchFilter(e.target.value)}
+            >
+              <option value="">All branches</option>
+              {branches.map((branch) => (
+                <option key={branch} value={branch}>
+                  {branch}
+                </option>
+              ))}
+            </select>
             <Button onClick={onSearch}>Search</Button>
+            <Button onClick={onDownloadCsv} disabled={downloadLoading} variant="outline">
+              {downloadLoading ? "Downloading..." : "Download CSV"}
+            </Button>
           </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
