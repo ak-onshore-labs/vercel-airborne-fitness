@@ -1,5 +1,5 @@
-import type { ScheduleGenderRestriction } from "@shared/schema";
-import { storage } from "../storage";
+import type { ScheduleGenderRestriction } from "../../shared/schema.js";
+import { storage } from "../storage.js";
 
 export type ResolvedGender = "FEMALE" | "MALE" | "OTHER_OR_UNKNOWN";
 
