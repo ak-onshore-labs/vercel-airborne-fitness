@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,9 +20,20 @@ import {
 } from "@/components/ui/table";
 import { adminApiFetch, type ListResponse } from "../api";
 import { AdminTablePagination } from "../components/AdminTablePagination";
+import {
+  ActiveFilterSelect,
+  applyActiveFilterAndSort,
+  inactiveRowClass,
+  type ActiveFilter,
+} from "../components/ActiveFilter";
 import { useAdminPermissions } from "../useAdminPermissions";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+// Frontend-only filter+sort+paginate phase: fetch a generous page and apply
+// active-first sorting / Active-Inactive-All filtering client-side. Existing
+// server search params (classTypeName, branch, dayOfWeek, startTime) are preserved.
+const FETCH_LIMIT = 500;
 
 /** Hour 0–23 to label; 24 for "end of day" in time-to */
 function hourLabel(h: number) {
@@ -82,6 +93,7 @@ export default function AdminSchedule() {
   const [searchBranch, setSearchBranch] = useState("");
   const [searchDayOfWeek, setSearchDayOfWeek] = useState<number | "">("");
   const [searchStartTime, setSearchStartTime] = useState("");
+  const [activeFilter, setActiveFilter] = useState<ActiveFilter>("all");
   const [data, setData] = useState<ListResponse<ScheduleItem> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -113,7 +125,7 @@ export default function AdminSchedule() {
   const fetchSchedule = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+    const params = new URLSearchParams({ page: "1", limit: String(FETCH_LIMIT) });
     if (searchClassTypeName) params.set("classTypeName", searchClassTypeName);
     if (searchBranch) params.set("branch", searchBranch);
     if (searchDayOfWeek !== "") params.set("dayOfWeek", String(searchDayOfWeek));
@@ -122,11 +134,25 @@ export default function AdminSchedule() {
     if (res.ok) setData(res.data);
     else setError(res.message);
     setLoading(false);
-  }, [page, limit, searchClassTypeName, searchBranch, searchDayOfWeek, searchStartTime]);
+  }, [searchClassTypeName, searchBranch, searchDayOfWeek, searchStartTime]);
 
   useEffect(() => {
     fetchSchedule();
   }, [fetchSchedule]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [activeFilter, limit]);
+
+  const filteredSortedItems = useMemo(
+    () => applyActiveFilterAndSort(data?.items ?? [], activeFilter),
+    [data, activeFilter],
+  );
+
+  const pagedItems = useMemo(
+    () => filteredSortedItems.slice((page - 1) * limit, page * limit),
+    [filteredSortedItems, page, limit],
+  );
 
   useEffect(() => {
     adminApiFetch<ListResponse<ClassTypeOption>>("/api/admin/class-types?limit=100").then((r) => {
@@ -317,6 +343,7 @@ export default function AdminSchedule() {
           className="max-w-[120px]"
         />
         <Button onClick={onSearch}>Search</Button>
+        <ActiveFilterSelect value={activeFilter} onChange={setActiveFilter} />
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
@@ -568,9 +595,9 @@ export default function AdminSchedule() {
               <TableRow>
                 <TableCell colSpan={8} className="text-center text-muted-foreground py-8">Loading…</TableCell>
               </TableRow>
-            ) : data?.items.length ? (
-              data.items.map((s) => (
-                <TableRow key={s.id}>
+            ) : pagedItems.length ? (
+              pagedItems.map((s) => (
+                <TableRow key={s.id} className={inactiveRowClass(s.isActive)}>
                   <TableCell>{s.category}</TableCell>
                   <TableCell>{s.branch}</TableCell>
                   <TableCell>{DAYS[s.dayOfWeek] ?? s.dayOfWeek}</TableCell>
@@ -600,7 +627,7 @@ export default function AdminSchedule() {
         <AdminTablePagination
           page={page}
           limit={limit}
-          total={data.total}
+          total={filteredSortedItems.length}
           onPageChange={setPage}
           onLimitChange={setLimit}
         />

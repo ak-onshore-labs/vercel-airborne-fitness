@@ -68,7 +68,7 @@ export const STAFF_ACCESS: Record<AdminSection, { screen: string; functionality:
   },
   "class-types": {
     screen: "Class Types",
-    functionality: { VIEW: true, ADD: false, EDIT: false, DELETE: false },
+    functionality: { VIEW: true, ADD: false, EDIT: true, DELETE: false },
   },
   plans: {
     screen: "Plans",
