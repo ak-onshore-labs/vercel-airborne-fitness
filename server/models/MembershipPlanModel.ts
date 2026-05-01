@@ -8,6 +8,7 @@ const membershipPlanSchema = new mongoose.Schema<MembershipPlan & { _id: mongoos
     sessionsTotal: { type: Number, required: true },
     validityDays: { type: Number, required: true },
     price: { type: Number, required: true },
+    gstInclusive: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
   },
   { _id: true }

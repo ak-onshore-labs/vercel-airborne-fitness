@@ -21,9 +21,19 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { adminApiFetch, type ListResponse } from "../api";
 import { AdminTablePagination } from "../components/AdminTablePagination";
 import { useAdminPermissions } from "../useAdminPermissions";
+import { getStoredToken } from "@/lib/api";
 
 type MemberOption = { id: string; name?: string | null; mobile?: string };
-type PlanOption = { id: string; name: string; classTypeName: string; sessionsTotal: number; validityDays: number; price: number };
+type PlanOption = {
+  id: string;
+  name: string;
+  classTypeName: string;
+  sessionsTotal: number;
+  validityDays: number;
+  price: number;
+  gstInclusive?: boolean;
+  isActive: boolean;
+};
 type CreatedMember = { id: string; memberType: "Adult" | "Kid"; name?: string | null; email?: string | null };
 
 type MembershipItem = {
@@ -31,15 +41,18 @@ type MembershipItem = {
   memberId: string;
   membershipPlanId: string;
   sessionsRemaining: number;
+  startDate?: string | null;
   expiryDate: string;
   carryForward: number;
   extensionRequestedAt?: string | null;
   extensionApprovedAt?: string | null;
   extensionApplied: boolean;
   memberName?: string;
+  memberMobile?: string;
   planName?: string;
   classTypeName?: string;
 };
+type ClassTypeOption = { id: string; name: string };
 
 const ADMIN_MEMBERSHIP_GST_PERCENT = 5;
 
@@ -53,15 +66,25 @@ export default function AdminMemberships() {
   const { ADD } = useAdminPermissions("memberships");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
-  const [memberIdFilter, setMemberIdFilter] = useState("");
-  const [planIdFilter, setPlanIdFilter] = useState("");
   const [memberMobileFilter, setMemberMobileFilter] = useState("");
-  const [searchMemberId, setSearchMemberId] = useState("");
-  const [searchPlanId, setSearchPlanId] = useState("");
+  const [memberNameFilter, setMemberNameFilter] = useState("");
+  const [classTypeFilter, setClassTypeFilter] = useState("");
+  const [startDateFromFilter, setStartDateFromFilter] = useState("");
+  const [startDateToFilter, setStartDateToFilter] = useState("");
+  const [expiryDateFromFilter, setExpiryDateFromFilter] = useState("");
+  const [expiryDateToFilter, setExpiryDateToFilter] = useState("");
   const [searchMemberMobile, setSearchMemberMobile] = useState("");
+  const [searchMemberName, setSearchMemberName] = useState("");
+  const [searchClassType, setSearchClassType] = useState("");
+  const [searchStartDateFrom, setSearchStartDateFrom] = useState("");
+  const [searchStartDateTo, setSearchStartDateTo] = useState("");
+  const [searchExpiryDateFrom, setSearchExpiryDateFrom] = useState("");
+  const [searchExpiryDateTo, setSearchExpiryDateTo] = useState("");
   const [data, setData] = useState<ListResponse<MembershipItem> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [downloadLoading, setDownloadLoading] = useState(false);
+  const [classTypes, setClassTypes] = useState<ClassTypeOption[]>([]);
 
   const [addOpen, setAddOpen] = useState(false);
   const [members, setMembers] = useState<MemberOption[]>([]);
@@ -90,22 +113,55 @@ export default function AdminMemberships() {
   const [createMemberGender, setCreateMemberGender] = useState("");
   const createAdvanceTimeoutRef = useRef<number | null>(null);
 
+  const getAppliedParams = useCallback(
+    (includePagination: boolean) => {
+      const params = new URLSearchParams();
+      if (includePagination) {
+        params.set("page", String(page));
+        params.set("limit", String(limit));
+      }
+      if (searchMemberMobile) params.set("memberMobile", searchMemberMobile);
+      if (searchMemberName) params.set("memberName", searchMemberName);
+      if (searchClassType) params.set("classTypeName", searchClassType);
+      if (searchStartDateFrom) params.set("startDateFrom", searchStartDateFrom);
+      if (searchStartDateTo) params.set("startDateTo", searchStartDateTo);
+      if (searchExpiryDateFrom) params.set("expiryDateFrom", searchExpiryDateFrom);
+      if (searchExpiryDateTo) params.set("expiryDateTo", searchExpiryDateTo);
+      return params;
+    },
+    [
+      page,
+      limit,
+      searchMemberMobile,
+      searchMemberName,
+      searchClassType,
+      searchStartDateFrom,
+      searchStartDateTo,
+      searchExpiryDateFrom,
+      searchExpiryDateTo,
+    ]
+  );
+
   const fetchMemberships = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const params = new URLSearchParams({ page: String(page), limit: String(limit) });
-    if (searchMemberId) params.set("memberId", searchMemberId);
-    if (searchPlanId) params.set("membershipPlanId", searchPlanId);
-    if (searchMemberMobile) params.set("memberMobile", searchMemberMobile);
-    const res = await adminApiFetch<ListResponse<MembershipItem>>(`/api/admin/memberships?${params}`);
+    const params = getAppliedParams(true);
+    const res = await adminApiFetch<ListResponse<MembershipItem>>(`/api/admin/memberships?${params.toString()}`);
     if (res.ok) setData(res.data);
     else setError(res.message);
     setLoading(false);
-  }, [page, limit, searchMemberId, searchPlanId, searchMemberMobile]);
+  }, [getAppliedParams]);
 
   useEffect(() => {
     fetchMemberships();
   }, [fetchMemberships]);
+
+  useEffect(() => {
+    adminApiFetch<ListResponse<ClassTypeOption>>("/api/admin/class-types?limit=200").then((res) => {
+      if (!res.ok) return;
+      setClassTypes(res.data.items);
+    });
+  }, []);
 
   useEffect(() => {
     if (addOpen) {
@@ -117,7 +173,10 @@ export default function AdminMemberships() {
       setCreateMemberError(null);
       setCreateMemberSuccess(null);
       adminApiFetch<ListResponse<PlanOption>>("/api/admin/plans?limit=200").then((r) => {
-        if (r.ok) setPlans(r.data.items);
+        if (!r.ok) return;
+        const active = r.data.items.filter((p) => p.isActive === true);
+        setPlans(active);
+        setAddPlanId((prev) => (prev && !active.some((p) => p.id === prev) ? "" : prev));
       });
     }
   }, [addOpen]);
@@ -306,14 +365,54 @@ export default function AdminMemberships() {
   }, [addStep, planGroups]);
 
   const subtotal = selectedPlan?.price ?? 0;
-  const gst = subtotal * (ADMIN_MEMBERSHIP_GST_PERCENT / 100);
+  const gst =
+    selectedPlan && selectedPlan.gstInclusive === true
+      ? 0
+      : subtotal * (ADMIN_MEMBERSHIP_GST_PERCENT / 100);
   const total = subtotal + gst;
 
   const onSearch = () => {
-    setSearchMemberId(memberIdFilter.trim());
-    setSearchPlanId(planIdFilter.trim());
     setSearchMemberMobile(memberMobileFilter.trim());
+    setSearchMemberName(memberNameFilter.trim());
+    setSearchClassType(classTypeFilter.trim());
+    setSearchStartDateFrom(startDateFromFilter.trim());
+    setSearchStartDateTo(startDateToFilter.trim());
+    setSearchExpiryDateFrom(expiryDateFromFilter.trim());
+    setSearchExpiryDateTo(expiryDateToFilter.trim());
     setPage(1);
+  };
+
+  const onDownloadCsv = async () => {
+    setDownloadLoading(true);
+    try {
+      const token = getStoredToken();
+      const params = getAppliedParams(false);
+      const res = await fetch(`/api/admin/memberships/export.csv?${params.toString()}`, {
+        method: "GET",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        const msg = await res.text();
+        setError(msg || "CSV export failed");
+        return;
+      }
+      const blob = await res.blob();
+      const contentDisposition = res.headers.get("content-disposition") || "";
+      const filenameMatch = contentDisposition.match(/filename=\"([^\"]+)\"/);
+      const filename = filenameMatch?.[1] || "admin-memberships.csv";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "CSV export failed");
+    } finally {
+      setDownloadLoading(false);
+    }
   };
 
   const formatDate = (d: string) => {
@@ -332,16 +431,15 @@ export default function AdminMemberships() {
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold">Memberships</h1>
-        {ADD && <Button onClick={openAdd}>Create membership</Button>}
+        <div className="flex items-center gap-2">
+          <Button onClick={onDownloadCsv} disabled={downloadLoading}>
+            {downloadLoading ? "Downloading..." : "Download CSV"}
+          </Button>
+          {ADD && <Button onClick={openAdd}>Create membership</Button>}
+        </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Input
-          placeholder="Member ID"
-          value={memberIdFilter}
-          onChange={(e) => setMemberIdFilter(e.target.value)}
-          className="max-w-[200px]"
-        />
+      <div className="flex flex-wrap items-end gap-2">
         <Input
           placeholder="Member mobile"
           value={memberMobileFilter}
@@ -349,11 +447,77 @@ export default function AdminMemberships() {
           className="max-w-[180px]"
         />
         <Input
-          placeholder="Plan ID"
-          value={planIdFilter}
-          onChange={(e) => setPlanIdFilter(e.target.value)}
+          placeholder="Member name"
+          value={memberNameFilter}
+          onChange={(e) => setMemberNameFilter(e.target.value)}
           className="max-w-[200px]"
         />
+        <select
+          className="flex h-9 w-[200px] rounded-md border border-input bg-background px-3 py-1 text-sm"
+          value={classTypeFilter}
+          onChange={(e) => setClassTypeFilter(e.target.value)}
+        >
+          <option value="">All class types</option>
+          {classTypes.map((ct) => (
+            <option key={ct.id} value={ct.name}>
+              {ct.name}
+            </option>
+          ))}
+        </select>
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs text-muted-foreground">Start Date</Label>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1">
+              <Label className="text-xs text-muted-foreground min-w-9">From</Label>
+              <Input
+                type="date"
+                placeholder="From"
+                aria-label="Start Date From"
+                value={startDateFromFilter}
+                onChange={(e) => setStartDateFromFilter(e.target.value)}
+                className="w-[160px]"
+              />
+            </div>
+            <div className="flex items-center gap-1">
+              <Label className="text-xs text-muted-foreground min-w-5">To</Label>
+              <Input
+                type="date"
+                placeholder="To"
+                aria-label="Start Date To"
+                value={startDateToFilter}
+                onChange={(e) => setStartDateToFilter(e.target.value)}
+                className="w-[160px]"
+              />
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs text-muted-foreground">Expiry Date</Label>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1">
+              <Label className="text-xs text-muted-foreground min-w-9">From</Label>
+              <Input
+                type="date"
+                placeholder="From"
+                aria-label="Expiry Date From"
+                value={expiryDateFromFilter}
+                onChange={(e) => setExpiryDateFromFilter(e.target.value)}
+                className="w-[160px]"
+              />
+            </div>
+            <div className="flex items-center gap-1">
+              <Label className="text-xs text-muted-foreground min-w-5">To</Label>
+              <Input
+                type="date"
+                placeholder="To"
+                aria-label="Expiry Date To"
+                value={expiryDateToFilter}
+                onChange={(e) => setExpiryDateToFilter(e.target.value)}
+                className="w-[160px]"
+              />
+            </div>
+          </div>
+        </div>
         <Button onClick={onSearch}>Search</Button>
       </div>
 
@@ -709,10 +873,12 @@ export default function AdminMemberships() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Member</TableHead>
+              <TableHead>Member Name</TableHead>
+              <TableHead>Member Mobile</TableHead>
               <TableHead>Plan</TableHead>
               <TableHead>Class type</TableHead>
               <TableHead className="text-right">Sessions left</TableHead>
+              <TableHead>Start Date</TableHead>
               <TableHead>Expiry</TableHead>
               <TableHead>Extension</TableHead>
             </TableRow>
@@ -720,24 +886,19 @@ export default function AdminMemberships() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                   Loading…
                 </TableCell>
               </TableRow>
             ) : data?.items.length ? (
               data.items.map((m) => (
                 <TableRow key={m.id}>
-                  <TableCell>
-                    <span className="font-medium">{m.memberName ?? "—"}</span>
-                    {m.memberId && (
-                      <span className="block text-xs text-muted-foreground truncate max-w-[140px]" title={m.memberId}>
-                        {m.memberId}
-                      </span>
-                    )}
-                  </TableCell>
+                  <TableCell>{m.memberName ?? "—"}</TableCell>
+                  <TableCell>{m.memberMobile ?? "—"}</TableCell>
                   <TableCell>{m.planName ?? "—"}</TableCell>
                   <TableCell>{m.classTypeName ?? "—"}</TableCell>
                   <TableCell className="text-right">{m.sessionsRemaining}</TableCell>
+                  <TableCell>{m.startDate ? formatDate(m.startDate) : "—"}</TableCell>
                   <TableCell>{formatDate(m.expiryDate)}</TableCell>
                   <TableCell>
                     {m.extensionApplied
@@ -750,7 +911,7 @@ export default function AdminMemberships() {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                   No memberships found
                 </TableCell>
               </TableRow>

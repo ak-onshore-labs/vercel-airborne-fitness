@@ -3,12 +3,16 @@ import { storage } from "../storage.js";
 import type { AdminTransactionsFilters } from "../storage.js";
 import { asyncHandler, requireAdmin, requireAdminOnly } from "../middleware.js";
 import { MembershipPlanModel } from "../models/index.js";
+import { GST_PERCENT, computePlanPricing } from "../lib/pricing.js";
 import { isMembershipBookable } from "../../shared/membershipState.js";
 import { calendarDateInIST, computeMembershipExpiryExclusiveEnd, parseMembershipStartDateFromInput } from "../../shared/membershipDates.js";
+import { isEligibleForGenderRestriction, resolveMemberGenderForRestriction } from "../lib/genderEligibility.js";
+import type { UpcomingScheduleSlotBookingPreviewItem } from "../storage.js";
 
 const requireAdminAsync = asyncHandler(requireAdmin);
 const requireAdminOnlyAsync = asyncHandler(requireAdminOnly);
-const ADMIN_MEMBERSHIP_GST_PERCENT = 5;
+const SCHEDULE_GENDER_RESTRICTIONS = new Set(["NONE", "FEMALE_ONLY"]);
+const PROFILE_GENDERS = new Set(["Male", "Female", "Other", "Prefer not to say"]);
 
 /** Find a membership for this member that matches the slot's class type. Only active memberships (expiry in future, sessions > 0). */
 async function findMembershipForSlot(memberId: string, scheduleId: string): Promise<{ id: string; sessionsRemaining: number } | null> {
@@ -68,6 +72,44 @@ async function findMembershipForSlotForRestore(
   });
   const m = matching[0];
   return m ? { id: m.id, sessionsRemaining: m.sessionsRemaining } : null;
+}
+
+async function isMemberEligibleForSlot(memberId: string, scheduleId: string): Promise<boolean> {
+  const slot = await storage.getScheduleSlot(scheduleId);
+  if (!slot) return false;
+  const resolvedGender = await resolveMemberGenderForRestriction(memberId);
+  return isEligibleForGenderRestriction(slot.genderRestriction, resolvedGender);
+}
+
+async function promoteWaitlistForSession(scheduleId: string, sessionDate: string): Promise<void> {
+  const sessionBookings = await storage.getBookingsForSession(scheduleId, sessionDate);
+  const waitlistOrdered = sessionBookings
+    .filter((b) => b.status === "WAITLIST")
+    .sort((a, b) => (a.waitlistPosition ?? 999) - (b.waitlistPosition ?? 999));
+
+  let promotedBookingId: string | null = null;
+  for (const candidate of waitlistOrdered) {
+    const eligibleByGender = await isMemberEligibleForSlot(candidate.memberId, scheduleId);
+    if (!eligibleByGender) {
+      await storage.updateBookingStatus(candidate.id, "CANCELLED", null);
+      continue;
+    }
+    const membership = await findMembershipForSlot(candidate.memberId, scheduleId);
+    if (!membership || membership.sessionsRemaining <= 0) continue;
+    const ok = await storage.decrementMembershipSessionsIfPositive(membership.id);
+    if (!ok) continue;
+    await storage.updateBookingStatus(candidate.id, "BOOKED", null);
+    promotedBookingId = candidate.id;
+    break;
+  }
+
+  const latest = await storage.getBookingsForSession(scheduleId, sessionDate);
+  const waitlistToRenumber = latest
+    .filter((b) => b.status === "WAITLIST" && b.id !== promotedBookingId)
+    .sort((a, b) => (a.waitlistPosition ?? 999) - (b.waitlistPosition ?? 999));
+  for (let i = 0; i < waitlistToRenumber.length; i++) {
+    await storage.updateBookingStatus(waitlistToRenumber[i].id, "WAITLIST", i + 1);
+  }
 }
 
 function parseIntParam(v: unknown, def: number): number {
@@ -209,6 +251,8 @@ export function registerAdminRoutes(app: Express): void {
       const endHour = typeof body.endHour === "number" ? body.endHour : typeof body.endHour === "string" ? parseInt(String(body.endHour), 10) : NaN;
       const endMinute = typeof body.endMinute === "number" ? body.endMinute : typeof body.endMinute === "string" ? parseInt(String(body.endMinute), 10) : 0;
       const capacity = typeof body.capacity === "number" ? body.capacity : typeof body.capacity === "string" ? parseInt(String(body.capacity), 10) : NaN;
+      const genderRestrictionRaw = typeof body.genderRestriction === "string" ? body.genderRestriction.trim().toUpperCase() : "NONE";
+      const genderRestriction = SCHEDULE_GENDER_RESTRICTIONS.has(genderRestrictionRaw) ? genderRestrictionRaw : null;
 
       if (!classTypeId) {
         res.status(400).json({ message: "Class type is required" });
@@ -240,6 +284,10 @@ export function registerAdminRoutes(app: Express): void {
         res.status(400).json({ message: "Capacity must be between 1 and 999" });
         return;
       }
+      if (!genderRestriction) {
+        res.status(400).json({ message: "genderRestriction must be NONE or FEMALE_ONLY" });
+        return;
+      }
 
       const overlapping = await storage.findOverlappingScheduleSlots({
         classTypeId,
@@ -267,6 +315,7 @@ export function registerAdminRoutes(app: Express): void {
         endMinute: Number.isFinite(endMinute) ? endMinute : 0,
         capacity,
         isActive: true,
+        genderRestriction: genderRestriction as "NONE" | "FEMALE_ONLY",
       });
       res.status(201).json(slot);
     })
@@ -337,6 +386,7 @@ export function registerAdminRoutes(app: Express): void {
       const sessionsTotal = typeof body.sessionsTotal === "number" ? body.sessionsTotal : typeof body.sessionsTotal === "string" ? parseInt(String(body.sessionsTotal), 10) : 0;
       const validityDays = typeof body.validityDays === "number" ? body.validityDays : typeof body.validityDays === "string" ? parseInt(String(body.validityDays), 10) : 0;
       const price = typeof body.price === "number" ? body.price : typeof body.price === "string" ? parseFloat(String(body.price)) : 0;
+      const gstInclusive = typeof body.gstInclusive === "boolean" ? body.gstInclusive : false;
       if (!classTypeId || !name) {
         res.status(400).json({ message: "Class type and plan name are required" });
         return;
@@ -345,7 +395,7 @@ export function registerAdminRoutes(app: Express): void {
         res.status(400).json({ message: "Sessions, validity days and price must be valid positive numbers" });
         return;
       }
-      const plan = await storage.createMembershipPlan({ classTypeId, name, sessionsTotal, validityDays, price, isActive: true });
+      const plan = await storage.createMembershipPlan({ classTypeId, name, sessionsTotal, validityDays, price, gstInclusive, isActive: true });
       res.status(201).json(plan);
     })
   );
@@ -395,7 +445,8 @@ export function registerAdminRoutes(app: Express): void {
       const memberName = typeof body.memberName === "string" ? body.memberName.trim() || null : null;
       const memberEmail = typeof body.memberEmail === "string" ? body.memberEmail.trim() || null : null;
       const memberDob = typeof body.memberDob === "string" ? body.memberDob.trim() || null : null;
-      const memberGender = typeof body.memberGender === "string" ? body.memberGender.trim() || null : null;
+      const memberGenderRaw = typeof body.memberGender === "string" ? body.memberGender.trim() : "";
+      const memberGender = memberGenderRaw ? memberGenderRaw : null;
 
       if (!name) {
         res.status(400).json({ message: "Name is required" });
@@ -407,6 +458,14 @@ export function registerAdminRoutes(app: Express): void {
       }
       if (mobile.length < 10) {
         res.status(400).json({ message: "Valid phone number required (at least 10 digits)" });
+        return;
+      }
+      if (userRole !== "MEMBER") {
+        res.status(400).json({ message: "Admin/Staff users must be created from Admin Users. Members endpoint accepts only MEMBER role." });
+        return;
+      }
+      if (memberGender && !PROFILE_GENDERS.has(memberGender)) {
+        res.status(400).json({ message: "Kid gender must be Male, Female, Other, or Prefer not to say" });
         return;
       }
       const existingUser = await storage.getUserByMobile(mobile);
@@ -422,7 +481,7 @@ export function registerAdminRoutes(app: Express): void {
         name: memberName ?? (memberType === "Adult" ? name : null),
         email: memberEmail,
         dob: memberDob,
-        gender: memberGender,
+        gender: memberGender as "Male" | "Female" | "Other" | "Prefer not to say" | null,
       });
       res.status(201).json(member);
     })
@@ -455,11 +514,79 @@ export function registerAdminRoutes(app: Express): void {
     asyncHandler(async (req: Request, res: Response) => {
       const page = parseIntParam(req.query.page, 1);
       const limit = Math.min(parseIntParam(req.query.limit, 10), 100);
-      const memberId = typeof req.query.memberId === "string" ? req.query.memberId : undefined;
-      const membershipPlanId = typeof req.query.membershipPlanId === "string" ? req.query.membershipPlanId : undefined;
+      const memberName = typeof req.query.memberName === "string" ? req.query.memberName : undefined;
       const memberMobile = typeof req.query.memberMobile === "string" ? req.query.memberMobile : undefined;
-      const result = await storage.listMemberships({ page, limit, memberId, membershipPlanId, memberMobile });
+      const classTypeName = typeof req.query.classTypeName === "string" ? req.query.classTypeName : undefined;
+      const startDateFrom = typeof req.query.startDateFrom === "string" ? req.query.startDateFrom : undefined;
+      const startDateTo = typeof req.query.startDateTo === "string" ? req.query.startDateTo : undefined;
+      const expiryDateFrom = typeof req.query.expiryDateFrom === "string" ? req.query.expiryDateFrom : undefined;
+      const expiryDateTo = typeof req.query.expiryDateTo === "string" ? req.query.expiryDateTo : undefined;
+      const result = await storage.listMemberships({
+        page,
+        limit,
+        memberName,
+        memberMobile,
+        classTypeName,
+        startDateFrom,
+        startDateTo,
+        expiryDateFrom,
+        expiryDateTo,
+      });
       res.json(result);
+    })
+  );
+
+  app.get(
+    "/api/admin/memberships/export.csv",
+    requireAdminAsync,
+    asyncHandler(async (req: Request, res: Response) => {
+      const memberName = typeof req.query.memberName === "string" ? req.query.memberName : undefined;
+      const memberMobile = typeof req.query.memberMobile === "string" ? req.query.memberMobile : undefined;
+      const classTypeName = typeof req.query.classTypeName === "string" ? req.query.classTypeName : undefined;
+      const startDateFrom = typeof req.query.startDateFrom === "string" ? req.query.startDateFrom : undefined;
+      const startDateTo = typeof req.query.startDateTo === "string" ? req.query.startDateTo : undefined;
+      const expiryDateFrom = typeof req.query.expiryDateFrom === "string" ? req.query.expiryDateFrom : undefined;
+      const expiryDateTo = typeof req.query.expiryDateTo === "string" ? req.query.expiryDateTo : undefined;
+
+      const rows = await storage.listMembershipsForExport({
+        memberName,
+        memberMobile,
+        classTypeName,
+        startDateFrom,
+        startDateTo,
+        expiryDateFrom,
+        expiryDateTo,
+      });
+      const headers = [
+        "Member Name",
+        "Member Mobile",
+        "Plan",
+        "Class type",
+        "Sessions left",
+        "Start Date",
+        "Expiry",
+        "Extension",
+      ];
+      const lines = [headers.join(",")];
+      for (const row of rows) {
+        lines.push(
+          [
+            row.memberName,
+            row.memberMobile,
+            row.planName,
+            row.classTypeName,
+            row.sessionsRemaining,
+            row.startDate,
+            row.expiryDate,
+            row.extension,
+          ].map((x) => csvCell(x ?? "—")).join(",")
+        );
+      }
+      const csv = `${lines.join("\n")}\n`;
+      const filename = `memberships-${new Date().toISOString().slice(0, 10)}.csv`;
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.status(200).send(csv);
     })
   );
 
@@ -552,6 +679,10 @@ export function registerAdminRoutes(app: Express): void {
         res.status(404).json({ message: "Membership plan not found" });
         return;
       }
+      if ((planDoc as { isActive?: boolean }).isActive === false) {
+        res.status(400).json({ message: "Cannot create membership for an inactive plan" });
+        return;
+      }
 
       const sessionsTotal = sessionsOverride ?? planDoc.sessionsTotal ?? 1;
       const validityDays = validityDaysOverride ?? planDoc.validityDays ?? 30;
@@ -576,11 +707,15 @@ export function registerAdminRoutes(app: Express): void {
 
       // Optional: record a cash transaction for admin-created memberships
       if (paymentMode.toLowerCase() === "cash") {
-        const subtotalInr = typeof (planDoc as any).price === "number" ? (planDoc as any).price : 0;
-        const gstPercent = ADMIN_MEMBERSHIP_GST_PERCENT;
-        const gstInr = subtotalInr * (gstPercent / 100);
-        const totalInr = subtotalInr + gstInr;
+        const rowPricing = computePlanPricing({
+          price: typeof (planDoc as any).price === "number" ? (planDoc as any).price : 0,
+          gstInclusive: (planDoc as any).gstInclusive === true,
+        });
+        const subtotalInr = rowPricing.subtotalInr;
+        const gstInr = rowPricing.gstInr;
+        const totalInr = rowPricing.totalInr;
         const totalPaise = Math.round(totalInr * 100);
+        const gstPercent = (planDoc as any).gstInclusive === true ? 0 : GST_PERCENT;
         const idSuffix = String(membership.id).slice(-8);
         const receipt = `cash_${idSuffix}`.slice(0, 40);
         const orderId = `cash_${membership.id}`;
@@ -619,11 +754,77 @@ export function registerAdminRoutes(app: Express): void {
       const page = parseIntParam(req.query.page, 1);
       const limit = Math.min(parseIntParam(req.query.limit, 10), 100);
       const sessionDate = typeof req.query.sessionDate === "string" ? req.query.sessionDate : undefined;
+      const dateFrom = typeof req.query.dateFrom === "string" ? req.query.dateFrom : undefined;
+      const dateTo = typeof req.query.dateTo === "string" ? req.query.dateTo : undefined;
       const memberMobile = typeof req.query.memberMobile === "string" ? req.query.memberMobile : undefined;
+      const memberName = typeof req.query.memberName === "string" ? req.query.memberName : undefined;
       const scheduleId = typeof req.query.scheduleId === "string" ? req.query.scheduleId : undefined;
       const classTypeName = typeof req.query.classTypeName === "string" ? req.query.classTypeName : undefined;
-      const result = await storage.listBookings({ page, limit, sessionDate, memberMobile, scheduleId, classTypeName });
+      const branch = typeof req.query.branch === "string" ? req.query.branch : undefined;
+      if (dateFrom && dateTo && dateFrom > dateTo) {
+        res.status(400).json({ message: "dateFrom cannot be after dateTo" });
+        return;
+      }
+      const result = await storage.listBookings({
+        page,
+        limit,
+        sessionDate,
+        dateFrom,
+        dateTo,
+        memberMobile,
+        memberName,
+        scheduleId,
+        classTypeName,
+        branch,
+      });
       res.json(result);
+    })
+  );
+
+  app.get(
+    "/api/admin/bookings/export.csv",
+    requireAdminAsync,
+    asyncHandler(async (req: Request, res: Response) => {
+      const dateFrom = typeof req.query.dateFrom === "string" ? req.query.dateFrom : undefined;
+      const dateTo = typeof req.query.dateTo === "string" ? req.query.dateTo : undefined;
+      const memberMobile = typeof req.query.memberMobile === "string" ? req.query.memberMobile : undefined;
+      const memberName = typeof req.query.memberName === "string" ? req.query.memberName : undefined;
+      const classTypeName = typeof req.query.classTypeName === "string" ? req.query.classTypeName : undefined;
+      const branch = typeof req.query.branch === "string" ? req.query.branch : undefined;
+
+      if (dateFrom && dateTo && dateFrom > dateTo) {
+        res.status(400).send("dateFrom cannot be after dateTo");
+        return;
+      }
+
+      const rows = await storage.listBookingsForExport({
+        dateFrom,
+        dateTo,
+        memberMobile,
+        memberName,
+        classTypeName,
+        branch,
+      });
+      const headers = ["Date", "Time", "Member Name", "Member mobile", "Class type", "Branch", "Status"];
+      const lines = [headers.join(",")];
+      for (const row of rows) {
+        lines.push(
+          [
+            row.date,
+            row.time,
+            row.memberName,
+            row.memberMobile,
+            row.classTypeName,
+            row.branch,
+            row.status,
+          ].map((x) => csvCell(x ?? "—")).join(",")
+        );
+      }
+      const csv = `${lines.join("\n")}\n`;
+      const filename = `bookings-${new Date().toISOString().slice(0, 10)}.csv`;
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.status(200).send(csv);
     })
   );
 
@@ -650,6 +851,12 @@ export function registerAdminRoutes(app: Express): void {
       const slot = await storage.getScheduleSlot(scheduleId);
       if (!slot) {
         res.status(400).json({ message: "Invalid schedule slot" });
+        return;
+      }
+
+      const resolvedGender = await resolveMemberGenderForRestriction(memberId);
+      if (!isEligibleForGenderRestriction(slot.genderRestriction, resolvedGender)) {
+        res.status(400).json({ message: "Selected member is not eligible for this female-only session." });
         return;
       }
 
@@ -728,27 +935,16 @@ export function registerAdminRoutes(app: Express): void {
         }
       }
 
-      const sessionBookings = await storage.getBookingsForSession(booking.scheduleId, booking.sessionDate);
-      const waitlistOrdered = sessionBookings
-        .filter((b) => b.status === "WAITLIST")
-        .sort((a, b) => (a.waitlistPosition ?? 999) - (b.waitlistPosition ?? 999));
-
-      let promoted = false;
-      if (currentStatus === "BOOKED" && waitlistOrdered.length > 0) {
-        const first = waitlistOrdered[0];
-        const firstMembership = await findMembershipForSlot(first.memberId, booking.scheduleId);
-        if (firstMembership && firstMembership.sessionsRemaining > 0) {
-          const ok = await storage.decrementMembershipSessionsIfPositive(firstMembership.id);
-          if (ok) {
-            await storage.updateBookingStatus(first.id, "BOOKED", null);
-            promoted = true;
-          }
+      if (currentStatus === "BOOKED") {
+        await promoteWaitlistForSession(booking.scheduleId, booking.sessionDate);
+      } else {
+        const sessionBookings = await storage.getBookingsForSession(booking.scheduleId, booking.sessionDate);
+        const waitlistOrdered = sessionBookings
+          .filter((b) => b.status === "WAITLIST")
+          .sort((a, b) => (a.waitlistPosition ?? 999) - (b.waitlistPosition ?? 999));
+        for (let i = 0; i < waitlistOrdered.length; i++) {
+          await storage.updateBookingStatus(waitlistOrdered[i].id, "WAITLIST", i + 1);
         }
-      }
-
-      const waitlistToRenumber = promoted ? waitlistOrdered.slice(1) : waitlistOrdered;
-      for (let i = 0; i < waitlistToRenumber.length; i++) {
-        await storage.updateBookingStatus(waitlistToRenumber[i].id, "WAITLIST", i + 1);
       }
 
       res.json({ ok: true });
@@ -904,6 +1100,7 @@ export function registerAdminRoutes(app: Express): void {
       if (typeof body.sessionsTotal === "number") data.sessionsTotal = body.sessionsTotal;
       if (typeof body.validityDays === "number") data.validityDays = body.validityDays;
       if (typeof body.price === "number") data.price = body.price;
+      if (typeof body.gstInclusive === "boolean") data.gstInclusive = body.gstInclusive;
       if (typeof body.isActive === "boolean") data.isActive = body.isActive;
       const updated = await storage.updateMembershipPlan(id, data as Parameters<typeof storage.updateMembershipPlan>[1]);
       if (!updated) {
@@ -920,22 +1117,83 @@ export function registerAdminRoutes(app: Express): void {
     asyncHandler(async (req: Request, res: Response) => {
       const { id } = req.params;
       const body = req.body as Record<string, unknown>;
+      const disallowedFields = ["branch", "dayOfWeek", "startHour", "startMinute", "endHour", "endMinute", "classTypeId", "notes"];
+      const attemptedDeferredFields = disallowedFields.filter((field) => Object.prototype.hasOwnProperty.call(body, field));
+      if (attemptedDeferredFields.length > 0) {
+        res.status(400).json({
+          message: `These fields are not editable in this phase: ${attemptedDeferredFields.join(", ")}`,
+        });
+        return;
+      }
+
+      const slot = await storage.getScheduleSlot(id);
+      if (!slot) {
+        res.status(404).json({ message: "Schedule slot not found" });
+        return;
+      }
+
       const data: Record<string, unknown> = {};
-      if (typeof body.branch === "string") data.branch = body.branch;
-      if (typeof body.dayOfWeek === "number") data.dayOfWeek = body.dayOfWeek;
-      if (typeof body.startHour === "number") data.startHour = body.startHour;
-      if (typeof body.startMinute === "number") data.startMinute = body.startMinute;
-      if (typeof body.endHour === "number") data.endHour = body.endHour;
-      if (typeof body.endMinute === "number") data.endMinute = body.endMinute;
-      if (typeof body.capacity === "number") data.capacity = body.capacity;
+      if (typeof body.capacity === "number") {
+        const capacity = body.capacity;
+        if (!Number.isFinite(capacity) || capacity < 1 || capacity > 999) {
+          res.status(400).json({ message: "Capacity must be between 1 and 999" });
+          return;
+        }
+        const today = calendarDateInIST(new Date());
+        const preview = await storage.getUpcomingBookingsPreviewForScheduleSlot(id, today, 1);
+        if (capacity < preview.summary.confirmedCount) {
+          res.status(409).json({
+            message: `Cannot reduce capacity below current future confirmed bookings (${preview.summary.confirmedCount}).`,
+          });
+          return;
+        }
+        data.capacity = capacity;
+      }
       if (typeof body.isActive === "boolean") data.isActive = body.isActive;
-      if (body.notes !== undefined) data.notes = body.notes === null ? null : body.notes;
+      if (typeof body.genderRestriction === "string") {
+        const normalized = body.genderRestriction.trim().toUpperCase();
+        if (!SCHEDULE_GENDER_RESTRICTIONS.has(normalized)) {
+          res.status(400).json({ message: "genderRestriction must be NONE or FEMALE_ONLY" });
+          return;
+        }
+        if (slot.genderRestriction !== "FEMALE_ONLY" && normalized === "FEMALE_ONLY") {
+          const today = calendarDateInIST(new Date());
+          const preview = await storage.getUpcomingBookingsPreviewForScheduleSlot(id, today, 1000);
+          const upcomingConfirmed = preview.items.filter((b: UpcomingScheduleSlotBookingPreviewItem) => b.status === "BOOKED");
+          for (const booking of upcomingConfirmed) {
+            const resolvedGender = await resolveMemberGenderForRestriction(booking.memberId);
+            if (!isEligibleForGenderRestriction("FEMALE_ONLY", resolvedGender)) {
+              res.status(409).json({
+                message: "Cannot switch to Female only because some future confirmed bookings are not eligible.",
+              });
+              return;
+            }
+          }
+        }
+        data.genderRestriction = normalized;
+      }
       const updated = await storage.updateScheduleSlot(id, data as Parameters<typeof storage.updateScheduleSlot>[1]);
       if (!updated) {
         res.status(404).json({ message: "Schedule slot not found" });
         return;
       }
       res.json(updated);
+    })
+  );
+
+  app.get(
+    "/api/admin/schedule-slots/:id/upcoming-bookings",
+    requireAdminAsync,
+    asyncHandler(async (req: Request, res: Response) => {
+      const { id } = req.params;
+      const slot = await storage.getScheduleSlot(id);
+      if (!slot) {
+        res.status(404).json({ message: "Schedule slot not found" });
+        return;
+      }
+      const today = calendarDateInIST(new Date());
+      const preview = await storage.getUpcomingBookingsPreviewForScheduleSlot(id, today, 10);
+      res.json(preview);
     })
   );
 }

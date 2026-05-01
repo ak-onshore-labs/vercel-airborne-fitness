@@ -5,7 +5,10 @@ import { asyncHandler } from "../middleware.js";
 export function registerMembershipPlansRoutes(app: Express): void {
   app.get("/api/membership-plans", asyncHandler(async (req: Request, res: Response) => {
     const classTypeId = req.query.classTypeId as string;
-    if (!classTypeId) return res.status(400).json({ message: "classTypeId required" });
+    if (!classTypeId) {
+      res.status(400).json({ message: "classTypeId required" });
+      return;
+    }
     const plans = await storage.getMembershipPlansByClassType(classTypeId);
     res.json(plans);
   }));
@@ -13,7 +16,7 @@ export function registerMembershipPlansRoutes(app: Express): void {
   // Legacy: all plans grouped by class name
   app.get("/api/plans", asyncHandler(async (_req: Request, res: Response) => {
     const grouped = await storage.getMembershipPlansGroupedByClassType();
-    const out: Record<string, Array<{ id: string; name: string; sessions: number; price: number; validityDays: number }>> = {};
+    const out: Record<string, Array<{ id: string; name: string; sessions: number; price: number; validityDays: number; gstInclusive: boolean }>> = {};
     for (const [className, plans] of Object.entries(grouped)) {
       out[className] = plans.map((p) => ({
         id: p.id,
@@ -21,6 +24,7 @@ export function registerMembershipPlansRoutes(app: Express): void {
         sessions: p.sessions,
         price: p.price,
         validityDays: p.validityDays,
+        gstInclusive: p.gstInclusive === true,
       }));
     }
     res.json(out);
