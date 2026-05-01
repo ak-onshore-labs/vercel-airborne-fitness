@@ -76,6 +76,7 @@ interface MembershipPlan {
   sessions: number;
   price: number;
   validityDays?: number;
+  gstInclusive?: boolean;
 }
 
 function StrengthIcons({ level }: { level: number }) {
@@ -679,7 +680,10 @@ const Waiver = ({ onNext, onBack, data, onChange }: any) => {
 
 const Payment = ({ onBack, onPay, plans, loading, loadingError }: any) => {
   const subtotal = plans.reduce((sum: number, item: any) => sum + item.plan.price, 0);
-  const tax = subtotal * 0.05;
+  const tax = plans.reduce((sum: number, item: any) => {
+    if (item.plan.gstInclusive === true) return sum;
+    return sum + item.plan.price * 0.05;
+  }, 0);
   const total = subtotal + tax;
   const amountPaise = Math.round(total * 100);
   return (

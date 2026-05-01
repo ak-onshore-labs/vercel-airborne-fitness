@@ -3,13 +3,13 @@ import { storage } from "../storage";
 import type { AdminTransactionsFilters, UpcomingScheduleSlotBookingPreviewItem } from "../storage";
 import { asyncHandler, requireAdmin, requireAdminOnly } from "../middleware";
 import { MembershipPlanModel } from "../models";
+import { GST_PERCENT, computePlanPricing } from "../lib/pricing";
 import { isMembershipBookable } from "@shared/membershipState";
 import { calendarDateInIST, computeMembershipExpiryExclusiveEnd, parseMembershipStartDateFromInput } from "@shared/membershipDates";
 import { isEligibleForGenderRestriction, resolveMemberGenderForRestriction } from "../lib/genderEligibility";
 
 const requireAdminAsync = asyncHandler(requireAdmin);
 const requireAdminOnlyAsync = asyncHandler(requireAdminOnly);
-const ADMIN_MEMBERSHIP_GST_PERCENT = 5;
 const SCHEDULE_GENDER_RESTRICTIONS = new Set(["NONE", "FEMALE_ONLY"]);
 const PROFILE_GENDERS = new Set(["Male", "Female", "Other", "Prefer not to say"]);
 
@@ -385,6 +385,7 @@ export function registerAdminRoutes(app: Express): void {
       const sessionsTotal = typeof body.sessionsTotal === "number" ? body.sessionsTotal : typeof body.sessionsTotal === "string" ? parseInt(String(body.sessionsTotal), 10) : 0;
       const validityDays = typeof body.validityDays === "number" ? body.validityDays : typeof body.validityDays === "string" ? parseInt(String(body.validityDays), 10) : 0;
       const price = typeof body.price === "number" ? body.price : typeof body.price === "string" ? parseFloat(String(body.price)) : 0;
+      const gstInclusive = typeof body.gstInclusive === "boolean" ? body.gstInclusive : false;
       if (!classTypeId || !name) {
         res.status(400).json({ message: "Class type and plan name are required" });
         return;
@@ -393,7 +394,7 @@ export function registerAdminRoutes(app: Express): void {
         res.status(400).json({ message: "Sessions, validity days and price must be valid positive numbers" });
         return;
       }
-      const plan = await storage.createMembershipPlan({ classTypeId, name, sessionsTotal, validityDays, price, isActive: true });
+      const plan = await storage.createMembershipPlan({ classTypeId, name, sessionsTotal, validityDays, price, gstInclusive, isActive: true });
       res.status(201).json(plan);
     })
   );
@@ -705,11 +706,15 @@ export function registerAdminRoutes(app: Express): void {
 
       // Optional: record a cash transaction for admin-created memberships
       if (paymentMode.toLowerCase() === "cash") {
-        const subtotalInr = typeof (planDoc as any).price === "number" ? (planDoc as any).price : 0;
-        const gstPercent = ADMIN_MEMBERSHIP_GST_PERCENT;
-        const gstInr = subtotalInr * (gstPercent / 100);
-        const totalInr = subtotalInr + gstInr;
+        const rowPricing = computePlanPricing({
+          price: typeof (planDoc as any).price === "number" ? (planDoc as any).price : 0,
+          gstInclusive: (planDoc as any).gstInclusive === true,
+        });
+        const subtotalInr = rowPricing.subtotalInr;
+        const gstInr = rowPricing.gstInr;
+        const totalInr = rowPricing.totalInr;
         const totalPaise = Math.round(totalInr * 100);
+        const gstPercent = (planDoc as any).gstInclusive === true ? 0 : GST_PERCENT;
         const idSuffix = String(membership.id).slice(-8);
         const receipt = `cash_${idSuffix}`.slice(0, 40);
         const orderId = `cash_${membership.id}`;
@@ -1094,6 +1099,7 @@ export function registerAdminRoutes(app: Express): void {
       if (typeof body.sessionsTotal === "number") data.sessionsTotal = body.sessionsTotal;
       if (typeof body.validityDays === "number") data.validityDays = body.validityDays;
       if (typeof body.price === "number") data.price = body.price;
+      if (typeof body.gstInclusive === "boolean") data.gstInclusive = body.gstInclusive;
       if (typeof body.isActive === "boolean") data.isActive = body.isActive;
       const updated = await storage.updateMembershipPlan(id, data as Parameters<typeof storage.updateMembershipPlan>[1]);
       if (!updated) {

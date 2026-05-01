@@ -54,6 +54,7 @@ export interface MembershipPlan {
   sessionsTotal: number;
   validityDays: number;
   price: number;
+  gstInclusive: boolean;
   isActive: boolean;
 }
 

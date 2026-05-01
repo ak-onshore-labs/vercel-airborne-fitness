@@ -34,7 +34,7 @@ export interface UserProfile {
 
 export interface SelectedPlan {
   category: string;
-  plan: { id: string; name: string; sessions: number; price: number; validityDays?: number };
+  plan: { id: string; name: string; sessions: number; price: number; validityDays?: number; gstInclusive?: boolean };
 }
 
 export type BookingStatus = "BOOKED" | "CANCELLED" | "ATTENDED" | "ABSENT" | "WAITLIST";

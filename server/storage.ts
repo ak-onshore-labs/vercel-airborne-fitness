@@ -162,8 +162,8 @@ export interface IStorage {
 
   getClassTypes(): Promise<Array<{ id: string; name: string; ageGroup: string; strengthLevel: number; infoBullets: string[]; isActive: boolean }>>;
   createClassType(item: InsertClassType): Promise<ClassType>;
-  getMembershipPlansGroupedByClassType(): Promise<Record<string, Array<{ id: string; name: string; sessions: number; price: number; validityDays: number }>>>;
-  getMembershipPlansByClassType(classTypeId: string): Promise<Array<{ id: string; name: string; sessions: number; price: number; validityDays: number }>>;
+  getMembershipPlansGroupedByClassType(): Promise<Record<string, Array<{ id: string; name: string; sessions: number; price: number; validityDays: number; gstInclusive: boolean }>>>;
+  getMembershipPlansByClassType(classTypeId: string): Promise<Array<{ id: string; name: string; sessions: number; price: number; validityDays: number; gstInclusive: boolean }>>;
   createMembershipPlan(plan: InsertMembershipPlan): Promise<MembershipPlan>;
   getSchedule(): Promise<ScheduleSlotWithCategory[]>;
   getScheduleForBranchAndDate(branch: string, date: string): Promise<Array<{ scheduleId: string; sessionDate: string; classId: string; category: string; branch: string; startTime: string; endTime: string; capacity: number; genderRestriction: "NONE" | "FEMALE_ONLY" }>>;
@@ -180,7 +180,7 @@ export interface IStorage {
     excludeId?: string;
   }): Promise<ScheduleSlot[]>;
   updateClassType(id: string, data: Partial<Pick<ClassType, "name" | "ageGroup" | "strengthLevel" | "infoBullets" | "isActive">>): Promise<ClassType | undefined>;
-  updateMembershipPlan(id: string, data: Partial<Pick<MembershipPlan, "name" | "sessionsTotal" | "validityDays" | "price" | "isActive">>): Promise<MembershipPlan | undefined>;
+  updateMembershipPlan(id: string, data: Partial<Pick<MembershipPlan, "name" | "sessionsTotal" | "validityDays" | "price" | "gstInclusive" | "isActive">>): Promise<MembershipPlan | undefined>;
   updateScheduleSlot(id: string, data: Partial<Pick<ScheduleSlot, "branch" | "dayOfWeek" | "startHour" | "startMinute" | "endHour" | "endMinute" | "capacity" | "isActive" | "genderRestriction" | "notes">>): Promise<ScheduleSlot | undefined>;
 
   getBookingsForMember(memberId: string): Promise<BookingRecord[]>;
@@ -577,13 +577,13 @@ export class MongoStorage implements IStorage {
     return toApi<ClassType>(doc)!;
   }
 
-  async getMembershipPlansGroupedByClassType(): Promise<Record<string, Array<{ id: string; name: string; sessions: number; price: number; validityDays: number }>>> {
+  async getMembershipPlansGroupedByClassType(): Promise<Record<string, Array<{ id: string; name: string; sessions: number; price: number; validityDays: number; gstInclusive: boolean }>>> {
     const planDocs = await MembershipPlanModel.find({ isActive: true });
     const plans = toApiList<MembershipPlan>(planDocs);
     const types = await ClassTypeModel.find({ isActive: true });
     const typeNames: Record<string, string> = {};
     for (const t of types) typeNames[(t as any)._id.toString()] = t.name;
-    const out: Record<string, Array<{ id: string; name: string; sessions: number; price: number; validityDays: number }>> = {};
+    const out: Record<string, Array<{ id: string; name: string; sessions: number; price: number; validityDays: number; gstInclusive: boolean }>> = {};
     for (const p of plans) {
       const name = typeNames[p.classTypeId] ?? p.classTypeId;
       if (!out[name]) out[name] = [];
@@ -593,6 +593,7 @@ export class MongoStorage implements IStorage {
         sessions: p.sessionsTotal,
         price: p.price,
         validityDays: p.validityDays,
+        gstInclusive: p.gstInclusive === true,
       });
     }
     for (const name of Object.keys(out)) {
@@ -601,7 +602,7 @@ export class MongoStorage implements IStorage {
     return out;
   }
 
-  async getMembershipPlansByClassType(classTypeId: string): Promise<Array<{ id: string; name: string; sessions: number; price: number; validityDays: number }>> {
+  async getMembershipPlansByClassType(classTypeId: string): Promise<Array<{ id: string; name: string; sessions: number; price: number; validityDays: number; gstInclusive: boolean }>> {
     const plans = await MembershipPlanModel.find({ classTypeId, isActive: true }).sort({ price: 1 });
     return toApiList<MembershipPlan>(plans).map((p) => ({
       id: p.id,
@@ -609,6 +610,7 @@ export class MongoStorage implements IStorage {
       sessions: p.sessionsTotal,
       price: p.price,
       validityDays: p.validityDays,
+      gstInclusive: p.gstInclusive === true,
     }));
   }
 
@@ -711,7 +713,7 @@ export class MongoStorage implements IStorage {
 
   async updateMembershipPlan(
     id: string,
-    data: Partial<Pick<MembershipPlan, "name" | "sessionsTotal" | "validityDays" | "price" | "isActive">>
+    data: Partial<Pick<MembershipPlan, "name" | "sessionsTotal" | "validityDays" | "price" | "gstInclusive" | "isActive">>
   ): Promise<MembershipPlan | undefined> {
     const doc = await MembershipPlanModel.findByIdAndUpdate(id, { $set: data }, { new: true });
     return toApi<MembershipPlan>(doc) ?? undefined;
