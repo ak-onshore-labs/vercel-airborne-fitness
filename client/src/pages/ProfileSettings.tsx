@@ -89,7 +89,7 @@ export default function ProfileSettings() {
     e.preventDefault();
     setSaving(true);
     try {
-      const ok = await updateProfile({
+      const result = await updateProfile({
         name: formData.fullName.trim(),
         gender: formData.gender.trim() || undefined,
         email: formData.email.trim(),
@@ -98,10 +98,10 @@ export default function ProfileSettings() {
         emergencyContactPhone: formData.emergencyContactPhone.trim() || undefined,
         medicalConditions: formData.medicalConditions.trim() || undefined,
       });
-      if (ok) {
+      if (result.ok) {
         toast({ title: "Profile updated successfully", variant: "default" });
       } else {
-        toast({ variant: "destructive", title: "Update failed" });
+        toast({ variant: "destructive", title: "Update failed", description: result.message });
       }
     } finally {
       setSaving(false);

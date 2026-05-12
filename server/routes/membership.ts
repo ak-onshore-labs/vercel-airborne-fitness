@@ -59,6 +59,13 @@ export function registerMembershipRoutes(app: Express): void {
         return;
       }
 
+      if (typeof body.name === "string") {
+        const trimmedName = body.name.trim();
+        if (trimmedName.length >= 2) {
+          await storage.updateUser(auth.userId, { name: trimmedName });
+        }
+      }
+
       const requestedGender = typeof body.gender === "string" ? body.gender.trim() : undefined;
       if (requestedGender !== undefined) {
         if (!isAllowedGender(requestedGender)) {
@@ -361,6 +368,15 @@ export function registerMembershipRoutes(app: Express): void {
 
       if (!memberId) {
         res.status(400).json({ message: "memberId required" });
+        return;
+      }
+      const enrollMember = await storage.getMember(memberId);
+      if (!enrollMember) {
+        res.status(404).json({ message: "Member not found" });
+        return;
+      }
+      if (enrollMember.userId !== auth.userId) {
+        res.status(403).json({ message: "Not allowed" });
         return;
       }
       if (!plans || !Array.isArray(plans) || plans.length === 0) {

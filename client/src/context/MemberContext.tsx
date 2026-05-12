@@ -65,6 +65,9 @@ export interface VerifyOtpPayload {
   isNew: boolean;
 }
 
+/** Result of PATCH `/api/members/:id` via `updateProfile`. Callers check `result.ok`; on failure, `message` is user-facing. */
+export type UpdateProfileResult = { ok: true } | { ok: false; message: string };
+
 interface MemberContextType {
   user: UserProfile | null;
   bookedSessions: Booking[];
@@ -83,7 +86,7 @@ interface MemberContextType {
   pauseMembership: (membershipId: string) => Promise<boolean>;
   refreshBookings: () => Promise<void>;
   getSessionCounts: (scheduleId: string, date: string) => Promise<{ bookedCount: number; waitlistCount: number }>;
-  updateProfile: (data: Partial<Pick<UserProfile, 'name' | 'gender' | 'email' | 'dob' | 'emergencyContactName' | 'emergencyContactPhone' | 'medicalConditions'>>) => Promise<boolean>;
+  updateProfile: (data: Partial<Pick<UserProfile, 'name' | 'gender' | 'email' | 'dob' | 'emergencyContactName' | 'emergencyContactPhone' | 'medicalConditions'>>) => Promise<UpdateProfileResult>;
   /** False until the first `/api/auth/me` (or no-token) bootstrap finishes. */
   sessionRestored: boolean;
   /** Permanently deletes the member account (server-side). Caller should logout and redirect on success. */
@@ -409,16 +412,18 @@ export function MemberProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
-  const updateProfile = async (data: Partial<Pick<UserProfile, 'name' | 'gender' | 'email' | 'dob' | 'emergencyContactName' | 'emergencyContactPhone' | 'medicalConditions'>>): Promise<boolean> => {
-    if (!user) return false;
+  const updateProfile = async (data: Partial<Pick<UserProfile, 'name' | 'gender' | 'email' | 'dob' | 'emergencyContactName' | 'emergencyContactPhone' | 'medicalConditions'>>): Promise<UpdateProfileResult> => {
+    if (!user) return { ok: false, message: "Not signed in" };
     const result = await apiFetch<UserProfile>(`/api/members/${user.id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
     });
-    if (!result.ok) return false;
+    if (!result.ok) {
+      return { ok: false, message: result.message || "Could not save your profile. Please try again." };
+    }
     const updated = result.data as Partial<UserProfile>;
     setUser(prev => prev ? { ...prev, ...updated, memberships: prev.memberships } : null);
-    return true;
+    return { ok: true };
   };
 
   return (

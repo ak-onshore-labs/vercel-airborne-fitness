@@ -262,7 +262,21 @@ function validateKidDetails(data: Record<string, string>): Record<string, string
   return err;
 }
 
-const PersonalDetails = ({ onNext, data, onChange }: any) => {
+type Step1SaveStatus = "idle" | "saving" | "saved" | "error";
+
+const PersonalDetails = ({
+  onNext,
+  data,
+  onChange,
+  saveStatus = "idle",
+  saveErrorMessage,
+}: {
+  onNext: () => void | Promise<void>;
+  data: Record<string, string>;
+  onChange: (k: string, v: string) => void;
+  saveStatus?: Step1SaveStatus;
+  saveErrorMessage?: string | null;
+}) => {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Clear error for a field as soon as it becomes valid (on change)
@@ -292,10 +306,10 @@ const PersonalDetails = ({ onNext, data, onChange }: any) => {
     });
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     const e = validatePersonalDetails(data);
     setErrors(e);
-    if (Object.keys(e).length === 0) onNext();
+    if (Object.keys(e).length === 0) await onNext();
   };
 
   return (
@@ -411,7 +425,27 @@ const PersonalDetails = ({ onNext, data, onChange }: any) => {
           />
         </div>
       </div>
-      <Button onClick={handleNext} className="w-full h-12 bg-airborne-teal hover:bg-airborne-deep text-white rounded shadow-lg shadow-teal-100 mt-4" data-testid="button-next-1">
+      {saveStatus === "saving" && (
+        <p className="text-sm text-gray-500 dark:text-[#9CA3AF] mt-2" data-testid="step1-saving">
+          Saving details…
+        </p>
+      )}
+      {saveStatus === "saved" && (
+        <p className="text-sm text-airborne-teal dark:text-teal-300 mt-2" data-testid="step1-saved">
+          Details saved
+        </p>
+      )}
+      {saveStatus === "error" && saveErrorMessage && (
+        <p className="text-sm text-red-600 dark:text-red-400 mt-2" data-testid="step1-save-error">
+          {saveErrorMessage}
+        </p>
+      )}
+      <Button
+        onClick={() => void handleNext()}
+        disabled={saveStatus === "saving"}
+        className="w-full h-12 bg-airborne-teal hover:bg-airborne-deep text-white rounded shadow-lg shadow-teal-100 mt-4"
+        data-testid="button-next-1"
+      >
         Continue
       </Button>
     </motion.div>
@@ -717,7 +751,7 @@ const Payment = ({ onBack, onPay, plans, loading, loadingError }: any) => {
 };
 
 export default function Enroll() {
-  const { enroll, user, selectedBranch } = useMember();
+  const { enroll, user, selectedBranch, updateProfile } = useMember();
   const [, setLocation] = useLocation();
   const searchParams = new URLSearchParams(window.location.search);
   const isRenewFlow = searchParams.get("renew") === "1";
@@ -766,6 +800,27 @@ export default function Enroll() {
     parseISO(`${membershipEnrollmentStartBounds(new Date()).min}T12:00:00`)
   );
   const [enrollmentStartDate, setEnrollmentStartDate] = useState(() => membershipEnrollmentStartBounds(new Date()).min);
+  const [step1SaveStatus, setStep1SaveStatus] = useState<Step1SaveStatus>("idle");
+  const [step1SaveError, setStep1SaveError] = useState<string | null>(null);
+  const prevStepRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const prev = prevStepRef.current;
+    prevStepRef.current = step;
+    if (prev !== null && step === 1 && prev !== 1) {
+      setStep1SaveStatus("idle");
+      setStep1SaveError(null);
+    }
+  }, [step]);
+
+  useEffect(() => {
+    if (step !== 1) return;
+    setStep1SaveStatus((prev) => {
+      if (prev !== "error") return prev;
+      return "idle";
+    });
+    setStep1SaveError((prev) => (prev ? null : prev));
+  }, [formData, step]);
 
   useEffect(() => {
     apiFetch<ClassType[]>("/api/class-types").then((r) => {
@@ -801,6 +856,37 @@ export default function Enroll() {
   const hasKidsCategory = selectedPlans.some(
     (p) => classTypes.find((c) => c.name === p.category)?.ageGroup === "Kids"
   );
+
+  const handleStep1Continue = async () => {
+    const validationErrors = validatePersonalDetails(formData);
+    if (Object.keys(validationErrors).length > 0) return;
+
+    setStep1SaveStatus("saving");
+    setStep1SaveError(null);
+
+    const emergencyPhone = (formData.emergencyContactPhone || "").replace(/\s/g, "");
+    const result = await updateProfile({
+      name: formData.name.trim(),
+      email: formData.email.trim(),
+      dob: formData.dob.trim(),
+      gender: formData.gender.trim(),
+      emergencyContactName: formData.emergencyContactName.trim(),
+      emergencyContactPhone: emergencyPhone,
+      medicalConditions: (formData.medicalConditions || "").trim(),
+    });
+
+    if (!result.ok) {
+      setStep1SaveStatus("error");
+      setStep1SaveError(result.message);
+      return;
+    }
+
+    setStep1SaveStatus("saved");
+    await new Promise((r) => setTimeout(r, 900));
+    setStep(2);
+    setStep1SaveStatus("idle");
+    setStep1SaveError(null);
+  };
 
   const nextStep = () => {
     if (step === 2 && !hasKidsCategory) setStep(4);
@@ -991,7 +1077,16 @@ export default function Enroll() {
                 ))}
             </div>
             <AnimatePresence mode="wait">
-              {step === 1 && <PersonalDetails key="step1" data={formData} onChange={(k: any, v: any) => setFormData(p => ({...p, [k]: v}))} onNext={() => setStep(2)} />}
+              {step === 1 && (
+                <PersonalDetails
+                  key="step1"
+                  data={formData}
+                  onChange={(k: string, v: string) => setFormData((p) => ({ ...p, [k]: v }))}
+                  onNext={handleStep1Continue}
+                  saveStatus={step1SaveStatus}
+                  saveErrorMessage={step1SaveError}
+                />
+              )}
               {step === 2 && <MembershipSelection key="step2" classTypes={classTypes} plansByClassType={plansByClassType} selectedClassType={selectedClassType} onSelectClassType={setSelectedClassType} selectedPlans={selectedPlans} onAddPlan={handleAddPlan} onRemovePlan={(c: string) => setSelectedPlans(p => p.filter(x => x.category !== c))} onNext={openMembershipStartModal} onBack={() => setStep(1)} onViewSchedule={() => setScheduleSheetOpen(true)} />}
               {step === 3 && <KidDetails key="step3" data={kidInfo} onChange={(k: any, v: any) => setKidInfo(p => ({...p, [k]: v}))} onNext={() => setStep(4)} onBack={() => setStep(2)} />}
               {step === 4 && <Waiver key="step4" data={waiverData} onChange={(k: any, v: any) => setWaiverData(p => ({...p, [k]: v}))} onNext={() => setStep(5)} onBack={prevStep} />}
