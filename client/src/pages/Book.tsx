@@ -322,7 +322,23 @@ export default function Book() {
                                  : "Starts soon"}
                              </Button>
                         ) : !hasMembership ? (
-                             <Button size="sm" onClick={() => setLocation('/enroll')} className="h-9 bg-gray-900 dark:bg-[#EDEDED] text-white dark:text-[#0B0B0C] text-xs px-5 rounded" data-testid={`button-enroll-${key}`}>Enroll</Button>
+                             <Button
+                               size="sm"
+                               onClick={() => {
+                                 const match = classTypes.find((t) => t.name === session.category);
+                                 if (match) {
+                                   setLocation(
+                                     `/enroll?classTypeId=${encodeURIComponent(match.id)}&category=${encodeURIComponent(match.name)}`
+                                   );
+                                 } else {
+                                   setLocation(`/enroll?category=${encodeURIComponent(session.category)}`);
+                                 }
+                               }}
+                               className="h-9 bg-gray-900 dark:bg-[#EDEDED] text-white dark:text-[#0B0B0C] text-xs px-5 rounded"
+                               data-testid={`button-enroll-${key}`}
+                             >
+                               Enroll
+                             </Button>
                         ) : membershipState !== "active" ? (
                              <Button
                                size="sm"

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useMember, SelectedPlan } from "@/context/MemberContext";
+import { useMember, SelectedPlan, type UserProfile } from "@/context/MemberContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -252,6 +252,22 @@ function validatePersonalDetails(data: Record<string, string>): Record<string, s
   return err;
 }
 
+function personalDetailsRecordFromUser(user: UserProfile): Record<string, string> {
+  const name = user.name && user.name !== "New Member" ? user.name : "";
+  return {
+    name,
+    email: user.email ?? "",
+    dob: user.dob ?? "",
+    gender: user.gender ?? "",
+    emergencyContactName: user.emergencyContactName ?? "",
+    emergencyContactPhone: user.emergencyContactPhone ?? "",
+    medicalConditions: user.medicalConditions ?? "",
+  };
+}
+
+function isProfileCompleteForStep1(user: UserProfile): boolean {
+  return Object.keys(validatePersonalDetails(personalDetailsRecordFromUser(user))).length === 0;
+}
 
 function validateKidDetails(data: Record<string, string>): Record<string, string> {
   const err: Record<string, string> = {};
@@ -755,7 +771,6 @@ export default function Enroll() {
   const [, setLocation] = useLocation();
   const searchParams = new URLSearchParams(window.location.search);
   const isRenewFlow = searchParams.get("renew") === "1";
-  const renewCategoryParam = searchParams.get("category");
   const [scheduleSheetOpen, setScheduleSheetOpen] = useState(false);
   const [step, setStep] = useState(() => (isRenewFlow ? 2 : 1));
   const [formData, setFormData] = useState(() => {
@@ -803,6 +818,7 @@ export default function Enroll() {
   const [step1SaveStatus, setStep1SaveStatus] = useState<Step1SaveStatus>("idle");
   const [step1SaveError, setStep1SaveError] = useState<string | null>(null);
   const prevStepRef = useRef<number | null>(null);
+  const bookStepBootstrapDoneRef = useRef(false);
 
   useEffect(() => {
     const prev = prevStepRef.current;
@@ -830,16 +846,45 @@ export default function Enroll() {
         if (sorted.length > 0) {
           setSelectedClassType((prev) => {
             if (prev) return prev;
-            if (isRenewFlow && renewCategoryParam) {
-              const match = sorted.find((c) => c.name === renewCategoryParam);
-              if (match) return match;
+            const qs = new URLSearchParams(window.location.search);
+            const renew = qs.get("renew") === "1";
+            const cat = qs.get("category");
+            const classTypeIdFromUrl = qs.get("classTypeId")?.trim() || "";
+
+            let chosen: ClassType | undefined;
+            if (renew && cat) {
+              chosen = sorted.find((c) => c.name === cat);
+            } else if (!renew && (classTypeIdFromUrl || cat)) {
+              if (classTypeIdFromUrl) {
+                chosen = sorted.find((c) => c.id === classTypeIdFromUrl);
+              }
+              if (!chosen && cat) {
+                chosen = sorted.find((c) => c.name === cat);
+              }
             }
-            return sorted[0];
+            return chosen ?? sorted[0];
           });
         }
       }
     });
   }, []);
+
+  useEffect(() => {
+    if (bookStepBootstrapDoneRef.current) return;
+    if (!user) return;
+    if (isRenewFlow) return;
+    const qs = new URLSearchParams(window.location.search);
+    const classTypeIdFromUrl = qs.get("classTypeId")?.trim() || "";
+    const cat = qs.get("category");
+    const hasBookPreselect = Boolean(classTypeIdFromUrl || cat);
+    if (!hasBookPreselect) return;
+
+    bookStepBootstrapDoneRef.current = true;
+
+    if (isProfileCompleteForStep1(user)) {
+      setStep(2);
+    }
+  }, [user, isRenewFlow]);
 
   useEffect(() => {
     if (!selectedClassType?.id) return;
