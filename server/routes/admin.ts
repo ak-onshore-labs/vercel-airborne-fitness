@@ -4,7 +4,7 @@ import type { AdminTransactionsFilters } from "../storage.js";
 import { asyncHandler, requireAdmin, requireAdminOnly } from "../middleware.js";
 import { MembershipPlanModel } from "../models/index.js";
 import { GST_PERCENT, computePlanPricing } from "../lib/pricing.js";
-import { isMembershipBookable } from "../../shared/membershipState.js";
+import { getMembershipSessionBookingEligibility } from "../../shared/membershipState.js";
 import { calendarDateInIST, computeMembershipExpiryExclusiveEnd, parseMembershipStartDateFromInput } from "../../shared/membershipDates.js";
 import { isEligibleForGenderRestriction, resolveMemberGenderForRestriction } from "../lib/genderEligibility.js";
 import type { UpcomingScheduleSlotBookingPreviewItem } from "../storage.js";
@@ -14,16 +14,25 @@ const requireAdminOnlyAsync = asyncHandler(requireAdminOnly);
 const SCHEDULE_GENDER_RESTRICTIONS = new Set(["NONE", "FEMALE_ONLY"]);
 const PROFILE_GENDERS = new Set(["Male", "Female", "Other", "Prefer not to say"]);
 
-/** Find a membership for this member that matches the slot's class type. Only active memberships (expiry in future, sessions > 0). */
-async function findMembershipForSlot(memberId: string, scheduleId: string): Promise<{ id: string; sessionsRemaining: number } | null> {
+type AdminFindMembershipForSlotMode = "book" | "refund_pick";
+
+/** Find a membership for this member that matches the slot's class type, scoped to sessionDate + slot times. */
+async function findMembershipForSlot(
+  memberId: string,
+  scheduleId: string,
+  sessionDate: string,
+  opts: { mode: AdminFindMembershipForSlotMode; requirePositiveSessions?: boolean } = { mode: "book" }
+): Promise<{ id: string; sessionsRemaining: number } | null> {
   const slot = await storage.getScheduleSlot(scheduleId);
   if (!slot) return null;
   const all = await storage.getMemberMemberships(memberId);
-  const now = new Date();
-  const memberships = all.filter((m) =>
-    isMembershipBookable(
+  const plans = await MembershipPlanModel.find({ classTypeId: slot.classTypeId });
+  const planIds = new Set(plans.map((p: { _id: unknown }) => String(p._id)));
+  const matching = all.filter((x) => planIds.has(x.membershipPlanId));
+  const eligible = matching.filter((m) =>
+    getMembershipSessionBookingEligibility(
       {
-        expiryDate: m.expiryDate,
+        expiryDate: m.expiryDate as any,
         sessionsRemaining: m.sessionsRemaining,
         extensionApplied: (m as any).extensionApplied,
         pauseUsed: (m as any).pauseUsed,
@@ -31,13 +40,16 @@ async function findMembershipForSlot(memberId: string, scheduleId: string): Prom
         pauseEnd: (m as any).pauseEnd,
         startDate: (m as any).startDate,
       },
-      now
-    )
+      sessionDate,
+      slot.startHour,
+      slot.startMinute,
+      {
+        mode: opts.mode,
+        requirePositiveSessions: opts.requirePositiveSessions !== false,
+      }
+    ).ok
   );
-  const plans = await MembershipPlanModel.find({ classTypeId: slot.classTypeId });
-  const planIds = new Set(plans.map((p: { _id: unknown }) => String(p._id)));
-  const matching = memberships.filter((x) => planIds.has(x.membershipPlanId));
-  matching.sort((a, b) => {
+  eligible.sort((a, b) => {
     const ea = new Date(a.expiryDate).getTime();
     const eb = new Date(b.expiryDate).getTime();
     if (ea !== eb) return ea - eb;
@@ -46,7 +58,7 @@ async function findMembershipForSlot(memberId: string, scheduleId: string): Prom
     if (ca !== cb) return ca - cb;
     return String(a.id).localeCompare(String(b.id), "en");
   });
-  const m = matching[0];
+  const m = eligible[0];
   return m ? { id: m.id, sessionsRemaining: m.sessionsRemaining } : null;
 }
 
@@ -94,7 +106,7 @@ async function promoteWaitlistForSession(scheduleId: string, sessionDate: string
       await storage.updateBookingStatus(candidate.id, "CANCELLED", null);
       continue;
     }
-    const membership = await findMembershipForSlot(candidate.memberId, scheduleId);
+    const membership = await findMembershipForSlot(candidate.memberId, scheduleId, sessionDate);
     if (!membership || membership.sessionsRemaining <= 0) continue;
     const ok = await storage.decrementMembershipSessionsIfPositive(membership.id);
     if (!ok) continue;
@@ -868,7 +880,7 @@ export function registerAdminRoutes(app: Express): void {
         return;
       }
 
-      const membership = await findMembershipForSlot(memberId, scheduleId);
+      const membership = await findMembershipForSlot(memberId, scheduleId, sessionDate);
       if (!membership || membership.sessionsRemaining <= 0) {
         res.status(400).json({ message: "No active membership with sessions remaining for this class type" });
         return;

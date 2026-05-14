@@ -47,8 +47,14 @@ export default function Sessions() {
     if (now <= cutoff) upcomingBookings.push(b);
     else pastBookings.push(b);
   }
-  upcomingBookings.sort((a, b) => a.sessionDate.localeCompare(b.sessionDate) || a.startTime.localeCompare(b.startTime));
-  pastBookings.sort((a, b) => b.sessionDate.localeCompare(a.sessionDate) || b.startTime.localeCompare(a.startTime));
+  upcomingBookings.sort(
+    (a, b) =>
+      a.sessionDate.localeCompare(b.sessionDate) || (a.startTime ?? "").localeCompare(b.startTime ?? "")
+  );
+  pastBookings.sort(
+    (a, b) =>
+      b.sessionDate.localeCompare(a.sessionDate) || (b.startTime ?? "").localeCompare(a.startTime ?? "")
+  );
 
   const isCancellationOpen = (sessionDate: string, startTime: string) => {
     try {

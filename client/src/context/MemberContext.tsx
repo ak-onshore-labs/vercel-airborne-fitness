@@ -30,6 +30,8 @@ export interface UserProfile {
   medicalConditions?: string | null;
   memberships: MembershipMap;
   userRole?: "ADMIN" | "STAFF" | "MEMBER";
+  /** Account-level liability waiver on file (from GET /api/auth/me or verify-otp). */
+  hasSignedWaiver: boolean;
 }
 
 export interface SelectedPlan {
@@ -63,6 +65,8 @@ export interface VerifyOtpPayload {
   members: Array<{ id: string; userId: string; memberType: string; name?: string | null; dob?: string | null; gender?: string | null; email?: string | null; emergencyContactName?: string | null; emergencyContactPhone?: string | null; medicalConditions?: string | null }>;
   memberships: MembershipMap;
   isNew: boolean;
+  /** Present from verify-otp and /api/auth/me when supported by server. */
+  hasSignedWaiver?: boolean;
 }
 
 /** Result of PATCH `/api/members/:id` via `updateProfile`. Callers check `result.ok`; on failure, `message` is user-facing. */
@@ -139,6 +143,7 @@ export function MemberProvider({ children }: { children: ReactNode }) {
         medicalConditions: primaryMember?.medicalConditions ?? undefined,
         memberships: normalizedMemberships,
         userRole: ((apiUser as { userRole?: string }).userRole === "ADMIN" || (apiUser as { userRole?: string }).userRole === "STAFF" ? (apiUser as { userRole?: string }).userRole : "MEMBER") as "ADMIN" | "STAFF" | "MEMBER",
+        hasSignedWaiver: payload.hasSignedWaiver === true,
       });
       const bookingsResult = await apiFetch<Booking[]>(`/api/bookings/${memberId}`);
       if (bookingsResult.ok && Array.isArray(bookingsResult.data)) {
@@ -194,48 +199,56 @@ export function MemberProvider({ children }: { children: ReactNode }) {
   const enroll = async (details: any, selectedPlans: SelectedPlan[], waiver?: any, kidInfo?: any, transactionId?: string, membershipStartDate?: string) => {
     if (!user) return;
     const start = membershipStartDate ?? membershipEnrollmentStartBounds(new Date()).min;
-    const result = await apiFetch<{ memberships: MembershipMap }>('/api/enroll', {
-      method: 'POST',
-      body: JSON.stringify({
-        memberId: user.id,
-        personalDetails: {
-          name: details.name,
-          gender: details.gender,
-          email: details.email,
-          dob: details.dob,
-          emergencyContactName: details.emergencyContactName,
-          emergencyContactPhone: details.emergencyContactPhone,
-          medicalConditions: details.medicalConditions,
-        },
-        plans: selectedPlans.map(sp => ({
-          category: sp.category,
-          planId: sp.plan.id,
-          planName: sp.plan.name,
-          sessions: sp.plan.sessions,
-          price: sp.plan.price,
-          validityDays: sp.plan.validityDays,
-        })),
-        waiver,
-        kidDetails: kidInfo,
-        membershipStartDate: start,
-        ...(transactionId && { transactionId }),
-      }),
+    const body: Record<string, unknown> = {
+      memberId: user.id,
+      personalDetails: {
+        name: details.name,
+        gender: details.gender,
+        email: details.email,
+        dob: details.dob,
+        emergencyContactName: details.emergencyContactName,
+        emergencyContactPhone: details.emergencyContactPhone,
+        medicalConditions: details.medicalConditions,
+      },
+      plans: selectedPlans.map((sp) => ({
+        category: sp.category,
+        planId: sp.plan.id,
+        planName: sp.plan.name,
+        sessions: sp.plan.sessions,
+        price: sp.plan.price,
+        validityDays: sp.plan.validityDays,
+      })),
+      kidDetails: kidInfo,
+      membershipStartDate: start,
+      ...(transactionId && { transactionId }),
+    };
+    if (!user.hasSignedWaiver) {
+      body.waiver = waiver;
+    }
+    const result = await apiFetch<{ memberships: MembershipMap; hasSignedWaiver?: boolean }>("/api/enroll", {
+      method: "POST",
+      body: JSON.stringify(body),
     });
     if (!result.ok) {
       toast({ variant: "destructive", title: "Enrollment failed", description: result.message });
       throw new Error(result.message);
     }
-    setUser(prev => prev ? {
-      ...prev,
-      name: details.name || prev.name,
-      gender: details.gender ?? prev.gender,
-      email: details.email,
-      dob: details.dob ?? prev.dob,
-      emergencyContactName: details.emergencyContactName ?? prev.emergencyContactName,
-      emergencyContactPhone: details.emergencyContactPhone ?? prev.emergencyContactPhone,
-      medicalConditions: details.medicalConditions ?? prev.medicalConditions,
-      memberships: result.data.memberships,
-    } : null);
+    setUser((prev) =>
+      prev
+        ? {
+            ...prev,
+            name: details.name || prev.name,
+            gender: details.gender ?? prev.gender,
+            email: details.email,
+            dob: details.dob ?? prev.dob,
+            emergencyContactName: details.emergencyContactName ?? prev.emergencyContactName,
+            emergencyContactPhone: details.emergencyContactPhone ?? prev.emergencyContactPhone,
+            medicalConditions: details.medicalConditions ?? prev.medicalConditions,
+            memberships: result.data.memberships,
+            hasSignedWaiver: true,
+          }
+        : null
+    );
     toast({ title: "Enrollment Successful!" });
   };
 

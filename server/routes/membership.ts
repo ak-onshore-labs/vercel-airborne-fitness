@@ -447,17 +447,26 @@ export function registerMembershipRoutes(app: Express): void {
         }
       }
 
-      if (!waiver || typeof waiver !== "object") {
-        res.status(400).json({ message: "Waiver acceptance required", fields: ["waiver"] });
-        return;
-      }
-      if (waiver.agreedTerms !== true) {
-        res.status(400).json({ message: "You must agree to the waiver terms", fields: ["waiver.agreedTerms"] });
-        return;
-      }
-      if (typeof waiver.signatureName !== "string" || waiver.signatureName.trim().length < 2) {
-        res.status(400).json({ message: "Full name (signature) required", fields: ["waiver.signatureName"] });
-        return;
+      const alreadySignedWaiver = await storage.hasSignedWaiverForUser(auth.userId);
+      let waiverToCreate: { signatureName: string; agreedTerms: boolean; agreedAge: boolean } | null = null;
+      if (!alreadySignedWaiver) {
+        if (!waiver || typeof waiver !== "object") {
+          res.status(400).json({ message: "Waiver acceptance required", fields: ["waiver"] });
+          return;
+        }
+        if (waiver.agreedTerms !== true) {
+          res.status(400).json({ message: "You must agree to the waiver terms", fields: ["waiver.agreedTerms"] });
+          return;
+        }
+        if (typeof waiver.signatureName !== "string" || waiver.signatureName.trim().length < 2) {
+          res.status(400).json({ message: "Full name (signature) required", fields: ["waiver.signatureName"] });
+          return;
+        }
+        waiverToCreate = {
+          signatureName: waiver.signatureName.trim(),
+          agreedTerms: waiver.agreedTerms,
+          agreedAge: waiver.agreedAge === true,
+        };
       }
 
       const { membershipStartDate } = req.body;
@@ -549,12 +558,14 @@ export function registerMembershipRoutes(app: Express): void {
         });
       }
 
-      await storage.createWaiver({
-        userId: auth.userId,
-        signatureName: waiver.signatureName,
-        agreedTerms: waiver.agreedTerms,
-        agreedAge: waiver.agreedAge,
-      });
+      if (waiverToCreate) {
+        await storage.createWaiver({
+          userId: auth.userId,
+          signatureName: waiverToCreate.signatureName,
+          agreedTerms: waiverToCreate.agreedTerms,
+          agreedAge: waiverToCreate.agreedAge,
+        });
+      }
 
       const allMemberships = await storage.getMemberMemberships(memberId);
       const { ClassTypeModel } = await import("../models/index.js");
@@ -658,7 +669,7 @@ export function registerMembershipRoutes(app: Express): void {
         }
       }
 
-      res.json({ memberships: membershipMap });
+      res.json({ memberships: membershipMap, hasSignedWaiver: true });
     })
   );
 

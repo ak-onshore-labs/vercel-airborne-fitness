@@ -49,13 +49,18 @@ export default function Login() {
     e.preventDefault();
     if (otp.length < 4) return;
     setIsLoading(true);
-    const res = await apiFetch<{ success: boolean; token: string; user: VerifyOtpPayload["user"]; members: VerifyOtpPayload["members"]; memberships: VerifyOtpPayload["memberships"]; isNew: boolean }>(
-      "/api/auth/verify-otp",
-      {
-        method: "POST",
-        body: JSON.stringify({ phone: `+91${phone}`, code: otp }),
-      }
-    );
+    const res = await apiFetch<{
+      success: boolean;
+      token: string;
+      user: VerifyOtpPayload["user"];
+      members: VerifyOtpPayload["members"];
+      memberships: VerifyOtpPayload["memberships"];
+      isNew: boolean;
+      hasSignedWaiver?: boolean;
+    }>("/api/auth/verify-otp", {
+      method: "POST",
+      body: JSON.stringify({ phone: `+91${phone}`, code: otp }),
+    });
     if (!res.ok) {
       setIsLoading(false);
       toast({ variant: "destructive", title: "Verification failed", description: res.message });
@@ -67,6 +72,7 @@ export default function Login() {
       members: res.data!.members,
       memberships: res.data!.memberships,
       isNew: res.data!.isNew,
+      hasSignedWaiver: res.data!.hasSignedWaiver,
     });
     setIsLoading(false);
     if (success) {

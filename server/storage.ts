@@ -201,6 +201,8 @@ export interface IStorage {
   getBooking(id: string): Promise<BookingRecord | undefined>;
 
   createWaiver(waiver: InsertWaiver): Promise<void>;
+  /** True if the user has at least one waiver record with agreedTerms true (account-level consent). */
+  hasSignedWaiverForUser(userId: string): Promise<boolean>;
 
   createTransaction(transaction: InsertTransaction): Promise<Transaction>;
   getTransactionById(id: string): Promise<Transaction | undefined>;
@@ -865,6 +867,11 @@ export class MongoStorage implements IStorage {
 
   async createWaiver(waiver: InsertWaiver): Promise<void> {
     await WaiverSignatureModel.create(waiver);
+  }
+
+  async hasSignedWaiverForUser(userId: string): Promise<boolean> {
+    const doc = await WaiverSignatureModel.exists({ userId, agreedTerms: true });
+    return doc !== null;
   }
 
   async createTransaction(transaction: InsertTransaction): Promise<Transaction> {

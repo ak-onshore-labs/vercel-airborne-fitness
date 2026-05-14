@@ -17,6 +17,7 @@ import {
 import { formatTime12h } from "@/lib/formatTime";
 import { MemberDialogContent } from "@/components/MemberDialogContent";
 import { getMembershipUsability, getRenewUrl } from "@/lib/membershipUi";
+import { getMembershipSessionBookingEligibility } from "@shared/membershipState";
 
 interface SessionDisplay {
   scheduleId: string;
@@ -52,6 +53,19 @@ function isSessionBookable(sessionDate: string, startTime: string): boolean {
   sessionStart.setHours(h, m, 0, 0);
   const cutoff = addMinutes(sessionStart, MEMBER_BOOKING_CUTOFF_MINUTES);
   return new Date() <= cutoff;
+}
+
+/** Scheduled end instant (display-only). Mirrors isSessionBookable date parsing. */
+function getSessionEnd(sessionDate: string, endTime: string): Date {
+  const [h, m] = endTime.split(":").map(Number);
+  const sessionEnd = new Date(sessionDate + "T00:00:00");
+  sessionEnd.setHours(h, m, 0, 0);
+  return sessionEnd;
+}
+
+/** True after scheduled class end time (display-only; not used for booking rules). */
+function isSessionClassEnded(sessionDate: string, endTime: string, now: Date = new Date()): boolean {
+  return now.getTime() > getSessionEnd(sessionDate, endTime).getTime();
 }
 
 export default function Book() {
@@ -256,13 +270,35 @@ export default function Book() {
             const membershipDetails = user?.memberships[session.category];
             const hasMembership = Boolean(membershipDetails);
             const bookable = isSessionBookable(session.sessionDate, session.startTime);
+            const classEnded = isSessionClassEnded(session.sessionDate, session.endTime);
             const membershipState = membershipDetails ? getMembershipUsability(membershipDetails).state : null;
+            const [startHRaw, startMRaw] = session.startTime.split(":").map((x) => parseInt(x, 10));
+            const startH = Number.isFinite(startHRaw) ? startHRaw : 0;
+            const startM = Number.isFinite(startMRaw) ? startMRaw : 0;
+            const sessionBooking = membershipDetails
+              ? getMembershipSessionBookingEligibility(
+                  {
+                    expiryDate: membershipDetails.expiryDate,
+                    sessionsRemaining: membershipDetails.sessionsRemaining,
+                    extensionApplied: membershipDetails.extensionApplied,
+                    pauseUsed: membershipDetails.pauseUsed,
+                    pauseStart: membershipDetails.pauseStart ?? null,
+                    pauseEnd: membershipDetails.pauseEnd ?? null,
+                    startDate: membershipDetails.startDate ?? null,
+                  },
+                  session.sessionDate,
+                  startH,
+                  startM
+                )
+              : null;
+            const canUseMembershipForThisSession = sessionBooking?.ok === true;
 
             return (
                 <div
                   key={key}
                   className={cn(
-                    "rounded p-5 flex gap-5 transition-shadow duration-200 border-l-2 hover:shadow-md dark:hover:shadow-black/30",
+                    "rounded p-5 flex gap-5 border-l-2 transition-shadow duration-200",
+                    classEnded ? "hover:shadow-none dark:hover:shadow-none" : "hover:shadow-md dark:hover:shadow-black/30",
                     session.genderRestriction === "FEMALE_ONLY"
                       ? "border-l-pink-300 dark:border-l-pink-400"
                       : "border-l-airborne-teal dark:border-l-teal-400",
@@ -270,17 +306,42 @@ export default function Book() {
                       ? session.genderRestriction === "FEMALE_ONLY"
                         ? "bg-rose-50/35 dark:bg-rose-950/15 border border-rose-100 dark:border-rose-900/30 shadow-sm dark:shadow-black/30 hover:shadow-md"
                         : "bg-white dark:bg-[#111113] border border-gray-100 dark:border-white/6 shadow-sm dark:shadow-black/30 hover:shadow-md"
-                      : "bg-gray-50 dark:bg-[#18181B] border border-gray-200 dark:border-white/10"
+                      : classEnded
+                        ? "border border-dashed border-gray-300 dark:border-white/10 bg-gray-100/90 dark:bg-[#131315] shadow-none opacity-[0.97]"
+                        : "bg-gray-50 dark:bg-[#18181B] border border-gray-200 dark:border-white/10"
                   )}
                   data-testid={`card-session-${key}`}
                 >
                     <div className="flex flex-col items-center justify-center w-16 border-r border-gray-100 dark:border-white/10 pr-5 text-center">
-                        <span className={cn("text-lg font-bold", bookable ? "text-gray-900 dark:text-[#EDEDED]" : "text-gray-600 dark:text-[#9CA3AF]")}>{formatTime12h(session.startTime)}</span>
+                        <span
+                          className={cn(
+                            "text-lg font-bold",
+                            bookable
+                              ? "text-gray-900 dark:text-[#EDEDED]"
+                              : classEnded
+                                ? "text-gray-500 dark:text-[#9CA3AF]"
+                                : "text-gray-600 dark:text-[#9CA3AF]"
+                          )}
+                        >
+                          {formatTime12h(session.startTime)}
+                        </span>
                         <span className="text-[10px] font-medium text-gray-400 dark:text-[#6B7280] uppercase">{formatTime12h(session.endTime)}</span>
                     </div>
                     <div className="flex-1">
                         <div className="flex justify-between items-start mb-1">
-                          <h3 className={cn("font-bold text-base", bookable ? "text-gray-900 dark:text-[#EDEDED]" : "text-gray-600 dark:text-[#9CA3AF]")} data-testid={`text-class-${key}`}>{session.category}</h3>
+                          <h3
+                            className={cn(
+                              "font-bold text-base",
+                              bookable
+                                ? "text-gray-900 dark:text-[#EDEDED]"
+                                : classEnded
+                                  ? "text-gray-500 dark:text-[#9CA3AF]"
+                                  : "text-gray-600 dark:text-[#9CA3AF]"
+                            )}
+                            data-testid={`text-class-${key}`}
+                          >
+                            {session.category}
+                          </h3>
                           <div className="flex flex-col items-end gap-1">
                             <span className="text-[10px] bg-teal-50 dark:bg-teal-900/40 text-airborne-teal dark:text-teal-300 px-1 rounded">{selectedBranch}</span>
                             {session.genderRestriction === "FEMALE_ONLY" && (
@@ -289,7 +350,22 @@ export default function Book() {
                               </span>
                             )}
                             {isFull && !booking && <span className="text-[10px] font-bold text-red-500 dark:text-red-400 px-1 bg-red-50 dark:bg-red-900/30 rounded">FULL</span>}
-                            {!bookable && <span className="text-[10px] font-medium text-gray-500 dark:text-[#9CA3AF] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-[#18181B]" data-testid={`label-booking-closed-${key}`}>Booking closed</span>}
+                            {classEnded && (
+                              <span
+                                className="text-[10px] font-medium text-gray-600 dark:text-[#9CA3AF] px-1.5 py-0.5 rounded bg-gray-300/60 dark:bg-zinc-800"
+                                data-testid={`label-class-ended-${key}`}
+                              >
+                                Class ended
+                              </span>
+                            )}
+                            {!classEnded && !bookable && (
+                              <span
+                                className="text-[10px] font-medium text-gray-500 dark:text-[#9CA3AF] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-[#18181B]"
+                                data-testid={`label-booking-closed-${key}`}
+                              >
+                                Booking closed
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div className="flex justify-between items-center mt-4">
@@ -310,7 +386,7 @@ export default function Book() {
                              >
                                Paused
                              </Button>
-                        ) : membershipState === "upcoming" ? (
+                        ) : sessionBooking && !sessionBooking.ok && sessionBooking.reason === "before_start" ? (
                              <Button
                                disabled
                                size="sm"
@@ -320,6 +396,15 @@ export default function Book() {
                                {membershipDetails?.startDate
                                  ? `Starts on ${format(new Date(membershipDetails.startDate), "dd MMM yyyy")}`
                                  : "Starts soon"}
+                             </Button>
+                        ) : membershipState === "upcoming" && sessionBooking && !sessionBooking.ok ? (
+                             <Button
+                               disabled
+                               size="sm"
+                               className="h-9 bg-gray-100 dark:bg-[#18181B] text-gray-500 dark:text-[#9CA3AF] text-xs px-5 rounded border border-gray-200 dark:border-white/10 shadow-none"
+                               data-testid={`button-session-unavailable-${key}`}
+                             >
+                               Unavailable
                              </Button>
                         ) : !hasMembership ? (
                              <Button
@@ -339,7 +424,7 @@ export default function Book() {
                              >
                                Enroll
                              </Button>
-                        ) : membershipState !== "active" ? (
+                        ) : membershipState !== "active" && !(membershipState === "upcoming" && canUseMembershipForThisSession) ? (
                              <Button
                                size="sm"
                                onClick={() => setLocation(getRenewUrl(session.category))}
@@ -349,7 +434,7 @@ export default function Book() {
                                Renew
                              </Button>
                         ) : (
-                            <Button size="sm" onClick={() => bookable && handleAction(session, isFull)} disabled={!bookable || loadingId === session.scheduleId} className={cn("h-9 text-white text-xs px-5 rounded disabled:opacity-60", isFull ? "bg-amber-500" : "bg-airborne-teal")} data-testid={`button-book-${key}`}>
+                            <Button size="sm" onClick={() => bookable && handleAction(session, isFull)} disabled={!bookable || loadingId === session.scheduleId || !canUseMembershipForThisSession} className={cn("h-9 text-white text-xs px-5 rounded disabled:opacity-60", isFull ? "bg-amber-500" : "bg-airborne-teal")} data-testid={`button-book-${key}`}>
                             {loadingId === session.scheduleId ? <Loader2 className="animate-spin h-3 w-3" /> : isFull ? `Join Waitlist (${counts.waitlistCount})` : "Book Class"}
                             </Button>
                         )}

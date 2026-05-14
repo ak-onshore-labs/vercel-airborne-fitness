@@ -2,7 +2,10 @@ import type { Express, Request, Response } from "express";
 import { storage } from "../storage.js";
 import { asyncHandler, requireAuth } from "../middleware.js";
 import { MembershipPlanModel } from "../models/index.js";
-import { getMembershipUsabilityState, isMembershipBookable } from "../../shared/membershipState.js";
+import {
+  getMembershipSessionBookingEligibility,
+  type SessionBookingIneligibilityReason,
+} from "../../shared/membershipState.js";
 import { isEligibleForGenderRestriction, resolveMemberGenderForRestriction } from "../lib/genderEligibility.js";
 import { verifyToken } from "../lib/jwt.js";
 
@@ -25,58 +28,23 @@ async function getCategoryForSlot(scheduleId: string): Promise<string> {
   return slot?.category ?? "";
 }
 
-/** Find a membership for this member that matches the slot's class type (via plan). Only considers active memberships (expiry in future, sessions remaining > 0). */
-async function findMembershipForSlot(memberId: string, scheduleId: string): Promise<{ id: string; sessionsRemaining: number } | null> {
-  const slot = await storage.getScheduleSlot(scheduleId);
-  if (!slot) return null;
-  const all = await storage.getMemberMemberships(memberId);
-  const now = new Date();
-  const memberships = all.filter((m) =>
-    isMembershipBookable(
-      {
-        expiryDate: m.expiryDate,
-        sessionsRemaining: m.sessionsRemaining,
-        extensionApplied: (m as any).extensionApplied,
-        pauseUsed: (m as any).pauseUsed,
-        pauseStart: (m as any).pauseStart,
-        pauseEnd: (m as any).pauseEnd,
-        startDate: (m as any).startDate,
-      },
-      now
-    )
-  );
-  const plans = await MembershipPlanModel.find({ classTypeId: slot.classTypeId });
-  const planIds = new Set(plans.map((p: any) => String(p._id)));
-  const matching = memberships.filter((m) => planIds.has(m.membershipPlanId));
-  matching.sort((a, b) => {
-    const ea = new Date(a.expiryDate).getTime();
-    const eb = new Date(b.expiryDate).getTime();
-    if (ea !== eb) return ea - eb;
-    const ca = a.createdAt ? new Date(a.createdAt as any).getTime() : 0;
-    const cb = b.createdAt ? new Date(b.createdAt as any).getTime() : 0;
-    if (ca !== cb) return ca - cb;
-    return String(a.id).localeCompare(String(b.id), "en");
-  });
-  const m = matching[0];
-  return m ? { id: m.id, sessionsRemaining: m.sessionsRemaining } : null;
-}
+type FindMembershipForSlotMode = "book" | "refund_pick";
 
-async function findMembershipForSlotForBooking(
+/** Find a membership for this member that matches the slot's class type (via plan), scoped to `sessionDate` + slot times. */
+async function findMembershipForSlot(
   memberId: string,
-  scheduleId: string
-): Promise<{ blockedByPause: true } | { blockedByPause: false; membership: { id: string; sessionsRemaining: number } } | null> {
+  scheduleId: string,
+  sessionDate: string,
+  opts: { mode: FindMembershipForSlotMode; requirePositiveSessions?: boolean } = { mode: "book" }
+): Promise<{ id: string; sessionsRemaining: number } | null> {
   const slot = await storage.getScheduleSlot(scheduleId);
   if (!slot) return null;
   const all = await storage.getMemberMemberships(memberId);
   const plans = await MembershipPlanModel.find({ classTypeId: slot.classTypeId });
   const planIds = new Set(plans.map((p: any) => String(p._id)));
-
-  const now = new Date();
   const matching = all.filter((m) => planIds.has(m.membershipPlanId));
-  const active: typeof matching = [];
-  let hasPaused = false;
-  for (const m of matching) {
-    const s = getMembershipUsabilityState(
+  const eligible = matching.filter((m) =>
+    getMembershipSessionBookingEligibility(
       {
         expiryDate: m.expiryDate as any,
         sessionsRemaining: m.sessionsRemaining,
@@ -86,13 +54,16 @@ async function findMembershipForSlotForBooking(
         pauseEnd: (m as any).pauseEnd,
         startDate: (m as any).startDate,
       },
-      now
-    );
-    if (s.state === "active") active.push(m);
-    if (s.state === "paused") hasPaused = true;
-  }
-
-  active.sort((a, b) => {
+      sessionDate,
+      slot.startHour,
+      slot.startMinute,
+      {
+        mode: opts.mode,
+        requirePositiveSessions: opts.requirePositiveSessions !== false,
+      }
+    ).ok
+  );
+  eligible.sort((a, b) => {
     const ea = new Date(a.expiryDate as any).getTime();
     const eb = new Date(b.expiryDate as any).getTime();
     if (ea !== eb) return ea - eb;
@@ -101,10 +72,124 @@ async function findMembershipForSlotForBooking(
     if (ca !== cb) return ca - cb;
     return String(a.id).localeCompare(String(b.id), "en");
   });
-  const m = active[0];
+  const m = eligible[0];
+  return m ? { id: m.id, sessionsRemaining: m.sessionsRemaining } : null;
+}
+
+async function findMembershipForSlotForBooking(
+  memberId: string,
+  scheduleId: string,
+  sessionDate: string
+): Promise<{ blockedByPause: true } | { blockedByPause: false; membership: { id: string; sessionsRemaining: number } } | null> {
+  const slot = await storage.getScheduleSlot(scheduleId);
+  if (!slot) return null;
+  const all = await storage.getMemberMemberships(memberId);
+  const plans = await MembershipPlanModel.find({ classTypeId: slot.classTypeId });
+  const planIds = new Set(plans.map((p: any) => String(p._id)));
+
+  const matching = all.filter((m) => planIds.has(m.membershipPlanId));
+  const eligible: typeof matching = [];
+  let hasPaused = false;
+  for (const m of matching) {
+    const el = getMembershipSessionBookingEligibility(
+      {
+        expiryDate: m.expiryDate as any,
+        sessionsRemaining: m.sessionsRemaining,
+        extensionApplied: (m as any).extensionApplied,
+        pauseUsed: (m as any).pauseUsed,
+        pauseStart: (m as any).pauseStart,
+        pauseEnd: (m as any).pauseEnd,
+        startDate: (m as any).startDate,
+      },
+      sessionDate,
+      slot.startHour,
+      slot.startMinute,
+      { mode: "book" }
+    );
+    if (el.ok) eligible.push(m);
+    else if (el.reason === "paused") hasPaused = true;
+  }
+
+  eligible.sort((a, b) => {
+    const ea = new Date(a.expiryDate as any).getTime();
+    const eb = new Date(b.expiryDate as any).getTime();
+    if (ea !== eb) return ea - eb;
+    const ca = a.createdAt ? new Date(a.createdAt as any).getTime() : 0;
+    const cb = b.createdAt ? new Date(b.createdAt as any).getTime() : 0;
+    if (ca !== cb) return ca - cb;
+    return String(a.id).localeCompare(String(b.id), "en");
+  });
+  const m = eligible[0];
   if (m) return { blockedByPause: false, membership: { id: m.id, sessionsRemaining: m.sessionsRemaining } };
   if (hasPaused) return { blockedByPause: true };
   return null;
+}
+
+const BOOKING_FAILURE_REASON_PRIORITY: SessionBookingIneligibilityReason[] = [
+  "paused",
+  "before_start",
+  "after_expiry",
+  "no_sessions",
+  "not_bookable",
+];
+
+function formatMembershipStartForMessage(startDate: unknown): string {
+  if (startDate == null) return "your start date";
+  const d = startDate instanceof Date ? startDate : new Date(startDate as string);
+  if (Number.isNaN(d.getTime())) return "your start date";
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
+
+/** When no bookable membership was found, pick a user-facing message from eligibility reasons (priority order). */
+async function messageWhenNoBookingMembership(
+  memberId: string,
+  scheduleId: string,
+  sessionDate: string
+): Promise<string> {
+  const slot = await storage.getScheduleSlot(scheduleId);
+  if (!slot) return "Unable to book this class";
+
+  const all = await storage.getMemberMemberships(memberId);
+  const plans = await MembershipPlanModel.find({ classTypeId: slot.classTypeId });
+  const planIds = new Set(plans.map((p: any) => String(p._id)));
+  const matching = all.filter((m) => planIds.has(m.membershipPlanId));
+  if (matching.length === 0) {
+    return "No sessions remaining for this class";
+  }
+
+  const evaluated = matching.map((m) => ({
+    m,
+    el: getMembershipSessionBookingEligibility(
+      {
+        expiryDate: m.expiryDate as any,
+        sessionsRemaining: m.sessionsRemaining,
+        extensionApplied: (m as any).extensionApplied,
+        pauseUsed: (m as any).pauseUsed,
+        pauseStart: (m as any).pauseStart,
+        pauseEnd: (m as any).pauseEnd,
+        startDate: (m as any).startDate,
+      },
+      sessionDate,
+      slot.startHour,
+      slot.startMinute,
+      { mode: "book" }
+    ),
+  }));
+
+  for (const reason of BOOKING_FAILURE_REASON_PRIORITY) {
+    const hit = evaluated.find((x) => !x.el.ok && x.el.reason === reason);
+    if (!hit) continue;
+    if (reason === "paused") return "Membership is currently paused";
+    if (reason === "before_start") {
+      const label = formatMembershipStartForMessage((hit.m as any).startDate);
+      return `Your membership starts on ${label}.`;
+    }
+    if (reason === "after_expiry") return "This session is outside your membership validity.";
+    if (reason === "no_sessions") return "No sessions remaining for this class";
+    if (reason === "not_bookable") return "Unable to book this class";
+  }
+
+  return "No sessions remaining for this class";
 }
 
 async function assertMemberOwnershipOrReject(req: Request, res: Response, memberId: string): Promise<boolean> {
@@ -138,7 +223,7 @@ async function promoteWaitlistForSession(scheduleId: string, sessionDate: string
       continue;
     }
 
-    const membership = await findMembershipForSlot(candidate.memberId, scheduleId);
+    const membership = await findMembershipForSlot(candidate.memberId, scheduleId, sessionDate);
     if (!membership || membership.sessionsRemaining <= 0) {
       continue;
     }
@@ -161,6 +246,23 @@ async function promoteWaitlistForSession(scheduleId: string, sessionDate: string
   for (let i = 0; i < waitlistToRenumber.length; i++) {
     await storage.updateBookingStatus(waitlistToRenumber[i].id, "WAITLIST", i + 1);
   }
+}
+
+async function enrichBookingsWithScheduleSlots<
+  T extends { scheduleId: string; id?: string; memberId?: string; sessionDate?: string; status?: string }
+>(bookings: T[]): Promise<Array<T & { category: string; branch: string; startTime: string; endTime: string }>> {
+  return Promise.all(
+    bookings.map(async (b) => {
+      const slot = await storage.getScheduleSlot(b.scheduleId);
+      return {
+        ...b,
+        category: slot?.category ?? "",
+        branch: slot?.branch ?? "",
+        startTime: slot ? `${pad2(slot.startHour)}:${pad2(slot.startMinute)}` : "",
+        endTime: slot ? `${pad2(slot.endHour)}:${pad2(slot.endMinute)}` : "",
+      };
+    })
+  );
 }
 
 export function registerManageSessionRoutes(app: Express): void {
@@ -195,18 +297,7 @@ export function registerManageSessionRoutes(app: Express): void {
     asyncHandler(async (req: Request, res: Response) => {
       const { memberId } = req.params;
       const result = await storage.getBookingsForMember(memberId);
-      const withSlot = await Promise.all(
-        result.map(async (b) => {
-          const slot = await storage.getScheduleSlot(b.scheduleId);
-          return {
-            ...b,
-            category: slot?.category ?? "",
-            branch: slot?.branch ?? "",
-            startTime: slot ? `${pad2(slot.startHour)}:${pad2(slot.startMinute)}` : "",
-            endTime: slot ? `${pad2(slot.endHour)}:${pad2(slot.endMinute)}` : "",
-          };
-        })
-      );
+      const withSlot = await enrichBookingsWithScheduleSlots(result);
       res.json(withSlot);
     })
   );
@@ -248,13 +339,14 @@ export function registerManageSessionRoutes(app: Express): void {
         return res.status(409).json({ message: "Already on this session or waitlist", booking: alreadyBooked });
       }
 
-      const membershipLookup = await findMembershipForSlotForBooking(memberId, scheduleId);
+      const membershipLookup = await findMembershipForSlotForBooking(memberId, scheduleId, sessionDate);
       if (membershipLookup?.blockedByPause) {
         return res.status(400).json({ message: "Membership is currently paused" });
       }
       const membership = membershipLookup && !membershipLookup.blockedByPause ? membershipLookup.membership : null;
       if (!membership || membership.sessionsRemaining <= 0) {
-        return res.status(400).json({ message: "No sessions remaining for this class" });
+        const message = await messageWhenNoBookingMembership(memberId, scheduleId, sessionDate);
+        return res.status(400).json({ message });
       }
 
       const waitlistBookings = existingBookings.filter(b => b.status === "WAITLIST").sort(
@@ -314,13 +406,14 @@ export function registerManageSessionRoutes(app: Express): void {
         return res.status(409).json({ message: "Already booked", booking: alreadyBooked });
       }
 
-      const membershipLookup = await findMembershipForSlotForBooking(memberId, scheduleId);
+      const membershipLookup = await findMembershipForSlotForBooking(memberId, scheduleId, sessionDate);
       if (membershipLookup?.blockedByPause) {
         return res.status(400).json({ message: "Membership is currently paused" });
       }
       const membership = membershipLookup && !membershipLookup.blockedByPause ? membershipLookup.membership : null;
       if (!membership || membership.sessionsRemaining <= 0) {
-        return res.status(400).json({ message: "No sessions remaining for this class" });
+        const message = await messageWhenNoBookingMembership(memberId, scheduleId, sessionDate);
+        return res.status(400).json({ message });
       }
 
       if (bookedCount >= capacity) {
@@ -387,7 +480,10 @@ export function registerManageSessionRoutes(app: Express): void {
 
       await storage.updateBookingStatus(bookingId, "CANCELLED");
       if (booking.status === "BOOKED") {
-        const membership = await findMembershipForSlot(memberId, booking.scheduleId);
+        const membership = await findMembershipForSlot(memberId, booking.scheduleId, booking.sessionDate, {
+          mode: "refund_pick",
+          requirePositiveSessions: false,
+        });
         if (membership) {
           await storage.incrementMembershipSessions(membership.id, 1);
         }
@@ -403,7 +499,9 @@ export function registerManageSessionRoutes(app: Express): void {
       }
 
       const updatedBookings = await storage.getBookingsForMember(memberId);
-      res.json({ bookings: updatedBookings.filter(b => b.status !== "CANCELLED") });
+      const active = updatedBookings.filter((b) => b.status !== "CANCELLED");
+      const enriched = await enrichBookingsWithScheduleSlots(active);
+      res.json({ bookings: enriched });
     })
   );
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { useMember, SelectedPlan, type UserProfile } from "@/context/MemberContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -97,6 +97,177 @@ function StrengthIcons({ level }: { level: number }) {
 }
 
 type BranchOption = "Lower Parel" | "Mazgaon";
+
+/** In-memory cache for GET /api/schedule by branch+date (shared across class switches). */
+const enrollScheduleDayCache = new Map<string, SessionDisplay[]>();
+
+function enrollScheduleCacheKey(branch: string, dateStr: string): string {
+  return `${branch}|${dateStr}`;
+}
+
+function branchBadgeShort(branch: string): string {
+  return branch === "Lower Parel" ? "LP" : "MZG";
+}
+
+const ENROLL_PREVIEW_SESSION_CAP = 4;
+const ENROLL_PREVIEW_DEBOUNCE_MS = 200;
+
+/** Compact read-only next sessions for Select Plans (non-interactive pills; scrollable strip). */
+function EnrollScheduleStripPreview({
+  selectedClassType,
+  selectedBranch,
+}: {
+  selectedClassType: ClassType;
+  selectedBranch: BranchOption;
+}) {
+  const [previewBranch, setPreviewBranch] = useState<BranchOption>(selectedBranch);
+  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<SessionDisplay[]>([]);
+  const [overflowCount, setOverflowCount] = useState(0);
+  const fetchSeqRef = useRef(0);
+
+  useEffect(() => {
+    setPreviewBranch(selectedBranch);
+  }, [selectedBranch]);
+
+  useEffect(() => {
+    setLoading(true);
+    setItems([]);
+    setOverflowCount(0);
+    const timer = window.setTimeout(() => {
+      const myRun = ++fetchSeqRef.current;
+      void (async () => {
+        const category = selectedClassType.name;
+        const dateStrs = getNext7Days().map((d) => format(d, "yyyy-MM-dd"));
+        const batches = await Promise.all(
+          dateStrs.map(async (dateStr) => {
+            const ck = enrollScheduleCacheKey(previewBranch, dateStr);
+            let sessions = enrollScheduleDayCache.get(ck);
+            if (!sessions) {
+              const r = await apiFetch<{ sessions: SessionDisplay[] }>(
+                `/api/schedule?branch=${encodeURIComponent(previewBranch)}&date=${encodeURIComponent(dateStr)}`
+              );
+              sessions = r.ok && Array.isArray(r.data?.sessions) ? r.data!.sessions : [];
+              enrollScheduleDayCache.set(ck, sessions);
+            }
+            return sessions;
+          })
+        );
+        if (myRun !== fetchSeqRef.current) return;
+
+        const merged = batches.flat().filter((s) => s.category === category);
+        const seen = new Set<string>();
+        const deduped: SessionDisplay[] = [];
+        merged.sort((a, b) => {
+          const da = a.sessionDate.localeCompare(b.sessionDate);
+          if (da !== 0) return da;
+          return a.startTime.localeCompare(b.startTime);
+        });
+        for (const s of merged) {
+          const k = `${s.scheduleId}_${s.sessionDate}_${s.startTime}`;
+          if (seen.has(k)) continue;
+          seen.add(k);
+          deduped.push(s);
+        }
+        const total = deduped.length;
+        setItems(deduped.slice(0, ENROLL_PREVIEW_SESSION_CAP));
+        setOverflowCount(Math.max(0, total - ENROLL_PREVIEW_SESSION_CAP));
+        setLoading(false);
+      })();
+    }, ENROLL_PREVIEW_DEBOUNCE_MS);
+
+    return () => {
+      window.clearTimeout(timer);
+      fetchSeqRef.current += 1;
+    };
+  }, [selectedClassType.id, selectedClassType.name, previewBranch]);
+
+  const todayStart = startOfToday();
+
+  return (
+    <div
+      className="rounded border border-gray-100 dark:border-white/6 bg-gray-50/50 dark:bg-[#111113] p-3"
+      data-testid="enroll-schedule-preview"
+    >
+      <div className="flex items-center justify-between gap-2 mb-2 min-w-0">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-[#9CA3AF] shrink-0">
+          Upcoming
+        </span>
+        <div
+          className="flex shrink-0 rounded-md border border-gray-200 dark:border-white/10 p-0.5 bg-gray-100/80 dark:bg-[#18181B]"
+          role="group"
+          aria-label="Preview branch"
+        >
+          {(["Lower Parel", "Mazgaon"] as const).map((b) => (
+            <button
+              key={b}
+              type="button"
+              onClick={() => setPreviewBranch(b)}
+              className={cn(
+                "min-w-[2.25rem] px-2 py-1 rounded text-[10px] font-semibold transition-colors",
+                previewBranch === b
+                  ? "bg-white dark:bg-[#111113] text-gray-900 dark:text-[#EDEDED] shadow-sm"
+                  : "text-gray-500 dark:text-[#9CA3AF] hover:text-gray-800 dark:hover:text-[#EDEDED]"
+              )}
+              data-testid={`preview-branch-${b === "Lower Parel" ? "lp" : "mzg"}`}
+            >
+              {b === "Lower Parel" ? "LP" : "MZG"}
+            </button>
+          ))}
+        </div>
+      </div>
+      {loading ? (
+        <div className="flex items-center py-1.5" aria-busy="true">
+          <Loader2 className="h-4 w-4 animate-spin text-gray-400 dark:text-[#6B7280]" aria-hidden />
+        </div>
+      ) : items.length === 0 ? (
+        <p className="text-xs text-gray-500 dark:text-[#9CA3AF]">No upcoming sessions</p>
+      ) : (
+        <>
+          <div
+            className="flex gap-2 overflow-x-auto overflow-y-hidden pb-0.5 -mx-1 px-1 scrollbar-hide select-none touch-pan-x overscroll-x-contain"
+            role="list"
+            aria-label="Upcoming sessions this week"
+          >
+            {items.map((s) => {
+              const day = parseISO(`${s.sessionDate}T12:00:00`);
+              const isSessionToday = isSameDay(day, todayStart);
+              return (
+                <div
+                  key={`${s.scheduleId}_${s.sessionDate}_${s.startTime}`}
+                  role="listitem"
+                  className="pointer-events-none shrink-0 rounded-lg border border-gray-200/90 dark:border-white/8 bg-white/70 dark:bg-[#18181B] px-2.5 py-1.5"
+                >
+                  <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                    {isSessionToday ? (
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-airborne-teal dark:text-teal-300">
+                        TODAY
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-[#9CA3AF]">
+                        {format(day, "EEE d")}
+                      </span>
+                    )}
+                    <span className="text-[10px] text-gray-400 dark:text-[#6B7280]" aria-hidden>
+                      ·
+                    </span>
+                    <span className="text-xs font-semibold text-gray-800 dark:text-[#EDEDED]">{formatTime12h(s.startTime)}</span>
+                    <span className="text-[10px] font-medium text-gray-400 dark:text-[#6B7280] rounded px-1 border border-gray-200/80 dark:border-white/10 tabular-nums">
+                      {branchBadgeShort(s.branch)}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {overflowCount > 0 && (
+            <p className="text-[10px] text-gray-500 dark:text-[#6B7280] mt-1.5">+{overflowCount} more this week</p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 
 /** Lightweight read-only schedule view for enrollment plan evaluation. Local branch toggle for comparison. */
 function EnrollScheduleSheetContent({
@@ -468,7 +639,19 @@ const PersonalDetails = ({
   );
 };
 
-const MembershipSelection = ({ onNext, onBack, onAddPlan, onRemovePlan, selectedPlans, classTypes, plansByClassType, selectedClassType, onSelectClassType, onViewSchedule }: any) => {
+const MembershipSelection = ({
+  onNext,
+  onBack,
+  onAddPlan,
+  onRemovePlan,
+  selectedPlans,
+  classTypes,
+  plansByClassType,
+  selectedClassType,
+  onSelectClassType,
+  onViewSchedule,
+  selectedBranch,
+}: any) => {
   const [infoSheetOpen, setInfoSheetOpen] = useState(false);
   const [infoClass, setInfoClass] = useState<ClassType | null>(null);
   const currentPlan = selectedPlans.find((p: any) => p.category === selectedClassType?.name);
@@ -512,6 +695,10 @@ const MembershipSelection = ({ onNext, onBack, onAddPlan, onRemovePlan, selected
           </button>
         ))}
       </div>
+
+      {selectedClassType && (
+        <EnrollScheduleStripPreview selectedClassType={selectedClassType} selectedBranch={selectedBranch} />
+      )}
 
       {selectedClassType && (
         <div className="rounded border border-gray-100 dark:border-white/6 bg-gray-50/50 dark:bg-[#111113] p-4 space-y-3">
@@ -680,6 +867,9 @@ const Waiver = ({ onNext, onBack, data, onChange }: any) => {
       <div>
         <h2 className="text-2xl font-bold text-gray-900 dark:text-[#EDEDED]">Waiver</h2>
         <p className="text-gray-500 dark:text-[#9CA3AF] text-sm">Please review and sign.</p>
+        <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-1">
+          Your signed waiver will remain on file for future enrollments.
+        </p>
       </div>
 
       <div className="bg-gray-50 dark:bg-[#111113] border border-gray-100 dark:border-white/6 p-6 rounded text-xs text-gray-500 dark:text-[#9CA3AF] leading-relaxed">
@@ -766,8 +956,17 @@ const Payment = ({ onBack, onPay, plans, loading, loadingError }: any) => {
   );
 };
 
+/** Last step index in the enrollment wizard (always payment). */
+function enrollmentPaymentStep(hasKidsCategory: boolean, showWaiverStep: boolean): number {
+  return showWaiverStep ? 5 : hasKidsCategory ? 4 : 3;
+}
+
+function enrollmentTotalSteps(hasKidsCategory: boolean, showWaiverStep: boolean): number {
+  return 3 + (hasKidsCategory ? 1 : 0) + (showWaiverStep ? 1 : 0);
+}
+
 export default function Enroll() {
-  const { enroll, user, selectedBranch, updateProfile } = useMember();
+  const { enroll, user, selectedBranch, updateProfile, sessionRestored } = useMember();
   const [, setLocation] = useLocation();
   const searchParams = new URLSearchParams(window.location.search);
   const isRenewFlow = searchParams.get("renew") === "1";
@@ -819,6 +1018,8 @@ export default function Enroll() {
   const [step1SaveError, setStep1SaveError] = useState<string | null>(null);
   const prevStepRef = useRef<number | null>(null);
   const bookStepBootstrapDoneRef = useRef(false);
+  const plainEnrollBootstrapDoneRef = useRef(false);
+  const suppressStep2AutoRef = useRef(false);
 
   useEffect(() => {
     const prev = prevStepRef.current;
@@ -886,6 +1087,25 @@ export default function Enroll() {
     }
   }, [user, isRenewFlow]);
 
+  useLayoutEffect(() => {
+    if (isRenewFlow) return;
+    if (!sessionRestored || !user) return;
+
+    const qs = new URLSearchParams(window.location.search);
+    const classTypeIdFromUrl = qs.get("classTypeId")?.trim() || "";
+    const cat = qs.get("category");
+    const hasBookPreselect = Boolean(classTypeIdFromUrl || cat);
+    if (hasBookPreselect) return;
+
+    if (plainEnrollBootstrapDoneRef.current) return;
+    plainEnrollBootstrapDoneRef.current = true;
+
+    if (suppressStep2AutoRef.current) return;
+    if (isProfileCompleteForStep1(user)) {
+      setStep(2);
+    }
+  }, [user, isRenewFlow, sessionRestored]);
+
   useEffect(() => {
     if (!selectedClassType?.id) return;
     if (plansByClassType[selectedClassType.id]) return;
@@ -901,6 +1121,16 @@ export default function Enroll() {
   const hasKidsCategory = selectedPlans.some(
     (p) => classTypes.find((c) => c.name === p.category)?.ageGroup === "Kids"
   );
+
+  const showWaiverStep = user?.hasSignedWaiver !== true;
+  const paymentStep = enrollmentPaymentStep(hasKidsCategory, showWaiverStep);
+  const totalSteps = enrollmentTotalSteps(hasKidsCategory, showWaiverStep);
+
+  const goBackFromPayment = () => {
+    if (showWaiverStep) setStep(4);
+    else if (hasKidsCategory) setStep(3);
+    else setStep(2);
+  };
 
   const handleStep1Continue = async () => {
     const validationErrors = validatePersonalDetails(formData);
@@ -934,8 +1164,22 @@ export default function Enroll() {
   };
 
   const nextStep = () => {
-    if (step === 2 && !hasKidsCategory) setStep(4);
-    else setStep(step + 1);
+    if (step === 2) {
+      if (hasKidsCategory) setStep(3);
+      else if (showWaiverStep) setStep(4);
+      else setStep(paymentStep);
+      return;
+    }
+    if (step === 3 && hasKidsCategory) {
+      if (showWaiverStep) setStep(4);
+      else setStep(paymentStep);
+      return;
+    }
+    if (step === 4 && showWaiverStep) {
+      setStep(paymentStep);
+      return;
+    }
+    setStep(step + 1);
   };
 
   const openMembershipStartModal = () => {
@@ -958,8 +1202,15 @@ export default function Enroll() {
   };
 
   const prevStep = () => {
-    if (step === 4 && !hasKidsCategory) setStep(2);
-    else setStep(step - 1);
+    if (step === paymentStep) {
+      goBackFromPayment();
+      return;
+    }
+    if (step === 4 && showWaiverStep) {
+      setStep(hasKidsCategory ? 3 : 2);
+      return;
+    }
+    setStep(step - 1);
   };
 
   const handleAddPlan = (category: string, plan: MembershipPlan) => {
@@ -1107,8 +1358,6 @@ export default function Enroll() {
     }
   };
 
-  const totalSteps = hasKidsCategory ? 5 : 4;
-
   if (!user) {
     return <div className="flex items-center justify-center h-full">Loading... <Loader2 size={16} /></div>;
   }
@@ -1132,10 +1381,53 @@ export default function Enroll() {
                   saveErrorMessage={step1SaveError}
                 />
               )}
-              {step === 2 && <MembershipSelection key="step2" classTypes={classTypes} plansByClassType={plansByClassType} selectedClassType={selectedClassType} onSelectClassType={setSelectedClassType} selectedPlans={selectedPlans} onAddPlan={handleAddPlan} onRemovePlan={(c: string) => setSelectedPlans(p => p.filter(x => x.category !== c))} onNext={openMembershipStartModal} onBack={() => setStep(1)} onViewSchedule={() => setScheduleSheetOpen(true)} />}
-              {step === 3 && <KidDetails key="step3" data={kidInfo} onChange={(k: any, v: any) => setKidInfo(p => ({...p, [k]: v}))} onNext={() => setStep(4)} onBack={() => setStep(2)} />}
-              {step === 4 && <Waiver key="step4" data={waiverData} onChange={(k: any, v: any) => setWaiverData(p => ({...p, [k]: v}))} onNext={() => setStep(5)} onBack={prevStep} />}
-              {step === 5 && <Payment key="step5" plans={selectedPlans} loading={isLoading} loadingError={loadingError} onBack={() => setStep(4)} onPay={handlePay} />}
+              {step === 2 && (
+                <MembershipSelection
+                  key="step2"
+                  classTypes={classTypes}
+                  plansByClassType={plansByClassType}
+                  selectedClassType={selectedClassType}
+                  onSelectClassType={setSelectedClassType}
+                  selectedPlans={selectedPlans}
+                  onAddPlan={handleAddPlan}
+                  onRemovePlan={(c: string) => setSelectedPlans((p) => p.filter((x) => x.category !== c))}
+                  onNext={openMembershipStartModal}
+                  onBack={() => {
+                    suppressStep2AutoRef.current = true;
+                    setStep(1);
+                  }}
+                  onViewSchedule={() => setScheduleSheetOpen(true)}
+                  selectedBranch={selectedBranch}
+                />
+              )}
+              {step === 3 && hasKidsCategory && (
+                <KidDetails
+                  key="step3"
+                  data={kidInfo}
+                  onChange={(k: any, v: any) => setKidInfo((p) => ({ ...p, [k]: v }))}
+                  onNext={() => setStep(showWaiverStep ? 4 : paymentStep)}
+                  onBack={() => setStep(2)}
+                />
+              )}
+              {step === 4 && showWaiverStep && (
+                <Waiver
+                  key="step4"
+                  data={waiverData}
+                  onChange={(k: any, v: any) => setWaiverData((p) => ({ ...p, [k]: v }))}
+                  onNext={() => setStep(paymentStep)}
+                  onBack={prevStep}
+                />
+              )}
+              {step === paymentStep && (
+                <Payment
+                  key="step-payment"
+                  plans={selectedPlans}
+                  loading={isLoading}
+                  loadingError={loadingError}
+                  onBack={goBackFromPayment}
+                  onPay={handlePay}
+                />
+              )}
             </AnimatePresence>
         </div>
 

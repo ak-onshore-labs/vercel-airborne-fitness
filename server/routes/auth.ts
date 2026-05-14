@@ -305,6 +305,8 @@ export function registerAuthRoutes(app: Express): void {
 
       const token = signToken({ userId: user.id, mobile: user.mobile });
 
+      const hasSignedWaiver = await storage.hasSignedWaiverForUser(user.id);
+
       res.json({
         success: true,
         token,
@@ -329,6 +331,7 @@ export function registerAuthRoutes(app: Express): void {
         })),
         memberships: membershipMap,
         isNew,
+        hasSignedWaiver,
       });
     })
   );
@@ -406,6 +409,8 @@ export function registerAuthRoutes(app: Express): void {
         }
       }
 
+      const hasSignedWaiver = await storage.hasSignedWaiverForUser(userId);
+
       res.json({
         user: {
           id: user.id,
@@ -428,6 +433,7 @@ export function registerAuthRoutes(app: Express): void {
         })),
         memberships: membershipMap,
         isNew: false,
+        hasSignedWaiver,
       });
     })
   );

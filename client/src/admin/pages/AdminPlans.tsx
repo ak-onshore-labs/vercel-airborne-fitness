@@ -18,6 +18,12 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+  InputGroupText,
+} from "@/components/ui/input-group";
+import {
   Table,
   TableBody,
   TableCell,
@@ -39,6 +45,34 @@ import { useAdminPermissions } from "../useAdminPermissions";
 // active-first sorting / Active-Inactive-All filtering client-side. Existing
 // server search params (classTypeName, planName) are preserved.
 const FETCH_LIMIT = 500;
+
+const inrTableFormatter = new Intl.NumberFormat("en-IN", {
+  style: "currency",
+  currency: "INR",
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2,
+});
+
+function formatInrTablePrice(n: number): string {
+  return inrTableFormatter.format(n);
+}
+
+/** Parse add-plan price on submit only. Returns null if empty or invalid. Allows 0. */
+function parseInrPriceInput(raw: string): number | null {
+  const s = raw
+    .trim()
+    .replace(/\u20b9/g, "")
+    .replace(/,/g, "")
+    .replace(/\s/g, "");
+  if (s === "") return null;
+  if (s.includes("-")) return null;
+  if ((s.match(/\./g) ?? []).length > 1) return null;
+  if (!/^\d*\.?\d*$/.test(s)) return null;
+  if (s === ".") return null;
+  const n = Number(s);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return n;
+}
 
 type PlanItem = {
   id: string;
@@ -72,7 +106,7 @@ export default function AdminPlans() {
   const [addName, setAddName] = useState("");
   const [addSessions, setAddSessions] = useState(10);
   const [addValidityDays, setAddValidityDays] = useState(30);
-  const [addPrice, setAddPrice] = useState(0);
+  const [addPriceInput, setAddPriceInput] = useState("");
   const [addSubmitting, setAddSubmitting] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
@@ -129,7 +163,7 @@ export default function AdminPlans() {
     setAddName("");
     setAddSessions(10);
     setAddValidityDays(30);
-    setAddPrice(0);
+    setAddPriceInput("");
     setAddError(null);
     setAddOpen(true);
   };
@@ -140,6 +174,11 @@ export default function AdminPlans() {
       setAddError("Class type and plan name are required");
       return;
     }
+    const parsedPrice = parseInrPriceInput(addPriceInput);
+    if (parsedPrice === null) {
+      setAddError("Enter a valid price in INR.");
+      return;
+    }
     setAddSubmitting(true);
     const res = await adminApiFetch<PlanItem>("/api/admin/plans", {
       method: "POST",
@@ -148,7 +187,7 @@ export default function AdminPlans() {
         name: addName.trim(),
         sessionsTotal: addSessions,
         validityDays: addValidityDays,
-        price: addPrice,
+        price: parsedPrice,
       }),
     });
     setAddSubmitting(false);
@@ -258,7 +297,24 @@ export default function AdminPlans() {
             </div>
             <div className="grid gap-2">
               <Label htmlFor="add-price">Price</Label>
-              <Input id="add-price" type="number" min={0} step={0.01} value={addPrice} onChange={(e) => setAddPrice(parseFloat(e.target.value) || 0)} />
+              <InputGroup className="h-10">
+                <InputGroupAddon align="inline-start">
+                  <InputGroupText>₹</InputGroupText>
+                </InputGroupAddon>
+                <InputGroupInput
+                  id="add-price"
+                  type="text"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  value={addPriceInput}
+                  onChange={(e) => setAddPriceInput(e.target.value)}
+                  aria-describedby="add-price-helper"
+                  placeholder="0"
+                />
+              </InputGroup>
+              <p id="add-price-helper" className="text-xs text-muted-foreground">
+                Enter base price in INR. GST is handled separately where applicable.
+              </p>
             </div>
           </div>
           {addError && <p className="text-sm text-destructive">{addError}</p>}
@@ -324,7 +380,7 @@ export default function AdminPlans() {
                   <TableCell>{p.name}</TableCell>
                   <TableCell>{p.sessionsTotal}</TableCell>
                   <TableCell>{p.validityDays}</TableCell>
-                  <TableCell>{p.price}</TableCell>
+                  <TableCell>{formatInrTablePrice(p.price)}</TableCell>
                   <TableCell>{p.isActive ? "Yes" : "No"}</TableCell>
                   <TableCell>
                     {EDIT && (
