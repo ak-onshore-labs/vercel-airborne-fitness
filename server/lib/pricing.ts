@@ -2,6 +2,7 @@ export const GST_PERCENT = 5;
 
 export interface PlanPricingInput {
   price: number;
+  /** @deprecated Ignored for pricing; 5% GST is always added on base price. */
   gstInclusive?: boolean | null;
 }
 
@@ -21,7 +22,7 @@ function roundTo2(value: number): number {
 
 export function computePlanPricing(input: PlanPricingInput): PlanPricingBreakdown {
   const subtotalInr = Number.isFinite(input.price) ? input.price : 0;
-  const gstInr = input.gstInclusive === true ? 0 : subtotalInr * (GST_PERCENT / 100);
+  const gstInr = subtotalInr * (GST_PERCENT / 100);
   const totalInr = subtotalInr + gstInr;
   return {
     subtotalInr: roundTo2(subtotalInr),

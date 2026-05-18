@@ -533,9 +533,11 @@ export function registerAdminRoutes(app: Express): void {
       const startDateTo = typeof req.query.startDateTo === "string" ? req.query.startDateTo : undefined;
       const expiryDateFrom = typeof req.query.expiryDateFrom === "string" ? req.query.expiryDateFrom : undefined;
       const expiryDateTo = typeof req.query.expiryDateTo === "string" ? req.query.expiryDateTo : undefined;
+      const memberId = typeof req.query.memberId === "string" ? req.query.memberId.trim() : undefined;
       const result = await storage.listMemberships({
         page,
         limit,
+        memberId,
         memberName,
         memberMobile,
         classTypeName,
@@ -727,7 +729,7 @@ export function registerAdminRoutes(app: Express): void {
         const gstInr = rowPricing.gstInr;
         const totalInr = rowPricing.totalInr;
         const totalPaise = Math.round(totalInr * 100);
-        const gstPercent = (planDoc as any).gstInclusive === true ? 0 : GST_PERCENT;
+        const gstPercent = GST_PERCENT;
         const idSuffix = String(membership.id).slice(-8);
         const receipt = `cash_${idSuffix}`.slice(0, 40);
         const orderId = `cash_${membership.id}`;

@@ -169,7 +169,7 @@ export default function AdminTransactions() {
           className="max-w-[160px]"
         />
         <Input
-          placeholder="Search name/mobile/reference"
+          placeholder="Search name, mobile, plan, class, reference"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           className="max-w-[240px]"
@@ -219,8 +219,12 @@ export default function AdminTransactions() {
                   <TableCell>{formatDate(row.date)}</TableCell>
                   <TableCell>{withFallback(row.memberName)}</TableCell>
                   <TableCell>{withFallback(row.memberMobile)}</TableCell>
-                  <TableCell>{withFallback(row.plan)}</TableCell>
-                  <TableCell>{withFallback(row.classType)}</TableCell>
+                  <TableCell className="max-w-[200px] truncate" title={row.plan && row.plan !== "—" ? row.plan : undefined}>
+                    {withFallback(row.plan)}
+                  </TableCell>
+                  <TableCell className="max-w-[160px] truncate" title={row.classType && row.classType !== "—" ? row.classType : undefined}>
+                    {withFallback(row.classType)}
+                  </TableCell>
                   <TableCell>{withFallback(row.paymentMode)}</TableCell>
                   <TableCell className="text-right">{formatInr(row.subtotal)}</TableCell>
                   <TableCell className="text-right">{formatInr(row.gst)}</TableCell>

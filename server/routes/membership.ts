@@ -14,6 +14,7 @@ import {
   parseMembershipStartDateFromInput,
 } from "../../shared/membershipDates.js";
 import { isEligibleForGenderRestriction, resolveMemberGenderForRestriction } from "../lib/genderEligibility.js";
+import { computeCartPricing } from "../lib/pricing.js";
 
 const PAUSE_DAYS = 14;
 const PAUSE_MS = PAUSE_DAYS * 24 * 60 * 60 * 1000;
@@ -520,7 +521,18 @@ export function registerMembershipRoutes(app: Express): void {
       const planById = new Map(planDocs.map((p: any) => [String(p._id), p]));
       const typeList = await storage.getClassTypes();
       const nameToTypeId: Record<string, string> = {};
-      for (const t of typeList) nameToTypeId[t.name] = t.id;
+      const typeIdToName: Record<string, string> = {};
+      for (const t of typeList) {
+        nameToTypeId[t.name] = t.id;
+        typeIdToName[t.id] = t.name;
+      }
+
+      const createdMembershipIds: string[] = [];
+      const membershipPlanIds: string[] = [];
+      const planNames: string[] = [];
+      const classTypeIds: string[] = [];
+      const classTypeNames: string[] = [];
+      const pricingInputs: { price: number; gstInclusive?: boolean | null }[] = [];
 
       for (const plan of plans) {
         let planId = plan.planId || plan.id;
@@ -546,7 +558,7 @@ export function registerMembershipRoutes(app: Express): void {
         const validityDays = p.validityDays ?? plan.validityDays ?? 30;
         const expiryDate = computeMembershipExpiryExclusiveEnd(startDay, validityDays);
         const startDate = parseMembershipStartDateFromInput(startDay);
-        await storage.createMembership({
+        const membership = await storage.createMembership({
           memberId,
           membershipPlanId: planId,
           sessionsRemaining: sessionsTotal,
@@ -555,6 +567,20 @@ export function registerMembershipRoutes(app: Express): void {
           extensionApplied: false,
           pauseUsed: false,
           startDate,
+        });
+        createdMembershipIds.push(membership.id);
+        membershipPlanIds.push(planId);
+        const planName = typeof (p as { name?: string }).name === "string" ? (p as { name: string }).name : "";
+        if (planName) planNames.push(planName);
+        const classTypeId = typeof (p as { classTypeId?: string }).classTypeId === "string" ? (p as { classTypeId: string }).classTypeId : "";
+        if (classTypeId) {
+          classTypeIds.push(classTypeId);
+          const classTypeName = typeIdToName[classTypeId] ?? "";
+          if (classTypeName) classTypeNames.push(classTypeName);
+        }
+        pricingInputs.push({
+          price: typeof (p as { price?: number }).price === "number" ? (p as { price: number }).price : 0,
+          gstInclusive: (p as { gstInclusive?: boolean }).gstInclusive === true,
         });
       }
 
@@ -567,11 +593,42 @@ export function registerMembershipRoutes(app: Express): void {
         });
       }
 
+      const existingMetadata = (transaction.metadata ?? {}) as Record<string, unknown>;
+      const alreadyEnriched =
+        (typeof existingMetadata.enrolledAt === "string" && existingMetadata.enrolledAt.trim().length > 0) ||
+        (typeof existingMetadata.memberId === "string" && existingMetadata.memberId.trim().length > 0);
+      if (!alreadyEnriched && createdMembershipIds.length > 0) {
+        try {
+          const cart = computeCartPricing(pricingInputs);
+          const expectedPaise = Math.round(cart.totalInr * 100);
+          if (expectedPaise !== transaction.amount) {
+            console.warn(
+              `Enroll metadata: amount mismatch transactionId=${transactionId} expectedPaise=${expectedPaise} actual=${transaction.amount}`
+            );
+          }
+          await storage.mergeTransactionMetadata(transactionId, {
+            mode: "Razorpay",
+            memberId,
+            memberName: pd.name.trim(),
+            membershipIds: createdMembershipIds,
+            membershipPlanIds,
+            planNames,
+            classTypeIds,
+            classTypeNames: Array.from(new Set(classTypeNames)),
+            subtotalInr: cart.subtotalInr,
+            gstInr: cart.gstInr,
+            totalInr: cart.totalInr,
+            enrolledAt: new Date().toISOString(),
+          });
+        } catch (err) {
+          console.error(
+            `Enroll metadata merge failed transactionId=${transactionId}:`,
+            err instanceof Error ? err.message : err
+          );
+        }
+      }
+
       const allMemberships = await storage.getMemberMemberships(memberId);
-      const { ClassTypeModel } = await import("../models/index.js");
-      const classTypeDocs = await ClassTypeModel.find({});
-      const typeIdToName: Record<string, string> = {};
-      for (const t of classTypeDocs) typeIdToName[(t as any)._id.toString()] = t.name;
       const membershipMap: Record<
         string,
         {

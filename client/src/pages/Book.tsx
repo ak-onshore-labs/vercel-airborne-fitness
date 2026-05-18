@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { formatTime12h } from "@/lib/formatTime";
 import { MemberDialogContent } from "@/components/MemberDialogContent";
+import { BookFilterCirclePicker } from "@/components/book/BookFilterCirclePicker";
 import { getMembershipUsability, getRenewUrl } from "@/lib/membershipUi";
 import { getMembershipSessionBookingEligibility } from "@shared/membershipState";
 
@@ -88,7 +89,6 @@ export default function Book() {
   const [pendingIsWaitlist, setPendingIsWaitlist] = useState(false);
 
   const enrolledCategoryNames = user ? Object.keys(user.memberships) : [];
-  const filterChips = ["My Classes", "All", ...classTypes.map((t) => t.name)];
 
   useEffect(() => {
     apiFetch<{ cancellationWindowMinutes: number }>("/api/settings").then((r) => {
@@ -230,11 +230,11 @@ export default function Book() {
         })}
         </div>
 
-        <div className="flex gap-2 mb-6 overflow-x-auto pb-2 -mx-6 px-6 scrollbar-hide">
-            {filterChips.map((chip) => (
-                <button key={chip} onClick={() => setFilter(chip)} data-testid={`button-filter-${chip}`} className={cn("px-4 py-2 rounded-full text-xs font-medium whitespace-nowrap transition-all border", filter === chip ? "bg-airborne-teal/10 dark:bg-airborne-teal/25 border-airborne-teal dark:border-teal-400 text-airborne-deep dark:text-teal-200" : "bg-white dark:bg-[#111113] text-gray-500 dark:text-[#9CA3AF] border-gray-200 dark:border-white/10")}>{chip}</button>
-            ))}
-        </div>
+        <BookFilterCirclePicker
+          filter={filter}
+          onFilterChange={setFilter}
+          classTypes={classTypes}
+        />
 
         <Dialog open={bookingConfirmOpen} onOpenChange={setBookingConfirmOpen}>
           <MemberDialogContent onPointerDownOutside={(e) => e.preventDefault()}>

@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { Calendar as DayPickerCalendar } from "@/components/ui/calendar";
 import { formatTime12h } from "@/lib/formatTime";
+import { ClassTypeCirclePicker } from "@/components/enroll/ClassTypeCirclePicker";
 import filledBicep from "@assets/filled_bicep.svg";
 import blackBicep from "@assets/black_bicep.svg";
 
@@ -672,29 +673,12 @@ const MembershipSelection = ({
           <CalendarIcon size={14} className="mr-1" /> View Schedule
         </Button>
       </div>
-      <div className="flex gap-2 overflow-x-auto pb-2 -mx-6 px-6 scrollbar-hide">
-        {classTypes.map((cls: ClassType) => (
-          <button
-            key={cls.id}
-            type="button"
-            onClick={() => onSelectClassType(cls)}
-            className={cn(
-              "flex-shrink-0 rounded border relative flex flex-col min-w-[120px] overflow-hidden p-3 text-left transition-colors",
-              selectedClassType?.id === cls.id
-                ? "bg-gray-900 border-gray-900"
-                : selectedPlans.some((p: any) => p.category === cls.name)
-                  ? "bg-teal-50 dark:bg-teal-900/30 border-airborne-teal dark:border-teal-400"
-                  : "bg-white dark:bg-[#111113] border-gray-200 dark:border-white/6"
-            )}
-            data-testid={`button-category-${cls.id}`}
-          >
-            <span className={cn("text-sm font-medium", selectedClassType?.id === cls.id ? "text-white" : selectedPlans.some((p: any) => p.category === cls.name) ? "text-airborne-teal" : "text-gray-500")}>
-              {cls.name}
-            </span>
-            {selectedPlans.some((p: any) => p.category === cls.name) && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-airborne-teal rounded-full border-2 border-white" />}
-          </button>
-        ))}
-      </div>
+      <ClassTypeCirclePicker
+        classTypes={classTypes}
+        selectedClassType={selectedClassType}
+        selectedPlans={selectedPlans}
+        onSelectClassType={onSelectClassType}
+      />
 
       {selectedClassType && (
         <EnrollScheduleStripPreview selectedClassType={selectedClassType} selectedBranch={selectedBranch} />
@@ -920,10 +904,7 @@ const Waiver = ({ onNext, onBack, data, onChange }: any) => {
 
 const Payment = ({ onBack, onPay, plans, loading, loadingError }: any) => {
   const subtotal = plans.reduce((sum: number, item: any) => sum + item.plan.price, 0);
-  const tax = plans.reduce((sum: number, item: any) => {
-    if (item.plan.gstInclusive === true) return sum;
-    return sum + item.plan.price * 0.05;
-  }, 0);
+  const tax = plans.reduce((sum: number, item: any) => sum + item.plan.price * 0.05, 0);
   const total = subtotal + tax;
   const amountPaise = Math.round(total * 100);
   return (

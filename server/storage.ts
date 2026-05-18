@@ -207,6 +207,7 @@ export interface IStorage {
   createTransaction(transaction: InsertTransaction): Promise<Transaction>;
   getTransactionById(id: string): Promise<Transaction | undefined>;
   updateTransaction(id: string, data: Partial<Pick<Transaction, "status" | "paymentId" | "signature">>): Promise<Transaction | undefined>;
+  mergeTransactionMetadata(id: string, patch: Record<string, unknown>): Promise<Transaction | undefined>;
   getTransactionByOrderId(orderId: string): Promise<Transaction | undefined>;
   listTransactionsForUser(userId: string, opts: { limit: number }): Promise<Transaction[]>;
   listAdminTransactions(params: {
@@ -245,6 +246,7 @@ export interface IStorage {
   listMemberships(params: {
     page: number;
     limit: number;
+    memberId?: string;
     memberName?: string;
     memberMobile?: string;
     classTypeName?: string;
@@ -286,6 +288,23 @@ export interface IStorage {
 
 /** Occupancy fraction (0–1) above which a class is considered "almost full" for dashboard. */
 export const ALMOST_FULL_OCCUPANCY_THRESHOLD = 0.8;
+
+function metadataStringArray(md: Record<string, unknown>, pluralKey: string, singularKey: string): string[] {
+  const raw = md[pluralKey];
+  if (Array.isArray(raw)) {
+    return raw
+      .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+      .map((x) => x.trim());
+  }
+  const single = md[singularKey];
+  if (typeof single === "string" && single.trim()) return [single.trim()];
+  return [];
+}
+
+function joinUniqueDisplayNames(names: string[]): string {
+  const unique = Array.from(new Set(names.filter((n) => n.trim().length > 0)));
+  return unique.length > 0 ? unique.join(", ") : "";
+}
 
 export class MongoStorage implements IStorage {
   private amountPaiseToInrString(amountPaise: number): string {
@@ -342,11 +361,15 @@ export class MongoStorage implements IStorage {
     const userIds = Array.from(new Set(transactions.map((t) => t.userId))).filter(
       (id): id is string => Boolean(id) && mongoose.Types.ObjectId.isValid(id)
     );
-    const users = await UserModel.find({ _id: { $in: userIds.map((id) => new mongoose.Types.ObjectId(id)) } }).lean();
+    const users = await UserModel.find({ _id: { $in: userIds.map((id) => new mongoose.Types.ObjectId(id)) } })
+      .select("mobile name")
+      .lean();
     const userMobileMap: Record<string, string> = {};
+    const userNameMap: Record<string, string> = {};
     for (const u of users as any[]) {
       const id = u._id.toString();
       userMobileMap[id] = u.mobile ?? "";
+      userNameMap[id] = u.name ?? "";
     }
 
     const memberIdSet = new Set<string>();
@@ -355,8 +378,12 @@ export class MongoStorage implements IStorage {
     for (const t of transactions) {
       const md = (t.metadata ?? {}) as Record<string, unknown>;
       if (typeof md.memberId === "string" && md.memberId.trim()) memberIdSet.add(md.memberId.trim());
-      if (typeof md.membershipPlanId === "string" && md.membershipPlanId.trim()) planIdSet.add(md.membershipPlanId.trim());
-      if (typeof md.classTypeId === "string" && md.classTypeId.trim()) classTypeIdSet.add(md.classTypeId.trim());
+      for (const pid of metadataStringArray(md, "membershipPlanIds", "membershipPlanId")) {
+        planIdSet.add(pid);
+      }
+      for (const cid of metadataStringArray(md, "classTypeIds", "classTypeId")) {
+        classTypeIdSet.add(cid);
+      }
     }
 
     const memberIds = Array.from(memberIdSet).filter((id) => mongoose.Types.ObjectId.isValid(id));
@@ -400,20 +427,35 @@ export class MongoStorage implements IStorage {
       const userId = t.userId;
       const userMobile = userMobileMap[userId] || "";
 
-      const memberName = memberFromMetadata?.name?.trim()
-        ? memberFromMetadata.name.trim()
-        : memberFromMetadata
-          ? "—"
-          : "—";
+      const metadataMemberName =
+        typeof md.memberName === "string" && md.memberName.trim() ? md.memberName.trim() : "";
+      const memberFromRecord = memberFromMetadata?.name?.trim() ?? "";
+      const userName = userNameMap[userId]?.trim() ?? "";
+      const memberName = metadataMemberName || memberFromRecord || userName || "—";
       const memberMobile = userMobile || "—";
 
-      const planFromMetadata = typeof md.planName === "string" && md.planName.trim() ? md.planName.trim() : "";
-      const planLookup = planId ? planMap[planId]?.name ?? "" : "";
-      const plan = planFromMetadata || planLookup || "—";
+      const planNamesFromMd = metadataStringArray(md, "planNames", "planName");
+      const planIdsFromMd = metadataStringArray(md, "membershipPlanIds", "membershipPlanId");
+      const planLookupNames = planIdsFromMd
+        .map((pid) => planMap[pid]?.name ?? "")
+        .filter((n) => n.trim().length > 0);
+      const plan =
+        joinUniqueDisplayNames([...planNamesFromMd, ...planLookupNames]) ||
+        (planId ? planMap[planId]?.name ?? "" : "") ||
+        "—";
 
+      const classTypeNamesFromMd = metadataStringArray(md, "classTypeNames", "classTypeName");
+      const classTypeIdsFromMd = metadataStringArray(md, "classTypeIds", "classTypeId");
+      const classTypeLookupNames = classTypeIdsFromMd
+        .map((cid) => classTypeMap[cid] ?? "")
+        .filter((n) => n.trim().length > 0);
       const classTypeFromExplicit = explicitClassTypeId ? classTypeMap[explicitClassTypeId] ?? "" : "";
       const classTypeFromPlan = planId ? classTypeMap[planMap[planId]?.classTypeId ?? ""] ?? "" : "";
-      const classType = classTypeFromExplicit || classTypeFromPlan || "—";
+      const classType =
+        joinUniqueDisplayNames([...classTypeNamesFromMd, ...classTypeLookupNames]) ||
+        classTypeFromExplicit ||
+        classTypeFromPlan ||
+        "—";
 
       const metadataMode = typeof md.mode === "string" && md.mode.trim() ? md.mode.trim() : "";
       const paymentMode = metadataMode || (this.detectRazorpay(t) ? "Razorpay" : "—");
@@ -455,7 +497,7 @@ export class MongoStorage implements IStorage {
     const filtered = rows.filter((r) => {
       if (paymentModeNeedle && r.paymentMode.toLowerCase() !== paymentModeNeedle) return false;
       if (qNeedle) {
-        const hay = [r.memberName, r.memberMobile, r.reference].join(" ").toLowerCase();
+        const hay = [r.memberName, r.memberMobile, r.reference, r.plan, r.classType].join(" ").toLowerCase();
         if (!hay.includes(qNeedle)) return false;
       }
       return true;
@@ -891,6 +933,16 @@ export class MongoStorage implements IStorage {
     return toApi<Transaction>(doc) ?? undefined;
   }
 
+  async mergeTransactionMetadata(id: string, patch: Record<string, unknown>): Promise<Transaction | undefined> {
+    if (!mongoose.Types.ObjectId.isValid(id)) return undefined;
+    const existing = await TransactionModel.findById(id).lean();
+    if (!existing) return undefined;
+    const prior = (existing as { metadata?: Record<string, unknown> | null }).metadata;
+    const merged = { ...(prior && typeof prior === "object" ? prior : {}), ...patch };
+    const doc = await TransactionModel.findByIdAndUpdate(id, { $set: { metadata: merged } }, { new: true });
+    return toApi<Transaction>(doc) ?? undefined;
+  }
+
   async getTransactionByOrderId(orderId: string): Promise<Transaction | undefined> {
     const doc = await TransactionModel.findOne({ orderId });
     return toApi<Transaction>(doc) ?? undefined;
@@ -1072,6 +1124,7 @@ export class MongoStorage implements IStorage {
   async listMemberships(params: {
     page: number;
     limit: number;
+    memberId?: string;
     memberName?: string;
     memberMobile?: string;
     classTypeName?: string;
@@ -1115,6 +1168,7 @@ export class MongoStorage implements IStorage {
   }
 
   private async buildAdminMembershipRows(filters: {
+    memberId?: string;
     memberName?: string;
     memberMobile?: string;
     classTypeName?: string;
@@ -1124,6 +1178,7 @@ export class MongoStorage implements IStorage {
     expiryDateTo?: string;
   }): Promise<(Membership & { memberName?: string; memberMobile?: string; planName?: string; classTypeName?: string })[]> {
     const {
+      memberId,
       memberName,
       memberMobile,
       classTypeName,
@@ -1188,38 +1243,50 @@ export class MongoStorage implements IStorage {
       filter.expiryDate = expiryDateFilter;
     }
 
-    // Enforce role visibility: memberships must belong to users with MEMBER role only.
-    const userFilter: Record<string, unknown> = { userRole: "MEMBER" };
-    if (memberMobile?.trim()) {
-      const mobileNorm = memberMobile.trim().replace(/\D/g, "");
-      if (mobileNorm.length > 0) {
-        userFilter.mobile = { $regex: mobileNorm };
+    const memberIdTrimmed = memberId?.trim();
+    if (memberIdTrimmed) {
+      if (!mongoose.Types.ObjectId.isValid(memberIdTrimmed)) return [];
+      const memberDoc = await MemberModel.findById(memberIdTrimmed).select("userId").lean();
+      if (!memberDoc) return [];
+      const userId = String((memberDoc as { userId?: string }).userId ?? "");
+      if (!userId || !mongoose.Types.ObjectId.isValid(userId)) return [];
+      const userDoc = await UserModel.findById(userId).select("userRole").lean();
+      if (!userDoc || (userDoc as { userRole?: string }).userRole !== "MEMBER") return [];
+      filter.memberId = memberIdTrimmed;
+    } else {
+      // Enforce role visibility: memberships must belong to users with MEMBER role only.
+      const userFilter: Record<string, unknown> = { userRole: "MEMBER" };
+      if (memberMobile?.trim()) {
+        const mobileNorm = memberMobile.trim().replace(/\D/g, "");
+        if (mobileNorm.length > 0) {
+          userFilter.mobile = { $regex: mobileNorm };
+        }
       }
+
+      const memberRoleUsers = await UserModel.find(userFilter).select("_id");
+      const memberRoleUserIds = memberRoleUsers.map((u) => (u as any)._id.toString());
+      if (memberRoleUserIds.length === 0) return [];
+
+      const memberLookupFilter: Record<string, unknown> = {
+        userId: { $in: memberRoleUserIds },
+      };
+      if (memberName?.trim()) {
+        const memberNameRegex = { $regex: memberName.trim(), $options: "i" };
+        const nameUsers = await UserModel.find({ name: memberNameRegex }).select("_id");
+        const nameUserIds = nameUsers
+          .map((u) => (u as any)._id.toString())
+          .filter((id) => memberRoleUserIds.includes(id));
+        memberLookupFilter.$or = [
+          { name: memberNameRegex },
+          ...(nameUserIds.length > 0 ? [{ userId: { $in: nameUserIds } }] : []),
+        ];
+      }
+
+      const eligibleMemberDocs = await MemberModel.find(memberLookupFilter).select("_id");
+      const eligibleMemberIds = eligibleMemberDocs.map((m) => (m as any)._id.toString());
+      if (eligibleMemberIds.length === 0) return [];
+      filter.memberId = { $in: eligibleMemberIds };
     }
-
-    const memberRoleUsers = await UserModel.find(userFilter).select("_id");
-    const memberRoleUserIds = memberRoleUsers.map((u) => (u as any)._id.toString());
-    if (memberRoleUserIds.length === 0) return [];
-
-    const memberLookupFilter: Record<string, unknown> = {
-      userId: { $in: memberRoleUserIds },
-    };
-    if (memberName?.trim()) {
-      const memberNameRegex = { $regex: memberName.trim(), $options: "i" };
-      const nameUsers = await UserModel.find({ name: memberNameRegex }).select("_id");
-      const nameUserIds = nameUsers
-        .map((u) => (u as any)._id.toString())
-        .filter((id) => memberRoleUserIds.includes(id));
-      memberLookupFilter.$or = [
-        { name: memberNameRegex },
-        ...(nameUserIds.length > 0 ? [{ userId: { $in: nameUserIds } }] : []),
-      ];
-    }
-
-    const eligibleMemberDocs = await MemberModel.find(memberLookupFilter).select("_id");
-    const eligibleMemberIds = eligibleMemberDocs.map((m) => (m as any)._id.toString());
-    if (eligibleMemberIds.length === 0) return [];
-    filter.memberId = { $in: eligibleMemberIds };
 
     const docs = await MembershipModel.find(filter).sort({ createdAt: -1 }).exec();
     const items = toApiList<Membership>(docs);

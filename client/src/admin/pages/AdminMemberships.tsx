@@ -365,10 +365,7 @@ export default function AdminMemberships() {
   }, [addStep, planGroups]);
 
   const subtotal = selectedPlan?.price ?? 0;
-  const gst =
-    selectedPlan && selectedPlan.gstInclusive === true
-      ? 0
-      : subtotal * (ADMIN_MEMBERSHIP_GST_PERCENT / 100);
+  const gst = subtotal * (ADMIN_MEMBERSHIP_GST_PERCENT / 100);
   const total = subtotal + gst;
 
   const onSearch = () => {

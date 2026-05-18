@@ -219,16 +219,18 @@ export default function AdminBookings() {
 
   const [addBookingOpen, setAddBookingOpen] = useState(false);
   const [addStep, setAddStep] = useState<1 | 2>(1);
-  const [memberSearch, setMemberSearch] = useState("");
+  const [memberNameSearch, setMemberNameSearch] = useState("");
+  const [memberMobileSearch, setMemberMobileSearch] = useState("");
   const [memberSearchResults, setMemberSearchResults] = useState<MemberOption[]>([]);
   const [selectedMember, setSelectedMember] = useState<MemberOption | null>(null);
   const [addLoadingMemberSearch, setAddLoadingMemberSearch] = useState(false);
+  const memberSearchRequestIdRef = useRef(0);
   const addDates = getNext7Days();
   const [addBranch, setAddBranch] = useState("");
   const [addSelectedDate, setAddSelectedDate] = useState<Date | null>(null);
   const [addSessions, setAddSessions] = useState<SessionDisplay[]>([]);
   const [addSessionCounts, setAddSessionCounts] = useState<Record<string, { bookedCount: number; waitlistCount: number }>>({});
-  const [addFilter, setAddFilter] = useState("My Classes");
+  const [addFilter, setAddFilter] = useState("All");
   const [addApplicableClassTypes, setAddApplicableClassTypes] = useState<string[]>([]);
   const [addLoadingSchedule, setAddLoadingSchedule] = useState(false);
   const [addBookingLoadingId, setAddBookingLoadingId] = useState<string | null>(null);
@@ -402,10 +404,11 @@ export default function AdminBookings() {
   const openAddBooking = () => {
     setAddBookingOpen(true);
     setAddStep(1);
-    setMemberSearch("");
+    setMemberNameSearch("");
+    setMemberMobileSearch("");
     setMemberSearchResults([]);
     setSelectedMember(null);
-    setAddFilter("My Classes");
+    setAddFilter("All");
     setAddBranch(branches[0] ?? "");
     setAddSelectedDate(addDates[0] ?? null);
     setAddSessions([]);
@@ -416,23 +419,48 @@ export default function AdminBookings() {
     setAddBookingOpen(false);
     setSelectedMember(null);
     setAddMemberBookings([]);
+    setMemberNameSearch("");
+    setMemberMobileSearch("");
+    setMemberSearchResults([]);
   };
 
-  const searchMembers = useCallback(async () => {
-    const q = memberSearch.trim();
-    if (!q) {
+  useEffect(() => {
+    if (!addBookingOpen || addStep !== 1) return;
+
+    const nameQuery = memberNameSearch.trim();
+    const mobileDigits = memberMobileSearch.replace(/\D/g, "");
+    const nameOk = nameQuery.length >= 2;
+    const mobileOk = mobileDigits.length >= 3;
+
+    if (!nameOk && !mobileOk) {
       setMemberSearchResults([]);
+      setAddLoadingMemberSearch(false);
       return;
     }
-    setAddLoadingMemberSearch(true);
-    const params = new URLSearchParams({ limit: "50" });
-    if (/^\d+$/.test(q.replace(/\s/g, ""))) params.set("phone", q);
-    else params.set("name", q);
-    const res = await adminApiFetch<ListResponse<MemberOption>>(`/api/admin/members?${params}`);
-    if (res.ok) setMemberSearchResults(res.data.items);
-    else setMemberSearchResults([]);
-    setAddLoadingMemberSearch(false);
-  }, [memberSearch]);
+
+    const handle = window.setTimeout(async () => {
+      const requestId = ++memberSearchRequestIdRef.current;
+      setAddLoadingMemberSearch(true);
+      const params = new URLSearchParams({ limit: "50" });
+      if (mobileOk) {
+        params.set("phone", mobileDigits);
+      } else if (nameOk) {
+        params.set("name", nameQuery);
+      }
+      try {
+        const res = await adminApiFetch<ListResponse<MemberOption>>(`/api/admin/members?${params}`);
+        if (requestId !== memberSearchRequestIdRef.current) return;
+        if (res.ok) setMemberSearchResults(res.data.items);
+        else setMemberSearchResults([]);
+      } finally {
+        if (requestId === memberSearchRequestIdRef.current) {
+          setAddLoadingMemberSearch(false);
+        }
+      }
+    }, 250);
+
+    return () => window.clearTimeout(handle);
+  }, [addBookingOpen, addStep, memberNameSearch, memberMobileSearch]);
 
   useEffect(() => {
     if (!addBookingOpen || addStep !== 2 || !selectedMember) {
@@ -505,11 +533,9 @@ export default function AdminBookings() {
   const addFilteredSessions =
     addFilter === "All"
       ? addSessions
-      : addFilter === "My Classes"
-        ? addSessions.filter((s) => addApplicableClassTypes.includes(s.category))
-        : addSessions.filter((s) => s.category === addFilter);
+      : addSessions.filter((s) => s.category === addFilter);
 
-  const addFilterChips = ["All", "My Classes", ...addApplicableClassTypes];
+  const addFilterChips = ["All", ...addApplicableClassTypes];
 
   const handleAdminBook = async (session: SessionDisplay) => {
     if (!selectedMember) return;
@@ -621,25 +647,48 @@ export default function AdminBookings() {
             <DialogTitle>{addStep === 1 ? "Add booking – Select member" : "Add booking – Select class"}</DialogTitle>
             <DialogDescription>
               {addStep === 1
-                ? "Search by name or phone, then select a member to book for."
+                ? "Search by name or mobile, then select a member to book for."
                 : selectedMember && `Booking for ${selectedMember.name ?? "—"} (${selectedMember.mobile ?? ""})`}
             </DialogDescription>
           </DialogHeader>
 
           {addStep === 1 && (
             <div className="space-y-4 py-4">
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Search by name or phone"
-                  value={memberSearch}
-                  onChange={(e) => setMemberSearch(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && searchMembers()}
-                />
-                <Button onClick={searchMembers} disabled={addLoadingMemberSearch}>
-                  {addLoadingMemberSearch ? <Loader2 className="h-4 w-4 animate-spin" /> : "Search"}
-                </Button>
+              <div className="grid gap-3">
+                <div className="grid gap-2">
+                  <Label htmlFor="add-booking-member-name">Member name</Label>
+                  <Input
+                    id="add-booking-member-name"
+                    placeholder="Search by name"
+                    value={memberNameSearch}
+                    onChange={(e) => setMemberNameSearch(e.target.value)}
+                    autoComplete="off"
+                  />
+                  <p className="text-xs text-muted-foreground">Type at least 2 characters to search.</p>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="add-booking-member-mobile">Mobile</Label>
+                  <Input
+                    id="add-booking-member-mobile"
+                    type="tel"
+                    inputMode="tel"
+                    placeholder="Search by mobile"
+                    value={memberMobileSearch}
+                    onChange={(e) => setMemberMobileSearch(e.target.value)}
+                    autoComplete="off"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Type at least 3 digits. If both fields are filled, mobile is used.
+                  </p>
+                </div>
               </div>
-              {memberSearchResults.length > 0 && (
+              {addLoadingMemberSearch && (
+                <p className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                  Searching…
+                </p>
+              )}
+              {!addLoadingMemberSearch && memberSearchResults.length > 0 && (
                 <div className="border rounded-md divide-y max-h-60 overflow-auto">
                   {memberSearchResults.map((m) => (
                     <button
@@ -657,9 +706,12 @@ export default function AdminBookings() {
                   ))}
                 </div>
               )}
-              {memberSearch.trim() && !addLoadingMemberSearch && memberSearchResults.length === 0 && (
-                <p className="text-sm text-muted-foreground">No members found.</p>
-              )}
+              {(memberNameSearch.trim().length >= 2 ||
+                memberMobileSearch.replace(/\D/g, "").length >= 3) &&
+                !addLoadingMemberSearch &&
+                memberSearchResults.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No members found.</p>
+                )}
             </div>
           )}
 

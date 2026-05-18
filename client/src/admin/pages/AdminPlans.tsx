@@ -74,6 +74,16 @@ function parseInrPriceInput(raw: string): number | null {
   return n;
 }
 
+/** Parse sessions/validity on submit only. Returns null if empty or invalid. Requires integer >= 1. */
+function parsePositiveIntInput(raw: string): number | null {
+  const s = raw.trim();
+  if (s === "") return null;
+  if (!/^\d+$/.test(s)) return null;
+  const n = Number(s);
+  if (!Number.isInteger(n) || n < 1) return null;
+  return n;
+}
+
 type PlanItem = {
   id: string;
   classTypeName: string;
@@ -104,8 +114,8 @@ export default function AdminPlans() {
   const [addOpen, setAddOpen] = useState(false);
   const [addClassTypeId, setAddClassTypeId] = useState("");
   const [addName, setAddName] = useState("");
-  const [addSessions, setAddSessions] = useState(10);
-  const [addValidityDays, setAddValidityDays] = useState(30);
+  const [addSessionsInput, setAddSessionsInput] = useState("");
+  const [addValidityDaysInput, setAddValidityDaysInput] = useState("");
   const [addPriceInput, setAddPriceInput] = useState("");
   const [addSubmitting, setAddSubmitting] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
@@ -161,8 +171,8 @@ export default function AdminPlans() {
   const openAdd = () => {
     setAddClassTypeId("");
     setAddName("");
-    setAddSessions(10);
-    setAddValidityDays(30);
+    setAddSessionsInput("10");
+    setAddValidityDaysInput("30");
     setAddPriceInput("");
     setAddError(null);
     setAddOpen(true);
@@ -179,14 +189,24 @@ export default function AdminPlans() {
       setAddError("Enter a valid price in INR.");
       return;
     }
+    const parsedSessions = parsePositiveIntInput(addSessionsInput);
+    if (parsedSessions === null) {
+      setAddError("Enter a valid number of sessions (at least 1).");
+      return;
+    }
+    const parsedValidityDays = parsePositiveIntInput(addValidityDaysInput);
+    if (parsedValidityDays === null) {
+      setAddError("Enter a valid validity in days (at least 1).");
+      return;
+    }
     setAddSubmitting(true);
     const res = await adminApiFetch<PlanItem>("/api/admin/plans", {
       method: "POST",
       body: JSON.stringify({
         classTypeId: addClassTypeId,
         name: addName.trim(),
-        sessionsTotal: addSessions,
-        validityDays: addValidityDays,
+        sessionsTotal: parsedSessions,
+        validityDays: parsedValidityDays,
         price: parsedPrice,
       }),
     });
@@ -289,11 +309,33 @@ export default function AdminPlans() {
             </div>
             <div className="grid gap-2">
               <Label htmlFor="add-sessions">Sessions</Label>
-              <Input id="add-sessions" type="number" min={1} value={addSessions} onChange={(e) => setAddSessions(parseInt(e.target.value, 10) || 1)} />
+              <Input
+                id="add-sessions"
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                value={addSessionsInput}
+                onChange={(e) => setAddSessionsInput(e.target.value)}
+                aria-describedby="add-sessions-helper"
+              />
+              <p id="add-sessions-helper" className="text-xs text-muted-foreground">
+                Number of classes included in this plan.
+              </p>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="add-validity">Validity (days)</Label>
-              <Input id="add-validity" type="number" min={1} value={addValidityDays} onChange={(e) => setAddValidityDays(parseInt(e.target.value, 10) || 1)} />
+              <Input
+                id="add-validity"
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                value={addValidityDaysInput}
+                onChange={(e) => setAddValidityDaysInput(e.target.value)}
+                aria-describedby="add-validity-helper"
+              />
+              <p id="add-validity-helper" className="text-xs text-muted-foreground">
+                Number of days the plan remains valid from the start date.
+              </p>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="add-price">Price</Label>
