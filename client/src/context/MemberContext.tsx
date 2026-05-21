@@ -29,7 +29,7 @@ export interface UserProfile {
   emergencyContactPhone?: string | null;
   medicalConditions?: string | null;
   memberships: MembershipMap;
-  userRole?: "ADMIN" | "STAFF" | "MEMBER";
+  userRole?: "ADMIN" | "STAFF" | "TRAINER" | "MEMBER";
   /** Account-level liability waiver on file (from GET /api/auth/me or verify-otp). */
   hasSignedWaiver: boolean;
 }
@@ -142,7 +142,11 @@ export function MemberProvider({ children }: { children: ReactNode }) {
         emergencyContactPhone: primaryMember?.emergencyContactPhone ?? undefined,
         medicalConditions: primaryMember?.medicalConditions ?? undefined,
         memberships: normalizedMemberships,
-        userRole: ((apiUser as { userRole?: string }).userRole === "ADMIN" || (apiUser as { userRole?: string }).userRole === "STAFF" ? (apiUser as { userRole?: string }).userRole : "MEMBER") as "ADMIN" | "STAFF" | "MEMBER",
+        userRole: (() => {
+          const r = (apiUser as { userRole?: string }).userRole;
+          if (r === "ADMIN" || r === "STAFF" || r === "TRAINER") return r;
+          return "MEMBER";
+        })(),
         hasSignedWaiver: payload.hasSignedWaiver === true,
       });
       const bookingsResult = await apiFetch<Booking[]>(`/api/bookings/${memberId}`);

@@ -24,7 +24,7 @@ export default function MobileLayout({ children }: { children: React.ReactNode }
     { href: "/profile", icon: User, label: "Profile" },
   ];
   const showAdminPortal =
-    user?.userRole === "ADMIN" || user?.userRole === "STAFF";
+    user?.userRole === "ADMIN" || user?.userRole === "STAFF" || user?.userRole === "TRAINER";
 
   const isAuthPage = location === "/login" || location === "/";
 

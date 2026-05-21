@@ -1,5 +1,5 @@
 /**
- * Admin API client. Sends JWT in Authorization header; server authorizes if user.userRole === "ADMIN".
+ * Admin API client. Sends JWT in Authorization header; server authorizes by user role middleware.
  */
 export async function adminApiFetch<T = unknown>(
   url: string,

@@ -11,7 +11,7 @@ const userSchema = new mongoose.Schema<User & { _id: mongoose.Types.ObjectId }>(
       enum: ["", "Male", "Female", "Other", "Prefer not to say"] as Array<GenderValue | "">,
       default: "",
     },
-    userRole: { type: String, required: true, enum: ["ADMIN", "STAFF", "MEMBER"] as UserRole[], default: "MEMBER" },
+    userRole: { type: String, required: true, enum: ["ADMIN", "STAFF", "TRAINER", "MEMBER"] as UserRole[], default: "MEMBER" },
   },
   { timestamps: true }
 );

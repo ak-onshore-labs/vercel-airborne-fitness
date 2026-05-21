@@ -1,13 +1,14 @@
 import { useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { AdminSidebar } from "./AdminSidebar";
 import { ADMIN_SECTION_COMPONENTS } from "../routes";
 import { hashToSection, sectionToHash } from "../constants";
 import { setActiveSection, toggleMobileMenu } from "../store/slices/adminUiSlice";
 import type { AdminRootState } from "../store";
 import type { AdminSection } from "../store/slices/adminUiSlice";
-import { useViewableSections } from "../useAdminPermissions";
+import { useViewableSections, useAdminPermissions } from "../useAdminPermissions";
+import { getDefaultAdminSection } from "../permissions";
 import { Menu, Smartphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -17,10 +18,18 @@ function getHashSection(): AdminSection {
 
 export function AdminLayout() {
   const dispatch = useDispatch();
+  const [, setLocation] = useLocation();
+  const { role } = useAdminPermissions();
   const activeSection = useSelector(
     (s: AdminRootState) => s.adminUi.activeSection
   );
   const viewableSections = useViewableSections();
+
+  useEffect(() => {
+    if (viewableSections.length === 0) {
+      setLocation("/dashboard");
+    }
+  }, [viewableSections.length, setLocation]);
 
   useEffect(() => {
     const syncFromHash = () => dispatch(setActiveSection(getHashSection()));
@@ -30,22 +39,29 @@ export function AdminLayout() {
   }, [dispatch]);
 
   useEffect(() => {
+    if (viewableSections.length === 0) return;
+
     const hash = window.location.hash;
+    const fallback = viewableSections[0] ?? getDefaultAdminSection(role);
     if (!hash || hash === "#") {
-      const first = viewableSections[0] ?? "dashboard";
-      window.location.hash = sectionToHash(first);
-      dispatch(setActiveSection(first));
+      window.location.hash = sectionToHash(fallback);
+      dispatch(setActiveSection(fallback));
       return;
     }
     const section = getHashSection();
-    if (viewableSections.length > 0 && !viewableSections.includes(section)) {
-      const first = viewableSections[0];
-      window.location.hash = sectionToHash(first);
-      dispatch(setActiveSection(first));
+    if (!viewableSections.includes(section)) {
+      window.location.hash = sectionToHash(fallback);
+      dispatch(setActiveSection(fallback));
     }
-  }, [dispatch, viewableSections]);
+  }, [dispatch, viewableSections, role]);
 
-  const SectionComponent = ADMIN_SECTION_COMPONENTS[activeSection];
+  const canRenderSection =
+    viewableSections.length > 0 && viewableSections.includes(activeSection);
+  const SectionComponent = canRenderSection ? ADMIN_SECTION_COMPONENTS[activeSection] : null;
+
+  if (viewableSections.length === 0) {
+    return null;
+  }
 
   return (
     <div className="flex h-screen overflow-hidden">

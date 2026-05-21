@@ -117,9 +117,11 @@ const ENROLL_PREVIEW_DEBOUNCE_MS = 200;
 function EnrollScheduleStripPreview({
   selectedClassType,
   selectedBranch,
+  onViewAllSchedule,
 }: {
   selectedClassType: ClassType;
   selectedBranch: BranchOption;
+  onViewAllSchedule: () => void;
 }) {
   const [previewBranch, setPreviewBranch] = useState<BranchOption>(selectedBranch);
   const [loading, setLoading] = useState(true);
@@ -192,7 +194,7 @@ function EnrollScheduleStripPreview({
     >
       <div className="flex items-center justify-between gap-2 mb-2 min-w-0">
         <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-[#9CA3AF] shrink-0">
-          Upcoming
+          Class Schedule
         </span>
         <div
           className="flex shrink-0 rounded-md border border-gray-200 dark:border-white/10 p-0.5 bg-gray-100/80 dark:bg-[#18181B]"
@@ -222,13 +224,13 @@ function EnrollScheduleStripPreview({
           <Loader2 className="h-4 w-4 animate-spin text-gray-400 dark:text-[#6B7280]" aria-hidden />
         </div>
       ) : items.length === 0 ? (
-        <p className="text-xs text-gray-500 dark:text-[#9CA3AF]">No upcoming sessions</p>
+        <p className="text-xs text-gray-500 dark:text-[#9CA3AF]">No sessions found</p>
       ) : (
         <>
           <div
             className="flex gap-2 overflow-x-auto overflow-y-hidden pb-0.5 -mx-1 px-1 scrollbar-hide select-none touch-pan-x overscroll-x-contain"
             role="list"
-            aria-label="Upcoming sessions this week"
+            aria-label="Class schedule this week"
           >
             {items.map((s) => {
               const day = parseISO(`${s.sessionDate}T12:00:00`);
@@ -261,9 +263,21 @@ function EnrollScheduleStripPreview({
               );
             })}
           </div>
-          {overflowCount > 0 && (
-            <p className="text-[10px] text-gray-500 dark:text-[#6B7280] mt-1.5">+{overflowCount} more this week</p>
-          )}
+          <div className="flex items-center justify-between gap-2 mt-1.5 min-h-[44px]">
+            {overflowCount > 0 ? (
+              <p className="text-[10px] text-gray-500 dark:text-[#6B7280]">+{overflowCount} more this week</p>
+            ) : (
+              <span className="flex-1" aria-hidden />
+            )}
+            <button
+              type="button"
+              onClick={onViewAllSchedule}
+              className="shrink-0 text-xs font-medium text-airborne-teal dark:text-teal-300 hover:text-airborne-deep dark:hover:text-teal-200 py-1 px-1 min-h-[44px] flex items-center"
+              data-testid="enroll-schedule-view-all"
+            >
+              View all
+            </button>
+          </div>
         </>
       )}
     </div>
@@ -274,16 +288,28 @@ function EnrollScheduleStripPreview({
 function EnrollScheduleSheetContent({
   initialBranch,
   classTypes,
+  initialClassFilter = "All",
 }: {
   initialBranch: BranchOption;
   classTypes: ClassType[];
+  initialClassFilter?: string;
 }) {
   const dates = getNext7Days();
+  const filterChips = ["All", ...classTypes.map((t) => t.name)];
+  const resolvedInitialFilter =
+    initialClassFilter && filterChips.includes(initialClassFilter) ? initialClassFilter : "All";
   const [branch, setBranch] = useState<BranchOption>(initialBranch);
   const [selectedDate, setSelectedDate] = useState<Date>(dates[0]);
-  const [filter, setFilter] = useState<string>("All");
+  const [filter, setFilter] = useState<string>(resolvedInitialFilter);
   const [sessions, setSessions] = useState<SessionDisplay[]>([]);
   const [loadingSchedule, setLoadingSchedule] = useState(true);
+
+  useEffect(() => {
+    const chips = ["All", ...classTypes.map((t) => t.name)];
+    const next =
+      initialClassFilter && chips.includes(initialClassFilter) ? initialClassFilter : "All";
+    setFilter(next);
+  }, [initialClassFilter, classTypes]);
 
   useEffect(() => {
     setLoadingSchedule(true);
@@ -301,7 +327,6 @@ function EnrollScheduleSheetContent({
 
   const filteredSessions =
     filter === "All" ? sessions : sessions.filter((s) => s.category === filter);
-  const filterChips = ["All", ...classTypes.map((t) => t.name)];
 
   return (
     <>
@@ -651,6 +676,7 @@ const MembershipSelection = ({
   selectedClassType,
   onSelectClassType,
   onViewSchedule,
+  onViewAllSchedule,
   selectedBranch,
 }: any) => {
   const [infoSheetOpen, setInfoSheetOpen] = useState(false);
@@ -681,7 +707,11 @@ const MembershipSelection = ({
       />
 
       {selectedClassType && (
-        <EnrollScheduleStripPreview selectedClassType={selectedClassType} selectedBranch={selectedBranch} />
+        <EnrollScheduleStripPreview
+          selectedClassType={selectedClassType}
+          selectedBranch={selectedBranch}
+          onViewAllSchedule={onViewAllSchedule}
+        />
       )}
 
       {selectedClassType && (
@@ -952,6 +982,12 @@ export default function Enroll() {
   const searchParams = new URLSearchParams(window.location.search);
   const isRenewFlow = searchParams.get("renew") === "1";
   const [scheduleSheetOpen, setScheduleSheetOpen] = useState(false);
+  const [scheduleSheetClassFilter, setScheduleSheetClassFilter] = useState("All");
+
+  const openScheduleSheet = (classFilter: string = "All") => {
+    setScheduleSheetClassFilter(classFilter);
+    setScheduleSheetOpen(true);
+  };
   const [step, setStep] = useState(() => (isRenewFlow ? 2 : 1));
   const [formData, setFormData] = useState(() => {
     const name = user?.name && user.name !== "New Member" ? user.name : "";
@@ -1377,7 +1413,10 @@ export default function Enroll() {
                     suppressStep2AutoRef.current = true;
                     setStep(1);
                   }}
-                  onViewSchedule={() => setScheduleSheetOpen(true)}
+                  onViewSchedule={() => openScheduleSheet("All")}
+                  onViewAllSchedule={() =>
+                    selectedClassType && openScheduleSheet(selectedClassType.name)
+                  }
                   selectedBranch={selectedBranch}
                 />
               )}
@@ -1418,7 +1457,11 @@ export default function Enroll() {
               <SheetTitle className="text-left text-lg text-gray-900 dark:text-[#EDEDED]">Schedule</SheetTitle>
             </SheetHeader>
             <div className="flex-1 overflow-hidden flex flex-col px-6 py-4 min-h-0">
-              <EnrollScheduleSheetContent initialBranch={selectedBranch} classTypes={classTypes} />
+              <EnrollScheduleSheetContent
+                initialBranch={selectedBranch}
+                classTypes={classTypes}
+                initialClassFilter={scheduleSheetClassFilter}
+              />
             </div>
           </SheetContent>
         </Sheet>

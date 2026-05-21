@@ -36,7 +36,32 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   next();
 }
 
-/** Admin-only: require valid JWT and user.userRole in ["ADMIN","STAFF"]. */
+/** Admin portal (bookings + trainer-safe reads): ADMIN, STAFF, or TRAINER. */
+export async function requireTrainerPortal(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const header = req.headers.authorization;
+  const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
+  if (!token) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const payload = verifyToken(token);
+  if (!payload) {
+    res.status(401).json({ message: "Invalid or expired token" });
+    return;
+  }
+  const user = await storage.getUser(payload.userId);
+  if (
+    !user ||
+    (user.userRole !== "ADMIN" && user.userRole !== "STAFF" && user.userRole !== "TRAINER")
+  ) {
+    res.status(403).json({ message: "Forbidden" });
+    return;
+  }
+  req.auth = payload;
+  next();
+}
+
+/** Admin staff: require valid JWT and user.userRole in ["ADMIN","STAFF"]. */
 export async function requireAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
   const header = req.headers.authorization;
   const token = header?.startsWith("Bearer ") ? header.slice(7) : null;

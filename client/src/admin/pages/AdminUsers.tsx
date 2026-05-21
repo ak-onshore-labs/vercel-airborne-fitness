@@ -32,6 +32,7 @@ import type { User, UserRole } from "@shared/schema";
 const USER_ROLE_OPTIONS: { value: UserRole; label: string }[] = [
   { value: "MEMBER", label: "Member" },
   { value: "STAFF", label: "Staff" },
+  { value: "TRAINER", label: "Trainer" },
   { value: "ADMIN", label: "Admin" },
 ];
 

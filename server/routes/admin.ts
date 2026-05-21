@@ -1,7 +1,8 @@
 import type { Express, Request, Response } from "express";
 import { storage } from "../storage.js";
 import type { AdminTransactionsFilters } from "../storage.js";
-import { asyncHandler, requireAdmin, requireAdminOnly } from "../middleware.js";
+import { asyncHandler, requireAdmin, requireAdminOnly, requireTrainerPortal } from "../middleware.js";
+import { isUserRole, type UserRole } from "../../shared/schema.js";
 import { MembershipPlanModel } from "../models/index.js";
 import { GST_PERCENT, computePlanPricing } from "../lib/pricing.js";
 import { getMembershipSessionBookingEligibility } from "../../shared/membershipState.js";
@@ -11,6 +12,12 @@ import type { UpcomingScheduleSlotBookingPreviewItem } from "../storage.js";
 
 const requireAdminAsync = asyncHandler(requireAdmin);
 const requireAdminOnlyAsync = asyncHandler(requireAdminOnly);
+const requireTrainerPortalAsync = asyncHandler(requireTrainerPortal);
+
+function parseUserRoleFromBody(body: Record<string, unknown>, fallback: UserRole): UserRole {
+  const v = body.userRole;
+  return typeof v === "string" && isUserRole(v) ? v : fallback;
+}
 const SCHEDULE_GENDER_RESTRICTIONS = new Set(["NONE", "FEMALE_ONLY"]);
 const PROFILE_GENDERS = new Set(["Male", "Female", "Other", "Prefer not to say"]);
 
@@ -153,7 +160,7 @@ function csvCell(v: string): string {
 export function registerAdminRoutes(app: Express): void {
   app.get(
     "/api/admin/users",
-    requireAdminAsync,
+    requireAdminOnlyAsync,
     asyncHandler(async (req: Request, res: Response) => {
       const page = parseIntParam(req.query.page, 1);
       const limit = Math.min(parseIntParam(req.query.limit, 10), 100);
@@ -165,14 +172,14 @@ export function registerAdminRoutes(app: Express): void {
 
   app.post(
     "/api/admin/users",
-    requireAdminAsync,
+    requireAdminOnlyAsync,
     asyncHandler(async (req: Request, res: Response) => {
       const body = req.body as Record<string, unknown>;
       const name = typeof body.name === "string" ? body.name.trim() : "";
       const mobileRaw = typeof body.mobile === "string" ? body.mobile.trim() : "";
       const mobile = mobileRaw.replace(/\D/g, "");
       const gender = typeof body.gender === "string" ? body.gender.trim() : "";
-      const userRole = body.userRole === "ADMIN" || body.userRole === "STAFF" || body.userRole === "MEMBER" ? body.userRole : "MEMBER";
+      const userRole = parseUserRoleFromBody(body, "MEMBER");
 
       if (!name) {
         res.status(400).json({ message: "Name is required" });
@@ -198,7 +205,7 @@ export function registerAdminRoutes(app: Express): void {
 
   app.patch(
     "/api/admin/users/:id",
-    requireAdminAsync,
+    requireAdminOnlyAsync,
     asyncHandler(async (req: Request, res: Response) => {
       const { id } = req.params;
       const body = req.body as Record<string, unknown>;
@@ -211,7 +218,8 @@ export function registerAdminRoutes(app: Express): void {
 
       const name = typeof body.name === "string" ? body.name.trim() : existing.name;
       const gender = typeof body.gender === "string" ? body.gender.trim() : existing.gender;
-      const userRole = body.userRole === "ADMIN" || body.userRole === "STAFF" || body.userRole === "MEMBER" ? body.userRole : existing.userRole;
+      const userRole =
+        typeof body.userRole === "string" && isUserRole(body.userRole) ? body.userRole : existing.userRole;
 
       if (!name) {
         res.status(400).json({ message: "Name is required" });
@@ -335,7 +343,7 @@ export function registerAdminRoutes(app: Express): void {
 
   app.get(
     "/api/admin/class-types",
-    requireAdminAsync,
+    requireTrainerPortalAsync,
     asyncHandler(async (req: Request, res: Response) => {
       const page = parseIntParam(req.query.page, 1);
       const limit = Math.min(parseIntParam(req.query.limit, 10), 100);
@@ -431,7 +439,7 @@ export function registerAdminRoutes(app: Express): void {
 
   app.get(
     "/api/admin/members",
-    requireAdminAsync,
+    requireTrainerPortalAsync,
     asyncHandler(async (req: Request, res: Response) => {
       const page = parseIntParam(req.query.page, 1);
       const limit = Math.min(parseIntParam(req.query.limit, 10), 100);
@@ -452,7 +460,7 @@ export function registerAdminRoutes(app: Express): void {
       const mobileRaw = typeof body.mobile === "string" ? body.mobile.trim() : "";
       const mobile = mobileRaw.replace(/\D/g, "");
       const gender = typeof body.gender === "string" ? body.gender.trim() : "";
-      const userRole = body.userRole === "ADMIN" || body.userRole === "STAFF" || body.userRole === "MEMBER" ? body.userRole : "MEMBER";
+      const userRole = parseUserRoleFromBody(body, "MEMBER");
       const memberType = body.memberType === "Kid" || body.memberType === "Adult" ? body.memberType : "Adult";
       const memberName = typeof body.memberName === "string" ? body.memberName.trim() || null : null;
       const memberEmail = typeof body.memberEmail === "string" ? body.memberEmail.trim() || null : null;
@@ -522,7 +530,7 @@ export function registerAdminRoutes(app: Express): void {
 
   app.get(
     "/api/admin/memberships",
-    requireAdminAsync,
+    requireTrainerPortalAsync,
     asyncHandler(async (req: Request, res: Response) => {
       const page = parseIntParam(req.query.page, 1);
       const limit = Math.min(parseIntParam(req.query.limit, 10), 100);
@@ -763,7 +771,7 @@ export function registerAdminRoutes(app: Express): void {
 
   app.get(
     "/api/admin/bookings",
-    requireAdminAsync,
+    requireTrainerPortalAsync,
     asyncHandler(async (req: Request, res: Response) => {
       const page = parseIntParam(req.query.page, 1);
       const limit = Math.min(parseIntParam(req.query.limit, 10), 100);
@@ -844,7 +852,7 @@ export function registerAdminRoutes(app: Express): void {
 
   app.post(
     "/api/admin/bookings",
-    requireAdminAsync,
+    requireTrainerPortalAsync,
     asyncHandler(async (req: Request, res: Response) => {
       const body = req.body as Record<string, unknown>;
       const memberId = typeof body.memberId === "string" ? body.memberId.trim() : "";
@@ -918,7 +926,7 @@ export function registerAdminRoutes(app: Express): void {
 
   app.post(
     "/api/admin/bookings/:bookingId/cancel",
-    requireAdminAsync,
+    requireTrainerPortalAsync,
     asyncHandler(async (req: Request, res: Response) => {
       const bookingId = typeof req.params.bookingId === "string" ? req.params.bookingId : "";
       if (!bookingId) {
@@ -967,7 +975,7 @@ export function registerAdminRoutes(app: Express): void {
 
   app.post(
     "/api/admin/bookings/:bookingId/attend",
-    requireAdminAsync,
+    requireTrainerPortalAsync,
     asyncHandler(async (req: Request, res: Response) => {
       const bookingId = typeof req.params.bookingId === "string" ? req.params.bookingId : "";
       if (!bookingId) {
@@ -993,7 +1001,7 @@ export function registerAdminRoutes(app: Express): void {
 
   app.post(
     "/api/admin/bookings/:bookingId/absent",
-    requireAdminAsync,
+    requireTrainerPortalAsync,
     asyncHandler(async (req: Request, res: Response) => {
       const bookingId = typeof req.params.bookingId === "string" ? req.params.bookingId : "";
       if (!bookingId) {
@@ -1019,7 +1027,7 @@ export function registerAdminRoutes(app: Express): void {
 
   app.get(
     "/api/admin/bookings/upcoming",
-    requireAdminAsync,
+    requireTrainerPortalAsync,
     asyncHandler(async (req: Request, res: Response) => {
       const branch = typeof req.query.branch === "string" ? req.query.branch.trim() : "";
       const fromDate = typeof req.query.fromDate === "string" ? req.query.fromDate : new Date().toISOString().slice(0, 10);
@@ -1035,7 +1043,7 @@ export function registerAdminRoutes(app: Express): void {
 
   app.get(
     "/api/admin/branches",
-    requireAdminAsync,
+    requireTrainerPortalAsync,
     asyncHandler(async (_req: Request, res: Response) => {
       const branches = await storage.getBranches();
       res.json(branches);

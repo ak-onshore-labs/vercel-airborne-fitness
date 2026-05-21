@@ -5,7 +5,17 @@
 
 // ----- Document types (match MongoDB/Mongoose shape; id is string from _id) -----
 
-export type UserRole = "ADMIN" | "STAFF" | "MEMBER";
+export const USER_ROLES = ["ADMIN", "STAFF", "TRAINER", "MEMBER"] as const;
+export type UserRole = (typeof USER_ROLES)[number];
+
+export function isUserRole(value: string): value is UserRole {
+  return (USER_ROLES as readonly string[]).includes(value);
+}
+
+/** Roles that can open the admin portal (JWT + DB role check). */
+export function canAccessAdminPortal(role: string | undefined): boolean {
+  return role === "ADMIN" || role === "STAFF" || role === "TRAINER";
+}
 export type GenderValue = "Male" | "Female" | "Other" | "Prefer not to say";
 
 /** User: login identity (name, mobile, gender, role). One user can have multiple members (e.g. Adult + Kid). */

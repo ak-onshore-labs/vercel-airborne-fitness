@@ -5,6 +5,7 @@ import type { AdminRootState } from "./store";
 import type { AdminSection } from "./store/slices/adminUiSlice";
 import {
   getPermissions,
+  resolveAdminRole,
   type AdminRole,
   type ScreenPermission,
 } from "./permissions";
@@ -19,7 +20,7 @@ const NO_PERMISSION: ScreenPermission = {
 
 /**
  * Returns permissions for the given section (or current admin section) based on logged-in user role.
- * ADMIN: all true; STAFF: only VIEW true; MEMBER or no user: all false.
+ * ADMIN / STAFF / TRAINER: per ROLE_ACCESS; MEMBER or no portal role: all false.
  */
 export function useAdminPermissions(
   section?: AdminSection
@@ -30,9 +31,7 @@ export function useAdminPermissions(
   );
   const targetSection = section ?? activeSection;
   return useMemo(() => {
-    const role = (user?.userRole === "ADMIN" || user?.userRole === "STAFF"
-      ? user.userRole
-      : null) as AdminRole | null;
+    const role = resolveAdminRole(user?.userRole);
     if (!role) return { ...NO_PERMISSION, role: null };
     return { ...getPermissions(role, targetSection), role };
   }, [user?.userRole, targetSection]);
@@ -42,9 +41,9 @@ export function useAdminPermissions(
 export function useCanViewSection(section: AdminSection): boolean {
   const { user } = useMember();
   return useMemo(() => {
-    if (user?.userRole !== "ADMIN" && user?.userRole !== "STAFF") return false;
-    const perm = getPermissions(user.userRole as AdminRole, section);
-    return perm.VIEW;
+    const role = resolveAdminRole(user?.userRole);
+    if (!role) return false;
+    return getPermissions(role, section).VIEW;
   }, [user?.userRole, section]);
 }
 
@@ -52,8 +51,8 @@ export function useCanViewSection(section: AdminSection): boolean {
 export function useViewableSections(): AdminSection[] {
   const { user } = useMember();
   return useMemo(() => {
-    if (user?.userRole !== "ADMIN" && user?.userRole !== "STAFF") return [];
-    const role = user.userRole as AdminRole;
+    const role = resolveAdminRole(user?.userRole);
+    if (!role) return [];
     return ADMIN_MENU.filter(({ id }) => getPermissions(role, id).VIEW).map(
       ({ id }) => id
     );

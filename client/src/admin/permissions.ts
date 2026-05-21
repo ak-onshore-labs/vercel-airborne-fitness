@@ -1,6 +1,7 @@
 import type { AdminSection } from "./store/slices/adminUiSlice";
+import type { UserRole } from "@shared/schema";
 
-export type AdminRole = "ADMIN" | "STAFF";
+export type AdminRole = "ADMIN" | "STAFF" | "TRAINER";
 
 export interface ScreenPermission {
   VIEW: boolean;
@@ -9,7 +10,7 @@ export interface ScreenPermission {
   DELETE: boolean;
 }
 
-/** Per-role, per-screen permissions. ADMIN: all true. STAFF: only VIEW true. */
+/** Per-role, per-screen permissions. ADMIN: all true. */
 export const ADMIN_ACCESS: Record<AdminSection, { screen: string; functionality: ScreenPermission }> = {
   dashboard: {
     screen: "Dashboard",
@@ -96,15 +97,67 @@ export const STAFF_ACCESS: Record<AdminSection, { screen: string; functionality:
   },
 };
 
+/** TRAINER: Bookings operational access only. */
+export const TRAINER_ACCESS: Record<AdminSection, { screen: string; functionality: ScreenPermission }> = {
+  dashboard: {
+    screen: "Dashboard",
+    functionality: { VIEW: false, ADD: false, EDIT: false, DELETE: false },
+  },
+  users: {
+    screen: "Users",
+    functionality: { VIEW: false, ADD: false, EDIT: false, DELETE: false },
+  },
+  schedule: {
+    screen: "Schedule",
+    functionality: { VIEW: false, ADD: false, EDIT: false, DELETE: false },
+  },
+  "class-types": {
+    screen: "Class Types",
+    functionality: { VIEW: false, ADD: false, EDIT: false, DELETE: false },
+  },
+  plans: {
+    screen: "Plans",
+    functionality: { VIEW: false, ADD: false, EDIT: false, DELETE: false },
+  },
+  members: {
+    screen: "Members",
+    functionality: { VIEW: false, ADD: false, EDIT: false, DELETE: false },
+  },
+  memberships: {
+    screen: "Memberships",
+    functionality: { VIEW: false, ADD: false, EDIT: false, DELETE: false },
+  },
+  bookings: {
+    screen: "Bookings",
+    functionality: { VIEW: true, ADD: true, EDIT: true, DELETE: false },
+  },
+  transactions: {
+    screen: "Transactions",
+    functionality: { VIEW: false, ADD: false, EDIT: false, DELETE: false },
+  },
+  settings: {
+    screen: "Settings",
+    functionality: { VIEW: false, ADD: false, EDIT: false, DELETE: false },
+  },
+};
+
 const ROLE_ACCESS: Record<AdminRole, Record<AdminSection, { screen: string; functionality: ScreenPermission }>> = {
   ADMIN: ADMIN_ACCESS,
   STAFF: STAFF_ACCESS,
+  TRAINER: TRAINER_ACCESS,
 };
 
-export function getPermissions(
-  role: AdminRole,
-  section: AdminSection
-): ScreenPermission {
+export function resolveAdminRole(userRole: string | undefined): AdminRole | null {
+  if (userRole === "ADMIN" || userRole === "STAFF" || userRole === "TRAINER") return userRole;
+  return null;
+}
+
+export function getDefaultAdminSection(role: AdminRole | null): AdminSection {
+  if (role === "TRAINER") return "bookings";
+  return "dashboard";
+}
+
+export function getPermissions(role: AdminRole, section: AdminSection): ScreenPermission {
   return ROLE_ACCESS[role][section].functionality;
 }
 

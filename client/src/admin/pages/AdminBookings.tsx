@@ -37,6 +37,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getStoredToken } from "@/lib/api";
 import { Loader2 } from "lucide-react";
+import { calendarDateInIST } from "@shared/membershipDates";
+
+type BookingsTab = "today" | "upcoming" | "all";
 
 type MemberOption = { id: string; name?: string | null; mobile?: string };
 type ClassTypeOption = { id: string; name: string };
@@ -117,6 +120,91 @@ type BookingStatusEditorPanelProps = {
   onAction: (action: BookingAdminAction) => void;
 };
 
+type BranchSessionDaysPanelProps = {
+  branches: string[];
+  branch: string;
+  onBranchChange: (branch: string) => void;
+  loading: boolean;
+  days: UpcomingDay[];
+  emptyMessage: string;
+  onRefresh: () => void;
+  onViewSession: (session: SessionCard) => void;
+};
+
+function BranchSessionDaysPanel({
+  branches,
+  branch,
+  onBranchChange,
+  loading,
+  days,
+  emptyMessage,
+  onRefresh,
+  onViewSession,
+}: BranchSessionDaysPanelProps) {
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <Label className="sr-only">Branch</Label>
+        <Select value={branch} onValueChange={onBranchChange}>
+          <SelectTrigger className="w-[200px]">
+            <SelectValue placeholder="Select branch" />
+          </SelectTrigger>
+          <SelectContent>
+            {branches.map((b) => (
+              <SelectItem key={b} value={b}>
+                {b}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button variant="outline" size="sm" onClick={onRefresh} disabled={loading}>
+          Refresh
+        </Button>
+      </div>
+
+      {loading ? (
+        <p className="text-sm text-muted-foreground py-8">Loading…</p>
+      ) : days.length === 0 ? (
+        <p className="text-sm text-muted-foreground py-8">{emptyMessage}</p>
+      ) : (
+        <div className="space-y-6">
+          {days.map((day) => (
+            <Card key={day.date}>
+              <CardHeader className="pb-2 text-base font-medium">{formatDate(day.date)}</CardHeader>
+              <CardContent>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {day.sessions.length === 0 ? (
+                    <p className="text-sm text-muted-foreground col-span-full">No sessions this day</p>
+                  ) : (
+                    day.sessions.map((s) => (
+                      <Card key={`${s.scheduleId}-${s.sessionDate}`} className="bg-muted/50">
+                        <CardContent className="pt-4">
+                          <p className="font-medium">
+                            {s.startTime} – {s.endTime}
+                          </p>
+                          <p className="text-sm text-muted-foreground">{s.category || "—"}</p>
+                          <p className="text-sm mt-1">
+                            <span className="font-medium">{s.bookingCount}</span> / {s.capacity} bookings
+                          </p>
+                          <div className="mt-3">
+                            <Button size="sm" variant="outline" onClick={() => onViewSession(s)}>
+                              View
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BookingStatusEditorPanel({ booking, submitting, error, onAction }: BookingStatusEditorPanelProps) {
   const busy = !!submitting && submitting.bookingId === booking.id;
   const isBooked = booking.status === "BOOKED";
@@ -190,7 +278,8 @@ function BookingStatusEditorPanel({ booking, submitting, error, onAction }: Book
 }
 
 export default function AdminBookings() {
-  const { ADD } = useAdminPermissions("bookings");
+  const { ADD, role } = useAdminPermissions("bookings");
+  const canExportCsv = role === "ADMIN" || role === "STAFF";
   const isMobile = useIsMobile();
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
@@ -213,7 +302,10 @@ export default function AdminBookings() {
 
   const [branches, setBranches] = useState<string[]>([]);
   const [classTypes, setClassTypes] = useState<ClassTypeOption[]>([]);
+  const [bookingsTab, setBookingsTab] = useState<BookingsTab>("today");
   const [upcomingBranch, setUpcomingBranch] = useState("");
+  const [todayData, setTodayData] = useState<UpcomingDay[]>([]);
+  const [todayLoading, setTodayLoading] = useState(false);
   const [upcomingData, setUpcomingData] = useState<UpcomingDay[]>([]);
   const [upcomingLoading, setUpcomingLoading] = useState(false);
 
@@ -360,6 +452,9 @@ export default function AdminBookings() {
       if (sessionViewOpen && sessionViewSession) {
         await openSessionBookings(sessionViewSession);
       }
+      if (bookingsTab === "today" || bookingsTab === "upcoming") {
+        refreshActiveSessionDaysTab();
+      }
 
       closeBookingEditor();
     } finally {
@@ -386,20 +481,48 @@ export default function AdminBookings() {
     });
   }, []);
 
+  const fetchToday = useCallback(async () => {
+    if (!upcomingBranch) return;
+    setTodayLoading(true);
+    const fromDate = calendarDateInIST(new Date());
+    const res = await adminApiFetch<UpcomingDay[]>(
+      `/api/admin/bookings/upcoming?branch=${encodeURIComponent(upcomingBranch)}&fromDate=${encodeURIComponent(fromDate)}&days=1`
+    );
+    if (res.ok) setTodayData(res.data);
+    else setTodayData([]);
+    setTodayLoading(false);
+  }, [upcomingBranch]);
+
   const fetchUpcoming = useCallback(async () => {
     if (!upcomingBranch) return;
     setUpcomingLoading(true);
-    const fromDate = new Date().toISOString().slice(0, 10);
-    const res = await adminApiFetch<UpcomingDay[]>(`/api/admin/bookings/upcoming?branch=${encodeURIComponent(upcomingBranch)}&fromDate=${fromDate}&days=5`);
+    const fromDate = calendarDateInIST(new Date());
+    const res = await adminApiFetch<UpcomingDay[]>(
+      `/api/admin/bookings/upcoming?branch=${encodeURIComponent(upcomingBranch)}&fromDate=${encodeURIComponent(fromDate)}&days=5`
+    );
     if (res.ok) setUpcomingData(res.data);
     else setUpcomingData([]);
     setUpcomingLoading(false);
   }, [upcomingBranch]);
 
+  const refreshActiveSessionDaysTab = useCallback(() => {
+    if (bookingsTab === "today") void fetchToday();
+    else if (bookingsTab === "upcoming") void fetchUpcoming();
+  }, [bookingsTab, fetchToday, fetchUpcoming]);
+
   useEffect(() => {
-    if (upcomingBranch) fetchUpcoming();
-    else setUpcomingData([]);
-  }, [upcomingBranch, fetchUpcoming]);
+    if (!upcomingBranch) {
+      setTodayData([]);
+      setUpcomingData([]);
+      return;
+    }
+    if (bookingsTab === "today") void fetchToday();
+    else if (bookingsTab === "upcoming") void fetchUpcoming();
+  }, [upcomingBranch, bookingsTab, fetchToday, fetchUpcoming]);
+
+  const onBookingsTabChange = (value: string) => {
+    setBookingsTab(value as BookingsTab);
+  };
 
   const openAddBooking = () => {
     setAddBookingOpen(true);
@@ -561,6 +684,9 @@ export default function AdminBookings() {
       const newCounts = { ...counts, bookedCount: counts.bookedCount + 1 };
       setAddSessionCounts((prev) => ({ ...prev, [key]: newCounts }));
       fetchBookings();
+      if (bookingsTab === "today" || bookingsTab === "upcoming") {
+        refreshActiveSessionDaysTab();
+      }
     } else {
       toast({ variant: "destructive", title: "Booking failed", description: res.message });
     }
@@ -838,11 +964,42 @@ export default function AdminBookings() {
         </DialogContent>
       </Dialog>
 
-      <Tabs defaultValue="all">
+      <Tabs value={bookingsTab} onValueChange={onBookingsTabChange}>
         <TabsList>
-          <TabsTrigger value="all">All bookings</TabsTrigger>
+          <TabsTrigger value="today">Today</TabsTrigger>
           <TabsTrigger value="upcoming">Next 5 days</TabsTrigger>
+          <TabsTrigger value="all">All bookings</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="today" className="space-y-4 mt-4">
+          <BranchSessionDaysPanel
+            branches={branches}
+            branch={upcomingBranch}
+            onBranchChange={setUpcomingBranch}
+            loading={todayLoading}
+            days={todayData}
+            emptyMessage={
+              upcomingBranch ? "No sessions today for this branch." : "Select a branch."
+            }
+            onRefresh={fetchToday}
+            onViewSession={openSessionBookings}
+          />
+        </TabsContent>
+
+        <TabsContent value="upcoming" className="space-y-4 mt-4">
+          <BranchSessionDaysPanel
+            branches={branches}
+            branch={upcomingBranch}
+            onBranchChange={setUpcomingBranch}
+            loading={upcomingLoading}
+            days={upcomingData}
+            emptyMessage={
+              upcomingBranch ? "No sessions for the next 5 days for this branch." : "Select a branch."
+            }
+            onRefresh={fetchUpcoming}
+            onViewSession={openSessionBookings}
+          />
+        </TabsContent>
 
         <TabsContent value="all" className="space-y-4 mt-4">
           <div className="flex flex-wrap items-end gap-2">
@@ -897,9 +1054,11 @@ export default function AdminBookings() {
               ))}
             </select>
             <Button onClick={onSearch}>Search</Button>
-            <Button onClick={onDownloadCsv} disabled={downloadLoading} variant="outline">
-              {downloadLoading ? "Downloading..." : "Download CSV"}
-            </Button>
+            {canExportCsv && (
+              <Button onClick={onDownloadCsv} disabled={downloadLoading} variant="outline">
+                {downloadLoading ? "Downloading..." : "Download CSV"}
+              </Button>
+            )}
           </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
@@ -966,67 +1125,6 @@ export default function AdminBookings() {
               onPageChange={setPage}
               onLimitChange={setLimit}
             />
-          )}
-        </TabsContent>
-
-        <TabsContent value="upcoming" className="space-y-4 mt-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <Label className="sr-only">Branch</Label>
-            <Select value={upcomingBranch} onValueChange={setUpcomingBranch}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Select branch" />
-              </SelectTrigger>
-              <SelectContent>
-                {branches.map((b) => (
-                  <SelectItem key={b} value={b}>{b}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button variant="outline" size="sm" onClick={fetchUpcoming} disabled={upcomingLoading}>
-              Refresh
-            </Button>
-          </div>
-
-          {upcomingLoading ? (
-            <p className="text-sm text-muted-foreground py-8">Loading…</p>
-          ) : upcomingData.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-8">
-              {upcomingBranch ? "No sessions for the next 5 days for this branch." : "Select a branch."}
-            </p>
-          ) : (
-            <div className="space-y-6">
-              {upcomingData.map((day) => (
-                <Card key={day.date}>
-                  <CardHeader className="pb-2 text-base font-medium">
-                    {formatDate(day.date)}
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                      {day.sessions.length === 0 ? (
-                        <p className="text-sm text-muted-foreground col-span-full">No sessions this day</p>
-                      ) : (
-                        day.sessions.map((s) => (
-                          <Card key={`${s.scheduleId}-${s.sessionDate}`} className="bg-muted/50">
-                            <CardContent className="pt-4">
-                              <p className="font-medium">{s.startTime} – {s.endTime}</p>
-                              <p className="text-sm text-muted-foreground">{s.category || "—"}</p>
-                              <p className="text-sm mt-1">
-                                <span className="font-medium">{s.bookingCount}</span> / {s.capacity} bookings
-                              </p>
-                              <div className="mt-3">
-                                <Button size="sm" variant="outline" onClick={() => openSessionBookings(s)}>
-                                  View
-                                </Button>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
           )}
         </TabsContent>
       </Tabs>
