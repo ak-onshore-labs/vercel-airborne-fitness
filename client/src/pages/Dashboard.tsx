@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useMember } from "@/context/MemberContext";
 import MobileLayout from "@/components/layout/MobileLayout";
-import { HeroWithAccent } from "@/components/HeroWithAccent";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
 import { addDays, format } from "date-fns";
@@ -16,18 +15,48 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { MemberDialogContent } from "@/components/MemberDialogContent";
+import { apiFetch } from "@/lib/api";
+import { HomeHeroMedia } from "@/components/home/HomeHeroMedia";
+import { HomeOffersCarousel } from "@/components/home/HomeOffersCarousel";
+import {
+  HomeClassTypesCarousel,
+  type ClassTypeOption,
+} from "@/components/home/HomeClassTypesCarousel";
+import { ClassVideoDialog } from "@/components/home/ClassVideoDialog";
+import { getActiveHomeOffers } from "@/lib/homeOffers";
+import type { ClassMedia } from "@/lib/classMedia";
 
 export default function Dashboard() {
   const { user, bookedSessions, selfExtendMembership, pauseMembership, sessionRestored } = useMember();
   const [, setLocation] = useLocation();
   const [pauseConfirmOpen, setPauseConfirmOpen] = useState(false);
   const [pausePending, setPausePending] = useState<{ category: string; membershipId: string } | null>(null);
+  const [classTypes, setClassTypes] = useState<ClassTypeOption[]>([]);
+  const [activeVideo, setActiveVideo] = useState<ClassMedia | null>(null);
+  const offers = getActiveHomeOffers();
 
   useEffect(() => {
     if (sessionRestored && !user) {
       setLocation("/");
     }
   }, [sessionRestored, user, setLocation]);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<ClassTypeOption[]>("/api/class-types").then((r) => {
+      if (cancelled) return;
+      if (r.ok && Array.isArray(r.data)) {
+        const active = r.data.filter((t) => t.isActive !== false);
+        const sorted = [...active].sort((a, b) =>
+          a.name.localeCompare(b.name, "en"),
+        );
+        setClassTypes(sorted);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (!sessionRestored || !user) {
     return (
@@ -45,14 +74,13 @@ export default function Dashboard() {
   const resumeDateLabel = format(addDays(new Date(), 14), "dd MMM yyyy");
 
   return (
-    <MobileLayout>
-      <div className="p-6 space-y-8">
-        <HeroWithAccent>
-          <div className="space-y-1">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-[#EDEDED]" data-testid="text-greeting">Hi, {user.name.split(' ')[0]}</h1>
-            <p className="text-gray-500 dark:text-[#9CA3AF] text-sm">Welcome back to Airborne.</p>
-          </div>
-        </HeroWithAccent>
+    <MobileLayout hideHeader>
+      <HomeHeroMedia firstName={user.name.split(' ')[0]} />
+
+      <div className="px-6 pb-6 pt-6 space-y-8">
+        <HomeOffersCarousel offers={offers} />
+
+        <HomeClassTypesCarousel classTypes={classTypes} onWatch={setActiveVideo} />
 
         <div className="space-y-4">
             <div className="flex justify-between items-center">
@@ -220,6 +248,13 @@ export default function Dashboard() {
             </div>
         )}
       </div>
+
+      <ClassVideoDialog
+        media={activeVideo}
+        onOpenChange={(open) => {
+          if (!open) setActiveVideo(null);
+        }}
+      />
     </MobileLayout>
   );
 }

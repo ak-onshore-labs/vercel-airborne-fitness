@@ -164,3 +164,18 @@
     color: var(--foreground);
   }
 }
+
+/*
+ * Hide native horizontal/vertical scrollbars while preserving scroll behavior.
+ * Used by member-side horizontal carousels and chip scrollers (homepage,
+ * Book, Enroll). Admin tables intentionally do not apply this class so their
+ * native scrollbars remain visible.
+ */
+@utility scrollbar-hide {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}

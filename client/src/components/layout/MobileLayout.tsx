@@ -6,7 +6,13 @@ import { AirborneLogo } from "@/components/AirborneLogo";
 import { Button } from "@/components/ui/button";
 import { useEffect, useRef } from "react";
 
-export default function MobileLayout({ children }: { children: React.ReactNode }) {
+export default function MobileLayout({
+  children,
+  hideHeader = false,
+}: {
+  children: React.ReactNode;
+  hideHeader?: boolean;
+}) {
   const [location] = useLocation();
   const { user } = useMember();
   const mainRef = useRef<HTMLElement | null>(null);
@@ -31,7 +37,7 @@ export default function MobileLayout({ children }: { children: React.ReactNode }
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-[#0B0B0C] text-gray-900 dark:text-[#EDEDED] font-sans">
       <div className="max-w-md mx-auto min-h-screen relative bg-white dark:bg-[#111113] shadow-xl dark:shadow-black/30 flex flex-col">
-        {!isAuthPage && (
+        {!isAuthPage && !hideHeader && (
           <header className="sticky top-0 z-40 bg-white/90 dark:bg-[#0B0B0C]/90 backdrop-blur-md border-b border-gray-100 dark:border-white/5 px-4 sm:px-6 h-16 flex items-center justify-between gap-2">
             <div className="flex-1 min-w-0" aria-hidden />
             <AirborneLogo className="h-10 object-contain shrink-0" alt="Airborne" />

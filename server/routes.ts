@@ -8,6 +8,7 @@ import { registerAuthRoutes } from "./routes/auth.js";
 import { registerManageSessionRoutes } from "./routes/manage-session.js";
 import { registerMembershipRoutes } from "./routes/membership.js";
 import { registerMembershipPlansRoutes } from "./routes/membership-plans.js";
+import { registerHomeMediaRoutes } from "./routes/home-media.js";
 import { registerMasterDataRoutes } from "./routes/master-data.js";
 import { registerPaymentRoutes } from "./routes/payments.js";
 
@@ -68,6 +69,7 @@ export async function registerRoutes(
   }
 
   registerAuthRoutes(app);
+  registerHomeMediaRoutes(app);
   registerMasterDataRoutes(app);
   registerMembershipPlansRoutes(app);
   registerPaymentRoutes(app);
