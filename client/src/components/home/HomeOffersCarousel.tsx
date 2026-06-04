@@ -30,7 +30,7 @@ export function HomeOffersCarousel({ offers }: HomeOffersCarouselProps) {
 
       <div
         ref={rowRef}
-        className="-mx-6 flex snap-x snap-mandatory gap-4 overflow-x-auto px-6 pb-2 scroll-pl-6 scrollbar-hide touch-pan-x overscroll-x-contain"
+        className="-mx-6 flex snap-x snap-proximity gap-4 overflow-x-auto px-6 pb-2 scroll-pl-6 scrollbar-hide"
         role="list"
       >
         {offers.map((offer) => (

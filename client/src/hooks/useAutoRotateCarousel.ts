@@ -29,7 +29,7 @@ export function useAutoRotateCarousel<T extends HTMLElement = HTMLDivElement>(
     const relativeOffset = (i: number, list: HTMLElement[]) =>
       list[i].offsetLeft - list[0].offsetLeft;
 
-    const pause = (ms = 4000) => {
+    const pause = (ms = 6000) => {
       pausedUntilRef.current = Date.now() + ms;
     };
 
