@@ -7,6 +7,8 @@ interface HomeHeroMediaProps {
 
 const MEDIA_OBJECT_POSITION = "object-[center_25%]";
 
+const HAVE_FUTURE_DATA = 3;
+
 /** True when the user/device prefers reduced motion or data saving. */
 function shouldSkipAutoplay(): boolean {
   if (typeof window === "undefined") return true;
@@ -33,7 +35,7 @@ function onIdle(cb: () => void): () => void {
   return () => window.clearTimeout(id);
 }
 
-/** iOS/WKWebView inline playback flags — call before src assignment and play(). */
+/** iOS/WKWebView inline playback flags — call before play(). */
 function prepareInlineHeroVideo(el: HTMLVideoElement): void {
   el.muted = true;
   el.defaultMuted = true;
@@ -50,6 +52,58 @@ function prepareInlineHeroVideo(el: HTMLVideoElement): void {
 }
 
 /**
+ * Try autoplay with one canplay retry before permanent fallback (iOS needs
+ * readiness; immediate play() after load() often rejects).
+ */
+function tryPlayWithRetry(
+  el: HTMLVideoElement,
+  onFinalFailure: () => void,
+): () => void {
+  prepareInlineHeroVideo(el);
+
+  let settled = false;
+  const cleanupFns: Array<() => void> = [];
+
+  const finalizeFailure = () => {
+    if (settled) return;
+    settled = true;
+    cleanupFns.forEach((fn) => fn());
+    onFinalFailure();
+  };
+
+  const attemptPlay = () => {
+    if (settled) return;
+    const p = el.play();
+    if (!p) return;
+    p.catch(() => {
+      if (settled) return;
+      if (el.readyState >= HAVE_FUTURE_DATA) {
+        el.play()?.catch(finalizeFailure);
+        return;
+      }
+      const onCanPlay = () => {
+        cleanupCanPlay();
+        el.play()?.catch(finalizeFailure);
+      };
+      const cleanupCanPlay = () => {
+        el.removeEventListener("canplay", onCanPlay);
+      };
+      el.addEventListener("canplay", onCanPlay, { once: true });
+      cleanupFns.push(cleanupCanPlay);
+      const t = window.setTimeout(finalizeFailure, 12000);
+      cleanupFns.push(() => window.clearTimeout(t));
+    });
+  };
+
+  attemptPlay();
+
+  return () => {
+    settled = true;
+    cleanupFns.forEach((fn) => fn());
+  };
+}
+
+/**
  * Full-bleed cinematic home hero.
  *
  * Renders a premium teal/black static visual immediately (poster image when
@@ -61,7 +115,6 @@ function prepareInlineHeroVideo(el: HTMLVideoElement): void {
 export function HomeHeroMedia({ firstName }: HomeHeroMediaProps) {
   const { posterSrc, videoSrc } = HERO_MEDIA;
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const srcAttachedRef = useRef(false);
   const [showVideo, setShowVideo] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
 
@@ -77,27 +130,22 @@ export function HomeHeroMedia({ firstName }: HomeHeroMediaProps) {
     const el = videoRef.current;
     if (!el) return;
 
-    const tryPlay = () => {
-      prepareInlineHeroVideo(el);
-      el.play()?.catch(() => setVideoFailed(true));
-    };
-
-    if (!srcAttachedRef.current) {
-      prepareInlineHeroVideo(el);
-      el.src = videoSrc;
-      srcAttachedRef.current = true;
-      el.load();
-      tryPlay();
-    }
+    prepareInlineHeroVideo(el);
+    const cancelPlayRetry = tryPlayWithRetry(el, () => setVideoFailed(true));
 
     const onVisibility = () => {
-      if (document.hidden) el.pause();
-      else tryPlay();
+      if (document.hidden) {
+        el.pause();
+      } else {
+        prepareInlineHeroVideo(el);
+        el.play()?.catch(() => {});
+      }
     };
     document.addEventListener("visibilitychange", onVisibility);
+
     return () => {
+      cancelPlayRetry();
       document.removeEventListener("visibilitychange", onVisibility);
-      srcAttachedRef.current = false;
     };
   }, [showVideo, videoSrc]);
 
@@ -133,14 +181,16 @@ export function HomeHeroMedia({ firstName }: HomeHeroMediaProps) {
         />
       )}
 
-      {/* Optional lazy video layer (over poster, under text overlay). Src set imperatively for iOS inline playback. */}
+      {/* Optional lazy video layer (over poster, under text overlay). */}
       {videoActive && (
         <video
           ref={videoRef}
           className={`pointer-events-none absolute inset-0 h-full w-full object-cover ${MEDIA_OBJECT_POSITION}`}
+          src={videoSrc}
           poster={posterSrc}
           muted
           loop
+          autoPlay
           playsInline
           preload="metadata"
           tabIndex={-1}
