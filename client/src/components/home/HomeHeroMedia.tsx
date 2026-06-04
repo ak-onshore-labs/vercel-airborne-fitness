@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { HERO_MEDIA } from "@/lib/classMedia";
 import heroFallbackImg from "@/assets/home/hero-fallback.jpg";
 
@@ -7,6 +7,10 @@ interface HomeHeroMediaProps {
 }
 
 const MEDIA_OBJECT_POSITION = "object-[center_25%]";
+
+type WebKitHTMLVideoElement = HTMLVideoElement & {
+  webkitDisplayingFullscreen?: boolean;
+};
 
 /** True when the user/device prefers reduced motion or data saving. */
 function shouldSkipAutoplay(): boolean {
@@ -50,21 +54,54 @@ function prepareInlineHeroVideo(el: HTMLVideoElement): void {
   }
 }
 
+/** Register iOS native fullscreen listeners; inert on Android/desktop. */
+function attachHeroVideoFailListeners(
+  el: HTMLVideoElement,
+  onFail: () => void,
+  cleanupFns: Array<() => void>,
+): void {
+  const onWebKitFullscreen = () => onFail();
+  el.addEventListener("webkitbeginfullscreen", onWebKitFullscreen);
+  el.addEventListener("webkitendfullscreen", onWebKitFullscreen);
+  cleanupFns.push(() => {
+    el.removeEventListener("webkitbeginfullscreen", onWebKitFullscreen);
+    el.removeEventListener("webkitendfullscreen", onWebKitFullscreen);
+  });
+}
+
+/** After play() resolves, fail if iOS escalated to native fullscreen. */
+function checkWebKitFullscreenAfterPlay(
+  el: HTMLVideoElement,
+  onFail: () => void,
+): () => void {
+  const rafId = requestAnimationFrame(() => {
+    if ((el as WebKitHTMLVideoElement).webkitDisplayingFullscreen) onFail();
+  });
+  return () => cancelAnimationFrame(rafId);
+}
+
 /**
  * Full-bleed cinematic home hero.
  *
  * Renders a premium static hero visual immediately (bundled studio photo, with
  * optional CDN poster when configured). If `HERO_MEDIA.videoSrc` exists, the
  * video is lazy-attached after first paint (muted/looping/inline) and falls
- * back to the static visual on error, autoplay rejection, reduced motion, or
- * data-saver. Exactly one optional hero video element.
+ * back to the static visual on error, autoplay rejection, native fullscreen
+ * takeover, reduced motion, or data-saver. Exactly one optional hero video element.
  */
 export function HomeHeroMedia({ firstName }: HomeHeroMediaProps) {
   const { posterSrc, videoSrc } = HERO_MEDIA;
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const srcAttachedRef = useRef(false);
+  const heroFailedRef = useRef(false);
   const [showVideo, setShowVideo] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
+
+  const failHeroVideo = useCallback(() => {
+    if (heroFailedRef.current) return;
+    heroFailedRef.current = true;
+    setVideoFailed(true);
+  }, []);
 
   useEffect(() => {
     if (!videoSrc) return;
@@ -78,9 +115,17 @@ export function HomeHeroMedia({ firstName }: HomeHeroMediaProps) {
     const el = videoRef.current;
     if (!el) return;
 
+    const cleanupFns: Array<() => void> = [];
+    attachHeroVideoFailListeners(el, failHeroVideo, cleanupFns);
+
     const tryPlay = () => {
+      if (heroFailedRef.current) return;
       prepareInlineHeroVideo(el);
-      el.play()?.catch(() => setVideoFailed(true));
+      const p = el.play();
+      if (!p) return;
+      p.then(() => {
+        cleanupFns.push(checkWebKitFullscreenAfterPlay(el, failHeroVideo));
+      }).catch(() => failHeroVideo());
     };
 
     if (!srcAttachedRef.current) {
@@ -97,10 +142,11 @@ export function HomeHeroMedia({ firstName }: HomeHeroMediaProps) {
     };
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
+      cleanupFns.forEach((fn) => fn());
       document.removeEventListener("visibilitychange", onVisibility);
       srcAttachedRef.current = false;
     };
-  }, [showVideo, videoSrc]);
+  }, [showVideo, videoSrc, failHeroVideo]);
 
   const videoActive = showVideo && !videoFailed && Boolean(videoSrc);
 
@@ -142,7 +188,7 @@ export function HomeHeroMedia({ firstName }: HomeHeroMediaProps) {
           tabIndex={-1}
           disablePictureInPicture
           controlsList="nodownload noplaybackrate noremoteplayback"
-          onError={() => setVideoFailed(true)}
+          onError={() => failHeroVideo()}
           aria-hidden
         />
       )}
