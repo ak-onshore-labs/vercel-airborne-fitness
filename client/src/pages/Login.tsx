@@ -8,16 +8,70 @@ import { Loader2, ArrowRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetch } from "@/lib/api";
 import { AirborneLogo } from "@/components/AirborneLogo";
+import { cn } from "@/lib/utils";
+
+const LOGIN_ROOT_BASE =
+  "min-h-svh w-full overflow-y-auto flex flex-col items-center bg-[#F9FAFB] dark:bg-[#0B0B0C] px-6";
+
+const loginRootClassName = (keyboardMode: boolean) =>
+  cn(
+    LOGIN_ROOT_BASE,
+    keyboardMode
+      ? "overscroll-y-contain py-8 pb-28"
+      : "justify-center min-h-screen sm:min-h-svh"
+  );
+
+const LOGIN_ROOT_LOADING_CLASS = cn(
+  LOGIN_ROOT_BASE,
+  "justify-center min-h-screen sm:min-h-svh"
+);
+
+const scrollInputIntoView = (el: HTMLInputElement | null) => {
+  if (!el) return;
+  window.setTimeout(() => {
+    el.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, 300);
+};
+
+const KEYBOARD_BLUR_DELAY_MS = 150;
 
 export default function Login() {
   const { loginWithPayload, user, sessionRestored } = useMember();
   const [, setLocation] = useLocation();
   const prevAuth = useRef({ sessionRestored: false, user: null as typeof user });
+  const phoneInputRef = useRef<HTMLInputElement>(null);
+  const otpInputRef = useRef<HTMLInputElement>(null);
+  const keyboardBlurTimeoutRef = useRef<number | null>(null);
   const { toast } = useToast();
   const [step, setStep] = useState<"phone" | "otp">("phone");
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [keyboardMode, setKeyboardMode] = useState(false);
+
+  const handleInputFocus = (inputRef: React.RefObject<HTMLInputElement | null>) => {
+    if (keyboardBlurTimeoutRef.current) {
+      clearTimeout(keyboardBlurTimeoutRef.current);
+      keyboardBlurTimeoutRef.current = null;
+    }
+    setKeyboardMode(true);
+    scrollInputIntoView(inputRef.current);
+  };
+
+  const handleInputBlur = () => {
+    keyboardBlurTimeoutRef.current = window.setTimeout(() => {
+      setKeyboardMode(false);
+      keyboardBlurTimeoutRef.current = null;
+    }, KEYBOARD_BLUR_DELAY_MS);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (keyboardBlurTimeoutRef.current) {
+        clearTimeout(keyboardBlurTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const wasWaitingOnBootstrap = !prevAuth.current.sessionRestored;
@@ -47,7 +101,7 @@ export default function Login() {
 
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (otp.length < 4) return;
+    if (otp.length !== 4) return;
     setIsLoading(true);
     const res = await apiFetch<{
       success: boolean;
@@ -82,14 +136,14 @@ export default function Login() {
 
   if (!sessionRestored) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#F9FAFB] dark:bg-[#0B0B0C] px-6">
+      <div className={LOGIN_ROOT_LOADING_CLASS}>
         <Loader2 className="h-8 w-8 animate-spin text-airborne-teal" aria-label="Loading" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-[#F9FAFB] dark:bg-[#0B0B0C] px-6">
+    <div className={loginRootClassName(keyboardMode)}>
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -123,11 +177,14 @@ export default function Login() {
                       +91
                     </div>
                     <Input 
+                      ref={phoneInputRef}
                       data-testid="input-phone"
                       type="tel" 
                       placeholder="99999 99999" 
                       value={phone}
                       onChange={e => setPhone(e.target.value.replace(/\D/g, ''))}
+                      onFocus={() => handleInputFocus(phoneInputRef)}
+                      onBlur={handleInputBlur}
                       className="h-12 bg-gray-50 dark:bg-[#18181B] border-gray-200 dark:border-white/6 text-gray-900 dark:text-[#EDEDED] placeholder:text-gray-400 dark:placeholder:text-[#6B7280] focus-visible:ring-airborne-teal rounded"
                       maxLength={10}
                       required
@@ -165,22 +222,27 @@ export default function Login() {
                     </button>
                   </div>
                   <Input 
+                    ref={otpInputRef}
                     data-testid="input-otp"
-                    type="text" 
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
                     placeholder="• • • •" 
                     value={otp}
-                    onChange={e => setOtp(e.target.value.replace(/\D/g, ''))}
+                    onChange={e => setOtp(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                    onFocus={() => handleInputFocus(otpInputRef)}
+                    onBlur={handleInputBlur}
                     className="h-12 bg-gray-50 dark:bg-[#18181B] border-gray-200 dark:border-white/6 text-gray-900 dark:text-[#EDEDED] placeholder:text-gray-300 dark:placeholder:text-[#6B7280] focus-visible:ring-airborne-teal text-center tracking-[1em] text-lg rounded"
-                    maxLength={6}
+                    maxLength={4}
                     required
                   />
-                  <p className="text-xs text-center text-gray-400 dark:text-[#6B7280]">Enter the 6-digit code sent via SMS</p>
+                  <p className="text-xs text-center text-gray-400 dark:text-[#6B7280]">Enter the 4-digit code sent via SMS</p>
                 </div>
                 <Button 
                   data-testid="button-verify-otp"
                   type="submit" 
                   className="w-full h-12 bg-airborne-teal hover:bg-airborne-deep text-white font-semibold rounded shadow-md shadow-airborne-teal/20 transition-all group mt-2"
-                  disabled={isLoading || otp.length < 4}
+                  disabled={isLoading || otp.length !== 4}
                 >
                   {isLoading ? <Loader2 className="animate-spin" /> : (
                     <span className="flex items-center gap-2">
