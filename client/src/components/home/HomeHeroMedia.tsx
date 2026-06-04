@@ -33,6 +33,22 @@ function onIdle(cb: () => void): () => void {
   return () => window.clearTimeout(id);
 }
 
+/** iOS/WKWebView inline playback flags — call before src assignment and play(). */
+function prepareInlineHeroVideo(el: HTMLVideoElement): void {
+  el.muted = true;
+  el.defaultMuted = true;
+  el.playsInline = true;
+  el.controls = false;
+  el.setAttribute("muted", "");
+  el.setAttribute("playsinline", "");
+  el.setAttribute("webkit-playsinline", "true");
+  try {
+    el.disablePictureInPicture = true;
+  } catch {
+    // no-op for unsupported browsers
+  }
+}
+
 /**
  * Full-bleed cinematic home hero.
  *
@@ -45,6 +61,7 @@ function onIdle(cb: () => void): () => void {
 export function HomeHeroMedia({ firstName }: HomeHeroMediaProps) {
   const { posterSrc, videoSrc } = HERO_MEDIA;
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const srcAttachedRef = useRef(false);
   const [showVideo, setShowVideo] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
 
@@ -56,22 +73,33 @@ export function HomeHeroMedia({ firstName }: HomeHeroMediaProps) {
   }, [videoSrc]);
 
   useEffect(() => {
-    if (!showVideo) return;
+    if (!showVideo || !videoSrc) return;
     const el = videoRef.current;
     if (!el) return;
 
     const tryPlay = () => {
+      prepareInlineHeroVideo(el);
       el.play()?.catch(() => setVideoFailed(true));
     };
-    tryPlay();
+
+    if (!srcAttachedRef.current) {
+      prepareInlineHeroVideo(el);
+      el.src = videoSrc;
+      srcAttachedRef.current = true;
+      el.load();
+      tryPlay();
+    }
 
     const onVisibility = () => {
       if (document.hidden) el.pause();
       else tryPlay();
     };
     document.addEventListener("visibilitychange", onVisibility);
-    return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, [showVideo]);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      srcAttachedRef.current = false;
+    };
+  }, [showVideo, videoSrc]);
 
   const videoActive = showVideo && !videoFailed && Boolean(videoSrc);
 
@@ -105,18 +133,19 @@ export function HomeHeroMedia({ firstName }: HomeHeroMediaProps) {
         />
       )}
 
-      {/* Optional lazy video layer (over poster, under text overlay). */}
+      {/* Optional lazy video layer (over poster, under text overlay). Src set imperatively for iOS inline playback. */}
       {videoActive && (
         <video
           ref={videoRef}
-          className={`absolute inset-0 h-full w-full object-cover ${MEDIA_OBJECT_POSITION}`}
-          src={videoSrc}
+          className={`pointer-events-none absolute inset-0 h-full w-full object-cover ${MEDIA_OBJECT_POSITION}`}
           poster={posterSrc}
           muted
           loop
-          autoPlay
           playsInline
           preload="metadata"
+          tabIndex={-1}
+          disablePictureInPicture
+          controlsList="nodownload noplaybackrate noremoteplayback"
           onError={() => setVideoFailed(true)}
           aria-hidden
         />
