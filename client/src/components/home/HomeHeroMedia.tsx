@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { HERO_MEDIA } from "@/lib/classMedia";
+import heroFallbackImg from "@/assets/home/hero-fallback.jpg";
 
 interface HomeHeroMediaProps {
   firstName: string;
@@ -52,8 +53,8 @@ function prepareInlineHeroVideo(el: HTMLVideoElement): void {
 /**
  * Full-bleed cinematic home hero.
  *
- * Renders a premium teal/black static visual immediately (poster image when
- * provided, otherwise a layered gradient). If `HERO_MEDIA.videoSrc` exists, the
+ * Renders a premium static hero visual immediately (bundled studio photo, with
+ * optional CDN poster when configured). If `HERO_MEDIA.videoSrc` exists, the
  * video is lazy-attached after first paint (muted/looping/inline) and falls
  * back to the static visual on error, autoplay rejection, reduced motion, or
  * data-saver. Exactly one optional hero video element.
@@ -108,18 +109,13 @@ export function HomeHeroMedia({ firstName }: HomeHeroMediaProps) {
       className="relative isolate w-full overflow-hidden bg-[#06181A] h-[clamp(380px,62vh,520px)]"
       aria-label="Airborne hero"
     >
-      {/* Base cinematic visual: gradient always present (zero-byte fallback). */}
-      <div
-        className="absolute inset-0 bg-gradient-to-br from-[#012E30] via-[#06181A] to-black"
+      {/* Base hero visual: bundled studio photo (always present). */}
+      <img
+        src={heroFallbackImg}
+        alt=""
         aria-hidden
-      />
-      <div
-        className={`absolute -left-1/4 top-[-10%] h-2/3 w-2/3 rounded-full bg-airborne-teal/25 blur-3xl transition-opacity duration-500 ${videoActive ? "opacity-40" : "opacity-100"}`}
-        aria-hidden
-      />
-      <div
-        className={`absolute bottom-[-15%] right-[-10%] h-2/3 w-2/3 rounded-full bg-airborne-deep/30 blur-3xl transition-opacity duration-500 ${videoActive ? "opacity-40" : "opacity-100"}`}
-        aria-hidden
+        className={`absolute inset-0 h-full w-full object-cover ${MEDIA_OBJECT_POSITION}`}
+        draggable={false}
       />
 
       {/* Optional poster image layer. */}
