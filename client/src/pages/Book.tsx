@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useMember } from "@/context/MemberContext";
 import { format, isSameDay, addDays, startOfToday, subMinutes, addMinutes } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -42,6 +42,22 @@ interface ClassTypeOption {
 
 const MEMBER_BOOKING_CUTOFF_MINUTES = 5;
 
+type SessionCountMap = Record<string, { bookedCount: number; waitlistCount: number }>;
+
+function sessionCountsEqual(a: SessionCountMap, b: SessionCountMap): boolean {
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  for (const k of aKeys) {
+    const x = a[k];
+    const y = b[k];
+    if (!y || x.bookedCount !== y.bookedCount || x.waitlistCount !== y.waitlistCount) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function getNext7Days() {
   const today = startOfToday();
   return Array.from({ length: 7 }).map((_, i) => addDays(today, i));
@@ -70,7 +86,7 @@ function isSessionClassEnded(sessionDate: string, endTime: string, now: Date = n
 }
 
 export default function Book() {
-  const { bookSession, joinWaitlist, bookedSessions, user, selectedBranch, setSelectedBranch, getSessionCounts } = useMember();
+  const { bookSession, joinWaitlist, bookedSessions, user, selectedBranch, setSelectedBranch, getSessionCounts, getSessionCountsBatch } = useMember();
   const [location, setLocation] = useLocation();
   const searchParams = new URLSearchParams(window.location.search);
   const fromEnroll = searchParams.get('from') === 'enroll';
@@ -87,8 +103,12 @@ export default function Book() {
   const [bookingConfirmOpen, setBookingConfirmOpen] = useState(false);
   const [pendingSession, setPendingSession] = useState<SessionDisplay | null>(null);
   const [pendingIsWaitlist, setPendingIsWaitlist] = useState(false);
+  const batchFetchIdRef = useRef(0);
 
-  const enrolledCategoryNames = user ? Object.keys(user.memberships) : [];
+  const enrolledCategoryKey = useMemo(
+    () => Object.keys(user?.memberships ?? {}).sort().join("\0"),
+    [user]
+  );
 
   useEffect(() => {
     apiFetch<{ cancellationWindowMinutes: number }>("/api/settings").then((r) => {
@@ -106,6 +126,7 @@ export default function Book() {
 
   useEffect(() => {
     setLoadingSchedule(true);
+    setSessionCounts((prev) => (Object.keys(prev).length === 0 ? prev : {}));
     const dateStr = format(selectedDate, "yyyy-MM-dd");
     apiFetch<{ sessions: SessionDisplay[] }>(
       `/api/schedule?branch=${encodeURIComponent(selectedBranch)}&date=${encodeURIComponent(dateStr)}`
@@ -124,25 +145,52 @@ export default function Book() {
       });
   }, [selectedBranch, selectedDate]);
 
-  const filteredSessions =
-    filter === "My Classes"
-      ? sessions.filter((s) => enrolledCategoryNames.includes(s.category))
-      : filter === "All"
-        ? sessions
-        : sessions.filter((s) => s.category === filter);
+  const filteredSessions = useMemo(() => {
+    if (filter === "All") return sessions;
+    const enrolled = enrolledCategoryKey ? enrolledCategoryKey.split("\0") : [];
+    if (filter === "My Classes") {
+      return sessions.filter((s) => enrolled.includes(s.category));
+    }
+    return sessions.filter((s) => s.category === filter);
+  }, [sessions, filter, enrolledCategoryKey]);
 
-  // Load counts for visible sessions
+  const filteredSessionKeys = useMemo(
+    () =>
+      filteredSessions
+        .map((s) => `${s.scheduleId}_${s.sessionDate}`)
+        .sort()
+        .join("|"),
+    [filteredSessions]
+  );
+
+  const countPairs = useMemo(
+    () =>
+      filteredSessions.map((s) => ({
+        scheduleId: s.scheduleId,
+        sessionDate: s.sessionDate,
+      })),
+    [filteredSessionKeys]
+  );
+
   useEffect(() => {
-    if (filteredSessions.length === 0) return;
-    filteredSessions.forEach(s => {
-      const key = `${s.scheduleId}_${s.sessionDate}`;
-      if (!sessionCounts[key]) {
-        getSessionCounts(s.scheduleId, s.sessionDate).then(counts => {
-          setSessionCounts(prev => ({ ...prev, [key]: counts }));
-        });
-      }
+    if (filteredSessionKeys === "") {
+      setSessionCounts((prev) => (Object.keys(prev).length === 0 ? prev : {}));
+      return;
+    }
+    if (countPairs.length === 0) return;
+
+    const fetchId = ++batchFetchIdRef.current;
+    let cancelled = false;
+
+    void getSessionCountsBatch(countPairs).then((counts) => {
+      if (cancelled || fetchId !== batchFetchIdRef.current) return;
+      setSessionCounts((prev) => (sessionCountsEqual(prev, counts) ? prev : counts));
     });
-  }, [filteredSessions.length, selectedDate, selectedBranch]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [filteredSessionKeys, selectedBranch, selectedDate, getSessionCountsBatch]);
 
   const openBookingConfirm = (session: SessionDisplay, isWaitlist: boolean) => {
     setPendingSession(session);
