@@ -6,6 +6,46 @@ export function getRenewUrl(categoryName: string): string {
   return `/enroll?renew=1&category=${encodeURIComponent(categoryName)}`;
 }
 
+/** True when the account has at least one membership usable for booking (active, started, not paused, not expired, sessions > 0). */
+export function hasAnyUsableBookingMembership(
+  memberships: Record<string, MembershipDetails>,
+  now = new Date()
+): boolean {
+  return Object.values(memberships).some((m) => isMembershipActive(m, now));
+}
+
+/** Normal enroll URL with class preselect; no trial/session params. */
+export function getClassMembershipEnrollUrl(params: {
+  classTypeId: string;
+  category: string;
+}): string {
+  const qs = new URLSearchParams();
+  qs.set("classTypeId", params.classTypeId);
+  qs.set("category", params.category);
+  return `/enroll?${qs.toString()}`;
+}
+
+export function getKidsEnrollFallbackUrl(params: { classTypeId: string; category: string }): string {
+  return getClassMembershipEnrollUrl(params);
+}
+
+export function getTrialEnrollUrl(params: {
+  classTypeId?: string;
+  category: string;
+  scheduleId: string;
+  sessionDate: string;
+  branch?: string;
+}): string {
+  const qs = new URLSearchParams();
+  qs.set("mode", "trial");
+  if (params.classTypeId) qs.set("classTypeId", params.classTypeId);
+  qs.set("category", params.category);
+  qs.set("scheduleId", params.scheduleId);
+  qs.set("sessionDate", params.sessionDate);
+  if (params.branch) qs.set("branch", params.branch);
+  return `/enroll?${qs.toString()}`;
+}
+
 export function getMembershipHeadline(details: MembershipDetails, now = new Date()): string | null {
   const s = getMembershipUsabilityState(
     {

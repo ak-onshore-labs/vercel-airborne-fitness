@@ -120,7 +120,7 @@ export default function Login() {
       toast({ variant: "destructive", title: "Verification failed", description: res.message });
       return;
     }
-    const { success, isNew } = await loginWithPayload({
+    const { success } = await loginWithPayload({
       token: res.data!.token,
       user: res.data!.user,
       members: res.data!.members,
@@ -130,7 +130,7 @@ export default function Login() {
     });
     setIsLoading(false);
     if (success) {
-      setLocation(isNew ? "/enroll" : "/dashboard");
+      setLocation("/dashboard");
     }
   };
 

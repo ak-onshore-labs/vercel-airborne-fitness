@@ -211,6 +211,8 @@ export interface IStorage {
   getTransactionById(id: string): Promise<Transaction | undefined>;
   updateTransaction(id: string, data: Partial<Pick<Transaction, "status" | "paymentId" | "signature">>): Promise<Transaction | undefined>;
   mergeTransactionMetadata(id: string, patch: Record<string, unknown>): Promise<Transaction | undefined>;
+  /** Atomic first-writer claim before creating enroll memberships. See enrollIdempotency. */
+  claimEnrollmentTransaction(transactionId: string): Promise<"claimed" | "complete" | "in_progress">;
   getTransactionByOrderId(orderId: string): Promise<Transaction | undefined>;
   listTransactionsForUser(userId: string, opts: { limit: number }): Promise<Transaction[]>;
   listAdminTransactions(params: {
@@ -993,6 +995,73 @@ export class MongoStorage implements IStorage {
     const merged = { ...(prior && typeof prior === "object" ? prior : {}), ...patch };
     const doc = await TransactionModel.findByIdAndUpdate(id, { $set: { metadata: merged } }, { new: true });
     return toApi<Transaction>(doc) ?? undefined;
+  }
+
+  /**
+   * Reserves a SUCCESS transaction for first-time enrollment (sets metadata.enrollClaimedAt).
+   * Returns complete when enrolledAt + membershipIds already exist; in_progress when another request holds the claim.
+   */
+  async claimEnrollmentTransaction(transactionId: string): Promise<"claimed" | "complete" | "in_progress"> {
+    if (!mongoose.Types.ObjectId.isValid(transactionId)) return "in_progress";
+
+    const tx = await this.getTransactionById(transactionId);
+    if (!tx || tx.status !== "SUCCESS") return "in_progress";
+
+    const meta = (tx.metadata ?? {}) as Record<string, unknown>;
+    const enrolledAt = meta.enrolledAt;
+    const membershipIds = meta.membershipIds;
+    const hasEnrolledAt = typeof enrolledAt === "string" && enrolledAt.trim().length > 0;
+    const hasMembershipIds =
+      Array.isArray(membershipIds) &&
+      membershipIds.some((id) => typeof id === "string" && id.trim().length > 0);
+    if (hasEnrolledAt && hasMembershipIds) return "complete";
+
+    const claimStaleMs = 90_000;
+    const claimCutoff = new Date(Date.now() - claimStaleMs).toISOString();
+    const claimTs = new Date().toISOString();
+
+    const claimed = await TransactionModel.findOneAndUpdate(
+      {
+        _id: new mongoose.Types.ObjectId(transactionId),
+        status: "SUCCESS",
+        $or: [{ "metadata.enrolledAt": { $exists: false } }, { "metadata.enrolledAt": null }, { "metadata.enrolledAt": "" }],
+        $and: [
+          {
+            $or: [
+              { "metadata.enrollClaimedAt": { $exists: false } },
+              { "metadata.enrollClaimedAt": null },
+              { "metadata.enrollClaimedAt": "" },
+              { "metadata.enrollClaimedAt": { $lt: claimCutoff } },
+            ],
+          },
+        ],
+      },
+      [
+        {
+          $set: {
+            metadata: {
+              $mergeObjects: [{ $ifNull: ["$metadata", {}] }, { enrollClaimedAt: claimTs }],
+            },
+          },
+        },
+      ],
+      { new: false, updatePipeline: true }
+    );
+
+    if (claimed) return "claimed";
+
+    const fresh = await this.getTransactionById(transactionId);
+    const freshMeta = (fresh?.metadata ?? {}) as Record<string, unknown>;
+    const freshEnrolledAt = freshMeta.enrolledAt;
+    const freshIds = freshMeta.membershipIds;
+    const freshComplete =
+      typeof freshEnrolledAt === "string" &&
+      freshEnrolledAt.trim().length > 0 &&
+      Array.isArray(freshIds) &&
+      freshIds.some((id) => typeof id === "string" && id.trim().length > 0);
+    if (freshComplete) return "complete";
+
+    return "in_progress";
   }
 
   async getTransactionByOrderId(orderId: string): Promise<Transaction | undefined> {

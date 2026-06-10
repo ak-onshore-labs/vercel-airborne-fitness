@@ -78,6 +78,10 @@ export interface VerifyOtpPayload {
 /** Result of PATCH `/api/members/:id` via `updateProfile`. Callers check `result.ok`; on failure, `message` is user-facing. */
 export type UpdateProfileResult = { ok: true } | { ok: false; message: string };
 
+export type BookSessionResult =
+  | { ok: true }
+  | { ok: false; status: number; message: string };
+
 interface MemberContextType {
   user: UserProfile | null;
   bookedSessions: Booking[];
@@ -87,7 +91,11 @@ interface MemberContextType {
   loginWithPayload: (payload: VerifyOtpPayload) => Promise<LoginResult>;
   logout: () => void;
   enroll: (details: any, selectedPlans: SelectedPlan[], waiver?: any, kidInfo?: any, transactionId?: string, membershipStartDate?: string) => Promise<void>;
-  bookSession: (session: any, categoryName: string) => Promise<boolean>;
+  bookSession: (
+    session: { scheduleId: string; sessionDate: string },
+    categoryName: string,
+    options?: { silent?: boolean }
+  ) => Promise<BookSessionResult>;
   joinWaitlist: (session: any, categoryName: string) => Promise<boolean>;
   cancelBooking: (bookingId: string) => Promise<void>;
   leaveWaitlist: (bookingId: string) => Promise<void>;
@@ -288,8 +296,12 @@ export function MemberProvider({ children }: { children: ReactNode }) {
     return counts[key] ?? { bookedCount: 0, waitlistCount: 0 };
   };
 
-  const bookSession = async (session: any, _categoryName: string) => {
-    if (!user) return false;
+  const bookSession = async (
+    session: { scheduleId: string; sessionDate: string },
+    _categoryName: string,
+    options?: { silent?: boolean }
+  ): Promise<BookSessionResult> => {
+    if (!user) return { ok: false, status: 0, message: "Not signed in" };
     const result = await apiFetch<Booking>('/api/book', {
       method: 'POST',
       body: JSON.stringify({
@@ -299,8 +311,10 @@ export function MemberProvider({ children }: { children: ReactNode }) {
       }),
     });
     if (!result.ok) {
-      toast({ variant: "destructive", title: "Booking Failed", description: result.message });
-      return false;
+      if (!options?.silent) {
+        toast({ variant: "destructive", title: "Booking Failed", description: result.message });
+      }
+      return { ok: false, status: result.status, message: result.message };
     }
     setBookedSessions(prev => [...prev, result.data]);
     const cat = result.data.category;
@@ -312,8 +326,10 @@ export function MemberProvider({ children }: { children: ReactNode }) {
         return { ...prev, memberships: { ...prev.memberships, [cat]: { ...m, sessionsRemaining: m.sessionsRemaining - 1 } } };
       });
     }
-    toast({ title: "Booked successfully!" });
-    return true;
+    if (!options?.silent) {
+      toast({ title: "Booked successfully!" });
+    }
+    return { ok: true };
   };
 
   const joinWaitlist = async (session: any, _categoryName: string) => {

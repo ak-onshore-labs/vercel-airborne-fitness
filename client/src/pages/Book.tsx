@@ -17,7 +17,12 @@ import {
 import { formatTime12h } from "@/lib/formatTime";
 import { MemberDialogContent } from "@/components/MemberDialogContent";
 import { BookFilterCirclePicker } from "@/components/book/BookFilterCirclePicker";
-import { getMembershipUsability, getRenewUrl } from "@/lib/membershipUi";
+import {
+  getMembershipUsability,
+  getRenewUrl,
+  getTrialEnrollUrl,
+  hasAnyUsableBookingMembership,
+} from "@/lib/membershipUi";
 import { getMembershipSessionBookingEligibility } from "@shared/membershipState";
 import {
   resolveSessionCardTone,
@@ -97,7 +102,7 @@ export default function Book() {
 
   const dates = getNext7Days();
   const [selectedDate, setSelectedDate] = useState<Date>(dates[0]);
-  const [filter, setFilter] = useState<string>("My Classes");
+  const [filter, setFilter] = useState<string>("All");
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<SessionDisplay[]>([]);
   const [sessionCounts, setSessionCounts] = useState<Record<string, { bookedCount: number; waitlistCount: number }>>({});
@@ -108,6 +113,13 @@ export default function Book() {
   const [pendingSession, setPendingSession] = useState<SessionDisplay | null>(null);
   const [pendingIsWaitlist, setPendingIsWaitlist] = useState(false);
   const batchFetchIdRef = useRef(0);
+  const filterBootstrappedRef = useRef(false);
+
+  useEffect(() => {
+    if (!user || filterBootstrappedRef.current) return;
+    filterBootstrappedRef.current = true;
+    setFilter(hasAnyUsableBookingMembership(user.memberships) ? "My Classes" : "All");
+  }, [user]);
 
   const enrolledCategoryKey = useMemo(
     () => Object.keys(user?.memberships ?? {}).sort().join("\0"),
@@ -466,18 +478,20 @@ export default function Book() {
                                size="sm"
                                onClick={() => {
                                  const match = classTypes.find((t) => t.name === session.category);
-                                 if (match) {
-                                   setLocation(
-                                     `/enroll?classTypeId=${encodeURIComponent(match.id)}&category=${encodeURIComponent(match.name)}`
-                                   );
-                                 } else {
-                                   setLocation(`/enroll?category=${encodeURIComponent(session.category)}`);
-                                 }
+                                 setLocation(
+                                   getTrialEnrollUrl({
+                                     classTypeId: match?.id,
+                                     category: session.category,
+                                     scheduleId: session.scheduleId,
+                                     sessionDate: session.sessionDate,
+                                     branch: session.branch,
+                                   })
+                                 );
                                }}
                                className="h-9 bg-gray-900 dark:bg-[#EDEDED] text-white dark:text-[#0B0B0C] text-xs px-5 rounded"
-                               data-testid={`button-enroll-${key}`}
+                               data-testid={`button-trial-${key}`}
                              >
-                               Enroll
+                               Book Trial
                              </Button>
                         ) : membershipState !== "active" && !(membershipState === "upcoming" && canUseMembershipForThisSession) ? (
                              <Button

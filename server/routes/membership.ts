@@ -15,6 +15,14 @@ import {
 } from "../../shared/membershipDates.js";
 import { isEligibleForGenderRestriction, resolveMemberGenderForRestriction } from "../lib/genderEligibility.js";
 import { computeCartPricing } from "../lib/pricing.js";
+import {
+  buildMembershipMapForMember,
+  hasAmbiguousEnrollment,
+  isEnrollmentComplete,
+  metadataMemberId,
+  parseMembershipIds,
+  validateEnrollmentMembershipIds,
+} from "../lib/enrollIdempotency.js";
 
 const PAUSE_DAYS = 14;
 const PAUSE_MS = PAUSE_DAYS * 24 * 60 * 60 * 1000;
@@ -404,6 +412,37 @@ export function registerMembershipRoutes(app: Express): void {
         return;
       }
 
+      const txMetadata = (transaction.metadata ?? {}) as Record<string, unknown>;
+
+      if (hasAmbiguousEnrollment(txMetadata)) {
+        console.error(`Enroll idempotency: ambiguous metadata transactionId=${transactionId}`);
+        res.status(409).json({
+          message: "Enrollment already recorded but membership data is inconsistent. Contact support.",
+        });
+        return;
+      }
+
+      if (isEnrollmentComplete(txMetadata)) {
+        const recordedMemberId = metadataMemberId(txMetadata);
+        if (recordedMemberId && recordedMemberId !== memberId) {
+          res.status(409).json({
+            message: "Enrollment already recorded but membership data is inconsistent. Contact support.",
+          });
+          return;
+        }
+        const membershipIds = parseMembershipIds(txMetadata);
+        const idsValid = await validateEnrollmentMembershipIds(membershipIds, memberId);
+        if (!idsValid) {
+          res.status(409).json({
+            message: "Enrollment already recorded but membership data is inconsistent. Contact support.",
+          });
+          return;
+        }
+        const membershipMap = await buildMembershipMapForMember(memberId);
+        res.json({ memberships: membershipMap, hasSignedWaiver: true });
+        return;
+      }
+
       const errFields: string[] = [];
       if (!personalDetails || typeof personalDetails !== "object") {
         res.status(400).json({ message: "Personal details required", fields: ["personalDetails"] });
@@ -488,6 +527,65 @@ export function registerMembershipRoutes(app: Express): void {
         return;
       }
 
+      const planDocs = await MembershipPlanModel.find({});
+      const planById = new Map(planDocs.map((p: any) => [String(p._id), p]));
+      const typeList = await storage.getClassTypes();
+      const nameToTypeId: Record<string, string> = {};
+      const typeIdToName: Record<string, string> = {};
+      for (const t of typeList) {
+        nameToTypeId[t.name] = t.id;
+        typeIdToName[t.id] = t.name;
+      }
+
+      const resolvedPlans: Array<{ planId: string; planDoc: (typeof planDocs)[number]; planPayload: (typeof plans)[number] }> = [];
+      for (const plan of plans) {
+        let planId = plan.planId || plan.id;
+        if (!planId && plan.category && (plan.planName || plan.name)) {
+          const classTypeId = nameToTypeId[plan.category];
+          const planDoc = await MembershipPlanModel.findOne({
+            classTypeId,
+            name: plan.planName || plan.name,
+          });
+          planId = planDoc ? String(planDoc._id) : null;
+        }
+        if (!planId) continue;
+        const p = planById.get(planId);
+        if (!p) continue;
+        if ((p as { isActive?: boolean }).isActive === false) {
+          res.status(400).json({
+            message: "This membership plan is no longer available for purchase",
+            fields: ["plans"],
+          });
+          return;
+        }
+        resolvedPlans.push({ planId, planDoc: p, planPayload: plan });
+      }
+      if (resolvedPlans.length === 0) {
+        res.status(400).json({ message: "Select at least one valid plan", fields: ["plans"] });
+        return;
+      }
+
+      const claim = await storage.claimEnrollmentTransaction(transactionId);
+      if (claim === "complete") {
+        const freshTx = await storage.getTransactionById(transactionId);
+        const freshMeta = (freshTx?.metadata ?? {}) as Record<string, unknown>;
+        const membershipIds = parseMembershipIds(freshMeta);
+        const idsValid = await validateEnrollmentMembershipIds(membershipIds, memberId);
+        if (!idsValid) {
+          res.status(409).json({
+            message: "Enrollment already recorded but membership data is inconsistent. Contact support.",
+          });
+          return;
+        }
+        const membershipMap = await buildMembershipMapForMember(memberId);
+        res.json({ memberships: membershipMap, hasSignedWaiver: true });
+        return;
+      }
+      if (claim === "in_progress") {
+        res.status(409).json({ message: "Enrollment in progress. Please retry shortly." });
+        return;
+      }
+
       await storage.updateMember(memberId, {
         name: pd.name,
         email: pd.email,
@@ -517,16 +615,6 @@ export function registerMembershipRoutes(app: Express): void {
         }
       }
 
-      const planDocs = await MembershipPlanModel.find({});
-      const planById = new Map(planDocs.map((p: any) => [String(p._id), p]));
-      const typeList = await storage.getClassTypes();
-      const nameToTypeId: Record<string, string> = {};
-      const typeIdToName: Record<string, string> = {};
-      for (const t of typeList) {
-        nameToTypeId[t.name] = t.id;
-        typeIdToName[t.id] = t.name;
-      }
-
       const createdMembershipIds: string[] = [];
       const membershipPlanIds: string[] = [];
       const planNames: string[] = [];
@@ -534,26 +622,7 @@ export function registerMembershipRoutes(app: Express): void {
       const classTypeNames: string[] = [];
       const pricingInputs: { price: number; gstInclusive?: boolean | null }[] = [];
 
-      for (const plan of plans) {
-        let planId = plan.planId || plan.id;
-        if (!planId && plan.category && (plan.planName || plan.name)) {
-          const classTypeId = nameToTypeId[plan.category];
-          const planDoc = await MembershipPlanModel.findOne({
-            classTypeId,
-            name: plan.planName || plan.name,
-          });
-          planId = planDoc ? String(planDoc._id) : null;
-        }
-        if (!planId) continue;
-        const p = planById.get(planId);
-        if (!p) continue;
-        if ((p as { isActive?: boolean }).isActive === false) {
-          res.status(400).json({
-            message: "This membership plan is no longer available for purchase",
-            fields: ["plans"],
-          });
-          return;
-        }
+      for (const { planId, planDoc: p, planPayload: plan } of resolvedPlans) {
         const sessionsTotal = p.sessionsTotal ?? plan.sessions;
         const validityDays = p.validityDays ?? plan.validityDays ?? 30;
         const expiryDate = computeMembershipExpiryExclusiveEnd(startDay, validityDays);
@@ -593,11 +662,7 @@ export function registerMembershipRoutes(app: Express): void {
         });
       }
 
-      const existingMetadata = (transaction.metadata ?? {}) as Record<string, unknown>;
-      const alreadyEnriched =
-        (typeof existingMetadata.enrolledAt === "string" && existingMetadata.enrolledAt.trim().length > 0) ||
-        (typeof existingMetadata.memberId === "string" && existingMetadata.memberId.trim().length > 0);
-      if (!alreadyEnriched && createdMembershipIds.length > 0) {
+      if (createdMembershipIds.length > 0) {
         try {
           const cart = computeCartPricing(pricingInputs);
           const expectedPaise = Math.round(cart.totalInr * 100);
@@ -628,104 +693,7 @@ export function registerMembershipRoutes(app: Express): void {
         }
       }
 
-      const allMemberships = await storage.getMemberMemberships(memberId);
-      const membershipMap: Record<
-        string,
-        {
-          id: string;
-          sessionsRemaining: number;
-          expiryDate: string;
-          extensionApplied: boolean;
-          planName?: string;
-          pauseUsed: boolean;
-          pauseStart: string | null;
-          pauseEnd: string | null;
-          validityDays?: number;
-          startDate: string | null;
-        }
-      > = {};
-      const now = new Date();
-
-      function tierRank(x: {
-        expiryDate: string;
-        sessionsRemaining: number;
-        extensionApplied: boolean;
-        pauseUsed?: boolean | null;
-        pauseStart?: string | null;
-        pauseEnd?: string | null;
-        startDate?: string | null;
-      }): number {
-        const state = getMembershipUsabilityState(
-          {
-            expiryDate: x.expiryDate,
-            sessionsRemaining: x.sessionsRemaining,
-            extensionApplied: x.extensionApplied,
-            pauseUsed: x.pauseUsed,
-            pauseStart: x.pauseStart,
-            pauseEnd: x.pauseEnd,
-            startDate: x.startDate ?? null,
-          },
-          now
-        ).state;
-        return membershipStateTierRank(state);
-      }
-
-      function isCandidateBetter(
-        candidate: {
-          id: string;
-          sessionsRemaining: number;
-          expiryDate: string;
-          extensionApplied: boolean;
-          pauseUsed?: boolean | null;
-          pauseStart?: string | null;
-          pauseEnd?: string | null;
-          startDate?: string | null;
-        },
-        existing: {
-          id: string;
-          sessionsRemaining: number;
-          expiryDate: string;
-          extensionApplied: boolean;
-          pauseUsed?: boolean | null;
-          pauseStart?: string | null;
-          pauseEnd?: string | null;
-          startDate?: string | null;
-        }
-      ): boolean {
-        const ra = tierRank(candidate);
-        const rb = tierRank(existing);
-        if (ra !== rb) return ra < rb;
-        const expA = new Date(candidate.expiryDate).getTime();
-        const expB = new Date(existing.expiryDate).getTime();
-        if (expA !== expB) return expA < expB;
-        return String(candidate.id).localeCompare(String(existing.id), "en") < 0;
-      }
-      for (const m of allMemberships) {
-        const plan = planById.get(m.membershipPlanId);
-        const classTypeId = plan?.classTypeId ?? "";
-        const category = typeIdToName[classTypeId] ?? m.membershipPlanId;
-        const candidate = {
-          id: m.id,
-          sessionsRemaining: m.sessionsRemaining,
-          expiryDate: m.expiryDate instanceof Date ? m.expiryDate.toISOString() : String(m.expiryDate),
-          extensionApplied: Boolean((m as any).extensionApplied),
-          planName: plan?.name,
-          pauseUsed: Boolean((m as any).pauseUsed),
-          pauseStart: (m as any).pauseStart ? new Date((m as any).pauseStart).toISOString() : null,
-          pauseEnd: (m as any).pauseEnd ? new Date((m as any).pauseEnd).toISOString() : null,
-          validityDays: typeof (plan as any)?.validityDays === "number" ? (plan as any).validityDays : undefined,
-          startDate: (m as any).startDate ? new Date((m as any).startDate).toISOString() : null,
-        };
-        const existing = membershipMap[category];
-        if (!existing) {
-          membershipMap[category] = candidate;
-          continue;
-        }
-        if (isCandidateBetter(candidate, existing)) {
-          membershipMap[category] = candidate;
-        }
-      }
-
+      const membershipMap = await buildMembershipMapForMember(memberId);
       res.json({ memberships: membershipMap, hasSignedWaiver: true });
     })
   );
