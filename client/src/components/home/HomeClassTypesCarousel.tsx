@@ -2,10 +2,12 @@ import { useLocation } from "wouter";
 import { Play, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAutoRotateCarousel } from "@/hooks/useAutoRotateCarousel";
+import { cn } from "@/lib/utils";
 import {
   getClassTypeImageSrc,
   getClassTypeInitials,
 } from "@/lib/classTypeImages";
+import { getHomeClassTypeImageSrc } from "@/lib/homeClassTypeImages";
 import { getClassMedia, type ClassMedia } from "@/lib/classMedia";
 
 export interface ClassTypeOption {
@@ -53,7 +55,8 @@ export function HomeClassTypesCarousel({
         role="list"
       >
         {classTypes.map((ct) => {
-          const imageSrc = getClassTypeImageSrc(ct.name);
+          const homeImageSrc = getHomeClassTypeImageSrc(ct.name);
+          const imageSrc = homeImageSrc ?? getClassTypeImageSrc(ct.name);
           const initials = getClassTypeInitials(ct.name);
           const media = getClassMedia(ct.name);
           const hasVideo = Boolean(media?.videoSrc);
@@ -73,7 +76,10 @@ export function HomeClassTypesCarousel({
                     src={imageSrc}
                     alt=""
                     aria-hidden
-                    className="h-full w-full object-cover"
+                    className={cn(
+                      "h-full w-full object-cover",
+                      homeImageSrc && "origin-top-left scale-[1.12]",
+                    )}
                     draggable={false}
                     loading="lazy"
                   />

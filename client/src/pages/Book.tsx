@@ -19,6 +19,10 @@ import { MemberDialogContent } from "@/components/MemberDialogContent";
 import { BookFilterCirclePicker } from "@/components/book/BookFilterCirclePicker";
 import { getMembershipUsability, getRenewUrl } from "@/lib/membershipUi";
 import { getMembershipSessionBookingEligibility } from "@shared/membershipState";
+import {
+  resolveSessionCardTone,
+  getSessionCardToneClasses,
+} from "@/lib/sessionCardTone";
 
 interface SessionDisplay {
   scheduleId: string;
@@ -340,27 +344,30 @@ export default function Book() {
                 )
               : null;
             const canUseMembershipForThisSession = sessionBooking?.ok === true;
+            const isInactive = !bookable;
+            const cardTone = resolveSessionCardTone({
+              isInactive,
+              genderRestriction: session.genderRestriction,
+            });
+            const toneClasses = getSessionCardToneClasses(cardTone);
 
             return (
                 <div
                   key={key}
                   className={cn(
-                    "rounded p-5 flex gap-5 border-l-2 transition-shadow duration-200",
-                    classEnded ? "hover:shadow-none dark:hover:shadow-none" : "hover:shadow-md dark:hover:shadow-black/30",
-                    session.genderRestriction === "FEMALE_ONLY"
-                      ? "border-l-pink-300 dark:border-l-pink-400"
-                      : "border-l-airborne-teal dark:border-l-teal-400",
-                    bookable
-                      ? session.genderRestriction === "FEMALE_ONLY"
-                        ? "bg-rose-50/35 dark:bg-rose-950/15 border border-rose-100 dark:border-rose-900/30 shadow-sm dark:shadow-black/30 hover:shadow-md"
-                        : "bg-white dark:bg-[#111113] border border-gray-100 dark:border-white/6 shadow-sm dark:shadow-black/30 hover:shadow-md"
-                      : classEnded
-                        ? "border border-dashed border-gray-300 dark:border-white/10 bg-gray-100/90 dark:bg-[#131315] shadow-none opacity-[0.97]"
-                        : "bg-gray-50 dark:bg-[#18181B] border border-gray-200 dark:border-white/10"
+                    "relative overflow-hidden rounded-2xl p-5 flex gap-5 transition-shadow duration-200",
+                    toneClasses.shell,
+                    isInactive
+                      ? classEnded
+                        ? "border-dashed hover:shadow-none dark:hover:shadow-none"
+                        : "hover:shadow-none dark:hover:shadow-none"
+                      : "hover:shadow-md dark:hover:shadow-black/30"
                   )}
                   data-testid={`card-session-${key}`}
                 >
-                    <div className="flex flex-col items-center justify-center w-16 border-r border-gray-100 dark:border-white/10 pr-5 text-center">
+                    <div className={toneClasses.accentBar} aria-hidden />
+                    <div className={toneClasses.orb} aria-hidden />
+                    <div className="relative z-10 flex flex-col items-center justify-center w-16 border-r border-gray-100 dark:border-white/10 pr-5 text-center">
                         <span
                           className={cn(
                             "text-lg font-bold",
@@ -375,7 +382,7 @@ export default function Book() {
                         </span>
                         <span className="text-[10px] font-medium text-gray-400 dark:text-[#6B7280] uppercase">{formatTime12h(session.endTime)}</span>
                     </div>
-                    <div className="flex-1">
+                    <div className="relative z-10 flex-1">
                         <div className="flex justify-between items-start mb-1">
                           <h3
                             className={cn(
@@ -393,7 +400,7 @@ export default function Book() {
                           <div className="flex flex-col items-end gap-1">
                             <span className="text-[10px] bg-teal-50 dark:bg-teal-900/40 text-airborne-teal dark:text-teal-300 px-1 rounded">{selectedBranch}</span>
                             {session.genderRestriction === "FEMALE_ONLY" && (
-                              <span className="text-[10px] font-medium text-pink-700 dark:text-pink-300 px-1.5 py-0.5 rounded bg-pink-100/80 dark:bg-pink-900/35">
+                              <span className={toneClasses.femaleOnlyChip}>
                                 Female only
                               </span>
                             )}

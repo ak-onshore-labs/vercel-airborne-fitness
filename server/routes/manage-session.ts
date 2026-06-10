@@ -250,7 +250,7 @@ async function promoteWaitlistForSession(scheduleId: string, sessionDate: string
 
 async function enrichBookingsWithScheduleSlots<
   T extends { scheduleId: string; id?: string; memberId?: string; sessionDate?: string; status?: string }
->(bookings: T[]): Promise<Array<T & { category: string; branch: string; startTime: string; endTime: string }>> {
+>(bookings: T[]): Promise<Array<T & { category: string; branch: string; startTime: string; endTime: string; genderRestriction: "NONE" | "FEMALE_ONLY" }>> {
   return Promise.all(
     bookings.map(async (b) => {
       const slot = await storage.getScheduleSlot(b.scheduleId);
@@ -260,6 +260,7 @@ async function enrichBookingsWithScheduleSlots<
         branch: slot?.branch ?? "",
         startTime: slot ? `${pad2(slot.startHour)}:${pad2(slot.startMinute)}` : "",
         endTime: slot ? `${pad2(slot.endHour)}:${pad2(slot.endMinute)}` : "",
+        genderRestriction: slot?.genderRestriction ?? "NONE",
       };
     })
   );

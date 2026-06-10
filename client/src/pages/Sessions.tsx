@@ -16,6 +16,10 @@ import {
 } from "@/components/ui/dialog";
 import { formatTime12h } from "@/lib/formatTime";
 import { MemberDialogContent } from "@/components/MemberDialogContent";
+import {
+  resolveSessionCardTone,
+  getSessionCardToneClasses,
+} from "@/lib/sessionCardTone";
 
 export default function Sessions() {
   const { user, bookedSessions, cancelBooking, leaveWaitlist, refreshBookings } = useMember();
@@ -89,22 +93,47 @@ export default function Sessions() {
     return <div className="flex items-center justify-center h-full">Loading... <Loader2 size={16} /></div>;
   }
 
-  const BookingCard = ({ booking }: { booking: Booking }) => {
+  const BookingCard = ({ booking, isPast }: { booking: Booking; isPast: boolean }) => {
     const canCancel = isCancellationOpen(booking.sessionDate, booking.startTime);
     const isWaitlisted = booking.status === "WAITLIST";
+    const cardTone = resolveSessionCardTone({
+      isInactive: isPast,
+      genderRestriction: booking.genderRestriction,
+    });
+    const toneClasses = getSessionCardToneClasses(cardTone);
 
     return (
-      <div className="bg-white dark:bg-[#111113] border border-gray-100 dark:border-white/6 border-l-2 border-l-airborne-teal dark:border-l-teal-400 p-5 rounded shadow-sm dark:shadow-black/30 space-y-4 transition-shadow duration-200 hover:shadow-md dark:hover:shadow-black/30" data-testid={`card-booking-${booking.id}`}>
-        <div className="flex justify-between items-start">
+      <div
+        className={cn(
+          "relative overflow-hidden rounded-2xl p-5 space-y-4 transition-shadow duration-200",
+          toneClasses.shell,
+          isPast ? "hover:shadow-none dark:hover:shadow-none" : "hover:shadow-md dark:hover:shadow-black/30"
+        )}
+        data-testid={`card-booking-${booking.id}`}
+      >
+        <div className={toneClasses.accentBar} aria-hidden />
+        <div className={toneClasses.orb} aria-hidden />
+        <div className="relative z-10 flex justify-between items-start">
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <h3 className="font-bold text-gray-900 dark:text-[#EDEDED] capitalize" data-testid={`text-booking-category-${booking.id}`}>{booking.category}</h3>
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              <h3
+                className={cn(
+                  "font-bold capitalize",
+                  isPast ? "text-gray-500 dark:text-[#9CA3AF]" : "text-gray-900 dark:text-[#EDEDED]"
+                )}
+                data-testid={`text-booking-category-${booking.id}`}
+              >
+                {booking.category}
+              </h3>
               <span className={cn(
                 "text-[10px] px-2 py-0.5 rounded-full font-bold uppercase",
                 isWaitlisted ? "bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-800" : "bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 border border-green-100 dark:border-green-800"
               )} data-testid={`badge-status-${booking.id}`}>
                 {isWaitlisted ? `Waitlist #${booking.waitlistPosition}` : "Confirmed"}
               </span>
+              {booking.genderRestriction === "FEMALE_ONLY" && (
+                <span className={toneClasses.femaleOnlyChip}>Female only</span>
+              )}
             </div>
             <div className="space-y-1">
               <div className="flex items-center text-xs text-gray-500 dark:text-[#9CA3AF] gap-1.5">
@@ -120,7 +149,7 @@ export default function Sessions() {
           </div>
         </div>
 
-        <div className="pt-2 border-t border-gray-50 dark:border-white/6 flex justify-between items-center">
+        <div className="relative z-10 pt-2 border-t border-gray-50 dark:border-white/6 flex justify-between items-center">
           {!canCancel ? (
             <span className="text-[10px] font-bold text-red-400 dark:text-red-500 flex items-center gap-1">
               <AlertCircle size={12} /> Cancellation closed
@@ -176,7 +205,7 @@ export default function Sessions() {
         {activeTab === "upcoming" ? (
           <div className="space-y-4">
             {upcomingBookings.length > 0 ? (
-              upcomingBookings.map(booking => <BookingCard key={booking.id} booking={booking} />)
+              upcomingBookings.map(booking => <BookingCard key={booking.id} booking={booking} isPast={false} />)
             ) : (
               <div className="text-center py-12 bg-gray-50 dark:bg-[#111113] rounded border border-dashed border-gray-200 dark:border-white/10">
                 <p className="text-gray-500 dark:text-[#9CA3AF] text-sm">No upcoming sessions.</p>
@@ -186,7 +215,7 @@ export default function Sessions() {
         ) : (
           <div className="space-y-4">
             {pastBookings.length > 0 ? (
-              pastBookings.map(booking => <BookingCard key={booking.id} booking={booking} />)
+              pastBookings.map(booking => <BookingCard key={booking.id} booking={booking} isPast />)
             ) : (
               <div className="text-center py-12 bg-gray-50 dark:bg-[#111113] rounded border border-dashed border-gray-200 dark:border-white/10">
                 <p className="text-gray-500 dark:text-[#9CA3AF] text-sm">No past sessions.</p>

@@ -57,6 +57,7 @@ export interface Booking {
   startTime: string;
   endTime: string;
   waitlistPosition?: number;
+  genderRestriction?: "NONE" | "FEMALE_ONLY";
 }
 
 export interface LoginResult {
