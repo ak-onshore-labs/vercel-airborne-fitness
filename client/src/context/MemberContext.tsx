@@ -1,6 +1,11 @@
 import React, { createContext, useContext, useState, ReactNode, useCallback, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { apiFetch, setStoredToken, getStoredToken } from '@/lib/api';
+import {
+  fetchSessionBookingCountsBatch,
+  sessionCountKey,
+  type SessionBookingCount,
+} from '@/lib/sessionBookingCounts';
 import { membershipEnrollmentStartBounds } from '@shared/membershipDates';
 
 export interface MembershipDetails {
@@ -89,7 +94,10 @@ interface MemberContextType {
   selfExtendMembership: (categoryName: string) => Promise<boolean>;
   pauseMembership: (membershipId: string) => Promise<boolean>;
   refreshBookings: () => Promise<void>;
-  getSessionCounts: (scheduleId: string, date: string) => Promise<{ bookedCount: number; waitlistCount: number }>;
+  getSessionCounts: (scheduleId: string, date: string) => Promise<SessionBookingCount>;
+  getSessionCountsBatch: (
+    sessions: Array<{ scheduleId: string; sessionDate: string }>
+  ) => Promise<Record<string, SessionBookingCount>>;
   updateProfile: (data: Partial<Pick<UserProfile, 'name' | 'gender' | 'email' | 'dob' | 'emergencyContactName' | 'emergencyContactPhone' | 'medicalConditions'>>) => Promise<UpdateProfileResult>;
   /** False until the first `/api/auth/me` (or no-token) bootstrap finishes. */
   sessionRestored: boolean;
@@ -266,12 +274,17 @@ export function MemberProvider({ children }: { children: ReactNode }) {
     }
   }, [user]);
 
+  const getSessionCountsBatch = useCallback(
+    async (sessions: Array<{ scheduleId: string; sessionDate: string }>) => {
+      return fetchSessionBookingCountsBatch(sessions, apiFetch);
+    },
+    []
+  );
+
   const getSessionCounts = async (scheduleId: string, date: string) => {
-    const result = await apiFetch<{ bookedCount: number; waitlistCount: number }>(
-      `/api/session-bookings?scheduleId=${encodeURIComponent(scheduleId)}&date=${encodeURIComponent(date)}`
-    );
-    if (result.ok) return result.data;
-    return { bookedCount: 0, waitlistCount: 0 };
+    const key = sessionCountKey(scheduleId, date);
+    const counts = await getSessionCountsBatch([{ scheduleId, sessionDate: date }]);
+    return counts[key] ?? { bookedCount: 0, waitlistCount: 0 };
   };
 
   const bookSession = async (session: any, _categoryName: string) => {
@@ -447,7 +460,7 @@ export function MemberProvider({ children }: { children: ReactNode }) {
     <MemberContext.Provider value={{ 
       user, bookedSessions, selectedBranch, setSelectedBranch,
       login, loginWithPayload, logout, enroll, bookSession, joinWaitlist, cancelBooking, leaveWaitlist, 
-      hasMembershipFor, selfExtendMembership, pauseMembership, refreshBookings, getSessionCounts, updateProfile,
+      hasMembershipFor, selfExtendMembership, pauseMembership, refreshBookings, getSessionCounts, getSessionCountsBatch, updateProfile,
       sessionRestored,
       deleteAccount,
     }}>

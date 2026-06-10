@@ -305,10 +305,41 @@ export function registerManageSessionRoutes(app: Express): void {
   app.get("/api/session-bookings", asyncHandler(async (req: Request, res: Response) => {
     const { scheduleId, date } = req.query;
     if (!scheduleId || !date) return res.status(400).json({ message: "Missing params" });
-    const result = await storage.getBookingsForSession(scheduleId as string, date as string);
-    const booked = result.filter(b => b.status === "BOOKED").length;
-    const waitlistCount = result.filter(b => b.status === "WAITLIST").length;
-    res.json({ bookedCount: booked, waitlistCount });
+    const key = `${scheduleId}_${date}`;
+    const counts = await storage.getSessionBookingCountsBatch([
+      { scheduleId: scheduleId as string, sessionDate: date as string },
+    ]);
+    const entry = counts[key] ?? { bookedCount: 0, waitlistCount: 0 };
+    res.json({ bookedCount: entry.bookedCount, waitlistCount: entry.waitlistCount });
+  }));
+
+  app.post("/api/session-bookings/batch", asyncHandler(async (req: Request, res: Response) => {
+    const body = req.body as { sessions?: unknown };
+    if (!body || !Array.isArray(body.sessions)) {
+      return res.status(400).json({ message: "sessions array is required" });
+    }
+    if (body.sessions.length === 0 || body.sessions.length > 40) {
+      return res.status(400).json({ message: "sessions must contain 1 to 40 items" });
+    }
+
+    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+    const parsed: Array<{ scheduleId: string; sessionDate: string }> = [];
+
+    for (const item of body.sessions) {
+      if (!item || typeof item !== "object") {
+        return res.status(400).json({ message: "Invalid session item" });
+      }
+      const raw = item as Record<string, unknown>;
+      const scheduleId = typeof raw.scheduleId === "string" ? raw.scheduleId.trim() : "";
+      const date = typeof raw.date === "string" ? raw.date.trim() : "";
+      if (!scheduleId || !dateRe.test(date)) {
+        return res.status(400).json({ message: "Each session requires scheduleId and date (yyyy-MM-dd)" });
+      }
+      parsed.push({ scheduleId, sessionDate: date });
+    }
+
+    const counts = await storage.getSessionBookingCountsBatch(parsed);
+    res.json({ counts });
   }));
 
   app.post(

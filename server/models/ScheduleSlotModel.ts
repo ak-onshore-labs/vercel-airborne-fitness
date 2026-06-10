@@ -18,4 +18,6 @@ const scheduleSlotSchema = new mongoose.Schema<ScheduleSlot & { _id: mongoose.Ty
   { _id: true }
 );
 
+scheduleSlotSchema.index({ branch: 1, dayOfWeek: 1, isActive: 1 });
+
 export const ScheduleSlotModel = mongoose.model("ScheduleSlot", scheduleSlotSchema);

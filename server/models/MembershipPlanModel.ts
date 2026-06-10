@@ -14,4 +14,6 @@ const membershipPlanSchema = new mongoose.Schema<MembershipPlan & { _id: mongoos
   { _id: true }
 );
 
+membershipPlanSchema.index({ classTypeId: 1, isActive: 1 });
+
 export const MembershipPlanModel = mongoose.model("MembershipPlan", membershipPlanSchema);

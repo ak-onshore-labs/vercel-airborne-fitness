@@ -17,4 +17,8 @@ const bookingSchema = new mongoose.Schema<BookingRecord & { _id: mongoose.Types.
   { timestamps: true }
 );
 
+bookingSchema.index({ scheduleId: 1, sessionDate: 1, status: 1 });
+bookingSchema.index({ memberId: 1, sessionDate: 1 });
+bookingSchema.index({ memberId: 1, status: 1 });
+
 export const BookingModel = mongoose.model("Booking", bookingSchema);

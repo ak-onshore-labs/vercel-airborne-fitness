@@ -185,6 +185,9 @@ export interface IStorage {
 
   getBookingsForMember(memberId: string): Promise<BookingRecord[]>;
   getBookingsForSession(scheduleId: string, sessionDate: string): Promise<BookingRecord[]>;
+  getSessionBookingCountsBatch(
+    sessions: Array<{ scheduleId: string; sessionDate: string }>
+  ): Promise<Record<string, { bookedCount: number; waitlistCount: number }>>;
   getUpcomingBookingsPreviewForScheduleSlot(
     scheduleId: string,
     fromDate: string,
@@ -779,6 +782,55 @@ export class MongoStorage implements IStorage {
   async getBookingsForSession(scheduleId: string, sessionDate: string): Promise<BookingRecord[]> {
     const docs = await BookingModel.find({ scheduleId, sessionDate });
     return toApiList<BookingRecord>(docs);
+  }
+
+  async getSessionBookingCountsBatch(
+    sessions: Array<{ scheduleId: string; sessionDate: string }>
+  ): Promise<Record<string, { bookedCount: number; waitlistCount: number }>> {
+    const seen = new Set<string>();
+    const pairs: Array<{ scheduleId: string; sessionDate: string }> = [];
+    for (const s of sessions) {
+      const scheduleId = s.scheduleId?.trim();
+      const sessionDate = s.sessionDate?.trim();
+      if (!scheduleId || !sessionDate) continue;
+      const key = `${scheduleId}_${sessionDate}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      pairs.push({ scheduleId, sessionDate });
+    }
+
+    const counts: Record<string, { bookedCount: number; waitlistCount: number }> = {};
+    for (const key of Array.from(seen)) {
+      counts[key] = { bookedCount: 0, waitlistCount: 0 };
+    }
+    if (pairs.length === 0) return counts;
+
+    const groups = await BookingModel.aggregate<{
+      _id: { scheduleId: string; sessionDate: string; status: string };
+      count: number;
+    }>([
+      {
+        $match: {
+          $or: pairs.map((p) => ({ scheduleId: p.scheduleId, sessionDate: p.sessionDate })),
+          status: { $in: ["BOOKED", "WAITLIST"] },
+        },
+      },
+      {
+        $group: {
+          _id: { scheduleId: "$scheduleId", sessionDate: "$sessionDate", status: "$status" },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    for (const g of groups) {
+      const key = `${g._id.scheduleId}_${g._id.sessionDate}`;
+      if (!counts[key]) counts[key] = { bookedCount: 0, waitlistCount: 0 };
+      if (g._id.status === "BOOKED") counts[key].bookedCount = g.count;
+      else if (g._id.status === "WAITLIST") counts[key].waitlistCount = g.count;
+    }
+
+    return counts;
   }
 
   async getUpcomingBookingsPreviewForScheduleSlot(

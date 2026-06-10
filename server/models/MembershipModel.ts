@@ -19,4 +19,6 @@ const membershipSchema = new mongoose.Schema<Membership & { _id: mongoose.Types.
   { timestamps: true }
 );
 
+membershipSchema.index({ memberId: 1, expiryDate: 1 });
+
 export const MembershipModel = mongoose.model("Membership", membershipSchema);

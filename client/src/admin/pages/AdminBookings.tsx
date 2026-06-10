@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { format, isSameDay, addDays, startOfToday } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { getStoredToken } from "@/lib/api";
 import { Loader2 } from "lucide-react";
 import { calendarDateInIST } from "@shared/membershipDates";
+import { fetchSessionBookingCountsBatch, sessionCountKey } from "@/lib/sessionBookingCounts";
 
 type BookingsTab = "today" | "upcoming" | "all";
 
@@ -616,6 +617,7 @@ export default function AdminBookings() {
       return;
     }
     setAddLoadingSchedule(true);
+    setAddSessionCounts({});
     const dateStr = format(addSelectedDate, "yyyy-MM-dd");
     adminApiFetch<{ sessions: SessionDisplay[] }>(
       `/api/schedule?branch=${encodeURIComponent(addBranch)}&date=${encodeURIComponent(dateStr)}`
@@ -626,19 +628,32 @@ export default function AdminBookings() {
     });
   }, [addBookingOpen, addStep, addBranch, addSelectedDate]);
 
+  const addSessionKeys = useMemo(
+    () =>
+      addSessions
+        .map((s) => sessionCountKey(s.scheduleId, s.sessionDate))
+        .sort()
+        .join("|"),
+    [addSessions]
+  );
+
   useEffect(() => {
-    if (addSessions.length === 0) return;
-    addSessions.forEach((s) => {
-      const key = `${s.scheduleId}_${s.sessionDate}`;
-      if (!addSessionCounts[key]) {
-        adminApiFetch<{ bookedCount: number; waitlistCount: number }>(
-          `/api/session-bookings?scheduleId=${encodeURIComponent(s.scheduleId)}&date=${encodeURIComponent(s.sessionDate)}`
-        ).then((r) => {
-          if (r.ok) setAddSessionCounts((prev) => ({ ...prev, [key]: r.data }));
-        });
-      }
+    if (addSessions.length === 0) {
+      setAddSessionCounts({});
+      return;
+    }
+    let cancelled = false;
+    const pairs = addSessions.map((s) => ({
+      scheduleId: s.scheduleId,
+      sessionDate: s.sessionDate,
+    }));
+    void fetchSessionBookingCountsBatch(pairs, adminApiFetch).then((counts) => {
+      if (!cancelled) setAddSessionCounts(counts);
     });
-  }, [addSessions.length]);
+    return () => {
+      cancelled = true;
+    };
+  }, [addSessionKeys, addSessions]);
 
   useEffect(() => {
     if (!selectedMember || addStep !== 2) return;
@@ -681,8 +696,14 @@ export default function AdminBookings() {
     if (res.ok) {
       toast({ title: "Booking created" });
       setAddMemberBookings((prev) => [...prev, { scheduleId: session.scheduleId, sessionDate: session.sessionDate }]);
-      const newCounts = { ...counts, bookedCount: counts.bookedCount + 1 };
-      setAddSessionCounts((prev) => ({ ...prev, [key]: newCounts }));
+      const refreshed = await fetchSessionBookingCountsBatch(
+        [{ scheduleId: session.scheduleId, sessionDate: session.sessionDate }],
+        adminApiFetch
+      );
+      setAddSessionCounts((prev) => ({
+        ...prev,
+        [key]: refreshed[key] ?? { bookedCount: 0, waitlistCount: 0 },
+      }));
       fetchBookings();
       if (bookingsTab === "today" || bookingsTab === "upcoming") {
         refreshActiveSessionDaysTab();
