@@ -15,6 +15,14 @@ import {
 import { getClassMembershipEnrollUrl, getKidsEnrollFallbackUrl } from "@/lib/membershipUi";
 import { buildRazorpayCheckoutPrefill } from "@/lib/razorpayPrefill";
 import { membershipEnrollmentStartBounds } from "@shared/membershipDates";
+import {
+  fetchSessionBookingCountsBatch,
+  sessionCountKey,
+} from "@/lib/sessionBookingCounts";
+import {
+  getTrialSessionEligibility,
+  type TrialSessionEligibilityResult,
+} from "@/lib/trialSessionEligibility";
 import MobileLayout from "@/components/layout/MobileLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,6 +50,7 @@ interface ClassTypeOption {
 type CheckoutPhase =
   | { kind: "loading" }
   | { kind: "session_missing" }
+  | { kind: "session_unavailable" }
   | { kind: "plan_missing" }
   | { kind: "date_invalid" }
   | { kind: "ready"; session: SessionDisplay; trialPlan: TrialPlan };
@@ -96,7 +105,28 @@ function resolveInitialTrialStep(user: UserProfile): TrialStep {
   return "payment";
 }
 
+async function validateTrialSession(
+  session: SessionDisplay,
+  userGender: unknown
+): Promise<TrialSessionEligibilityResult> {
+  const counts = await fetchSessionBookingCountsBatch(
+    [{ scheduleId: session.scheduleId, sessionDate: session.sessionDate }],
+    apiFetch
+  );
+  const key = sessionCountKey(session.scheduleId, session.sessionDate);
+  const bookedCount = counts[key]?.bookedCount ?? 0;
+  return getTrialSessionEligibility({
+    sessionDate: session.sessionDate,
+    startTime: session.startTime,
+    capacity: session.capacity,
+    genderRestriction: session.genderRestriction,
+    bookedCount,
+    userGender,
+  });
+}
+
 function TrialErrorCard({
+  title,
   message,
   primaryLabel,
   onPrimary,
@@ -104,6 +134,7 @@ function TrialErrorCard({
   onSecondary,
   testId = "trial-checkout-error",
 }: {
+  title?: string;
   message: string;
   primaryLabel: string;
   onPrimary: () => void;
@@ -116,6 +147,9 @@ function TrialErrorCard({
       className="bg-white dark:bg-[#111113] border border-gray-100 dark:border-white/6 border-l-2 border-l-amber-500 p-6 rounded shadow-sm dark:shadow-black/30 text-center space-y-4"
       data-testid={testId}
     >
+      {title && (
+        <h2 className="text-lg font-bold text-gray-900 dark:text-[#EDEDED]">{title}</h2>
+      )}
       <p className="text-sm text-gray-700 dark:text-[#EDEDED]">{message}</p>
       <div className="flex flex-col gap-2">
         <Button
@@ -183,7 +217,7 @@ export default function TrialCheckout() {
   }, [user?.id]);
 
   useEffect(() => {
-    if (!parsed.ok) return;
+    if (!parsed.ok || !user) return;
 
     let cancelled = false;
 
@@ -232,6 +266,13 @@ export default function TrialCheckout() {
         return;
       }
 
+      const eligibility = await validateTrialSession(session, user!.gender);
+      if (cancelled) return;
+      if (!eligibility.ok) {
+        setPhase({ kind: "session_unavailable" });
+        return;
+      }
+
       const plansResult = await apiFetch<TrialPlan[]>(
         `/api/membership-plans?classTypeId=${encodeURIComponent(params.classTypeId)}`
       );
@@ -255,7 +296,7 @@ export default function TrialCheckout() {
     return () => {
       cancelled = true;
     };
-  }, [parsed, setLocation]);
+  }, [parsed, setLocation, user]);
 
   useEffect(() => {
     if (phase.kind !== "ready" || !user || stepInitializedRef.current) return;
@@ -307,6 +348,14 @@ export default function TrialCheckout() {
   const handlePay = async (session: SessionDisplay, trialPlan: TrialPlan) => {
     setPaymentError(null);
     setIsPaying(true);
+
+    const gender = formData.gender?.trim() || user?.gender;
+    const eligibility = await validateTrialSession(session, gender);
+    if (!eligibility.ok) {
+      setPhase({ kind: "session_unavailable" });
+      setIsPaying(false);
+      return;
+    }
 
     const subtotal = trialPlan.price;
     const tax = trialPlan.price * 0.05;
@@ -529,6 +578,16 @@ export default function TrialCheckout() {
             message="This class is no longer available."
             primaryLabel="Back to Book"
             onPrimary={() => setLocation("/book")}
+          />
+        )}
+
+        {phase.kind === "session_unavailable" && (
+          <TrialErrorCard
+            title="This class is no longer available"
+            message="This class is no longer available for trial booking. Please choose another slot."
+            primaryLabel="Back to Book"
+            onPrimary={() => setLocation("/book")}
+            testId="trial-session-unavailable"
           />
         )}
 

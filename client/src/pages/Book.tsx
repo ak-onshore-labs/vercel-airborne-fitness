@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useMember } from "@/context/MemberContext";
-import { format, isSameDay, addDays, startOfToday, subMinutes, addMinutes } from "date-fns";
+import { format, isSameDay, addDays, startOfToday, subMinutes } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useLocation } from "wouter";
 import MobileLayout from "@/components/layout/MobileLayout";
@@ -24,6 +24,8 @@ import {
   hasAnyUsableBookingMembership,
 } from "@/lib/membershipUi";
 import { getMembershipSessionBookingEligibility } from "@shared/membershipState";
+import { isSessionWithinBookingWindow } from "@shared/sessionBookingWindow";
+import { isEligibleForGenderRestriction } from "@/lib/genderEligibility";
 import {
   resolveSessionCardTone,
   getSessionCardToneClasses,
@@ -49,8 +51,6 @@ interface ClassTypeOption {
   isActive: boolean;
 }
 
-const MEMBER_BOOKING_CUTOFF_MINUTES = 5;
-
 type SessionCountMap = Record<string, { bookedCount: number; waitlistCount: number }>;
 
 function sessionCountsEqual(a: SessionCountMap, b: SessionCountMap): boolean {
@@ -72,16 +72,7 @@ function getNext7Days() {
   return Array.from({ length: 7 }).map((_, i) => addDays(today, i));
 }
 
-/** Session is bookable until 5 minutes after start. Matches backend rule. */
-function isSessionBookable(sessionDate: string, startTime: string): boolean {
-  const [h, m] = startTime.split(":").map(Number);
-  const sessionStart = new Date(sessionDate + "T00:00:00");
-  sessionStart.setHours(h, m, 0, 0);
-  const cutoff = addMinutes(sessionStart, MEMBER_BOOKING_CUTOFF_MINUTES);
-  return new Date() <= cutoff;
-}
-
-/** Scheduled end instant (display-only). Mirrors isSessionBookable date parsing. */
+/** Scheduled end instant (display-only). Mirrors booking window date parsing. */
 function getSessionEnd(sessionDate: string, endTime: string): Date {
   const [h, m] = endTime.split(":").map(Number);
   const sessionEnd = new Date(sessionDate + "T00:00:00");
@@ -333,7 +324,9 @@ export default function Book() {
             const booking = bookedSessions.find(b => b.scheduleId === session.scheduleId && b.sessionDate === session.sessionDate && b.status !== "CANCELLED");
             const membershipDetails = user?.memberships[session.category];
             const hasMembership = Boolean(membershipDetails);
-            const bookable = isSessionBookable(session.sessionDate, session.startTime);
+            const bookable = isSessionWithinBookingWindow(session.sessionDate, session.startTime);
+            const genderEligible = isEligibleForGenderRestriction(session.genderRestriction, user.gender);
+            const canStartTrial = bookable && !isFull && genderEligible;
             const classEnded = isSessionClassEnded(session.sessionDate, session.endTime);
             const membershipState = membershipDetails ? getMembershipUsability(membershipDetails).state : null;
             const [startHRaw, startMRaw] = session.startTime.split(":").map((x) => parseInt(x, 10));
@@ -476,7 +469,9 @@ export default function Book() {
                         ) : !hasMembership ? (
                              <Button
                                size="sm"
+                               disabled={!canStartTrial}
                                onClick={() => {
+                                 if (!canStartTrial) return;
                                  const match = classTypes.find((t) => t.name === session.category);
                                  setLocation(
                                    getTrialEnrollUrl({
@@ -488,7 +483,9 @@ export default function Book() {
                                    })
                                  );
                                }}
-                               className="h-9 bg-gray-900 dark:bg-[#EDEDED] text-white dark:text-[#0B0B0C] text-xs px-5 rounded"
+                               className={cn(
+                                 "h-9 bg-gray-900 dark:bg-[#EDEDED] text-white dark:text-[#0B0B0C] text-xs px-5 rounded disabled:opacity-60"
+                               )}
                                data-testid={`button-trial-${key}`}
                              >
                                Book Trial
