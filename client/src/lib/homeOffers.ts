@@ -1,34 +1,40 @@
 /**
  * Home page "Current Offers" content (V1, frontend-only).
  *
- * These are the two real, owner-confirmed offer concepts. No fake/placeholder
- * offers. There is no backend/admin CMS for offers yet — this list is the
- * single source of truth until a Phase 3 admin surface exists.
+ * Card fields (title, subtitle, discountLabel) are teaser copy only.
+ * Modal-only fields (modalIntro, modalSlabs) must never be rendered on cards.
  *
- * To update an offer: edit the entries below. To hide one without deleting it,
- * set `isActive: false`. To make a CTA visual-only (no navigation), set
- * `route: null`.
+ * To hide an offer without deleting it, set `isActive: false`.
  */
+
+export type HomeOfferKind = "long_term" | "combination";
+
+export interface HomeOfferModalSlab {
+  /** Marketing label shown in modal (e.g. "Half-Yearly"). */
+  label: string;
+  percentOff: number;
+}
 
 export interface HomeOffer {
   /** Stable key for React lists. */
   id: string;
+  kind: HomeOfferKind;
   /** Headline of the offer card. */
   title: string;
   /** Optional supporting line under the title. */
   subtitle?: string;
-  /** Optional detail rows (e.g. per-plan discounts). Rendered as a clean list. */
-  details?: string[];
-  /** Short, tasteful discount label shown as a teal badge. */
+  /** Short, tasteful discount label shown as a teal badge on the card. */
   discountLabel: string;
-  /** Call-to-action label. */
-  ctaLabel: string;
-  /**
-   * Where the CTA navigates. `/enroll` opens the membership flow (no plan
-   * deep-link yet, per owner constraint). Set to `null` to make the CTA
-   * visual-only (non-navigating) until the owner confirms behavior.
-   */
-  route: string | null;
+  /** Card call-to-action label (opens detail sheet). */
+  cardCtaLabel: string;
+  /** Optional explanatory copy shown only in the detail sheet. */
+  modalIntro?: string;
+  /** Combination offer slabs — modal only, never rendered on the card. */
+  modalSlabs?: HomeOfferModalSlab[];
+  /** Detail sheet primary CTA label. */
+  enrollCtaLabel: string;
+  /** Where the sheet enroll CTA navigates. Set to `null` to disable. */
+  enrollRoute: string | null;
   /** Toggle visibility without removing the entry. */
   isActive: boolean;
 }
@@ -36,26 +42,35 @@ export interface HomeOffer {
 export const HOME_OFFERS: HomeOffer[] = [
   {
     id: "long-term-10",
-    title: "Yearly & Half-Yearly Memberships",
-    subtitle: "Save on long-term memberships.",
-    discountLabel: "10% OFF",
-    ctaLabel: "Explore memberships",
-    route: "/enroll",
+    kind: "long_term",
+    title: "Save 10% on long-term memberships",
+    subtitle: "Available on Half-Yearly and Yearly plans.",
+    discountLabel: "10% off",
+    cardCtaLabel: "Know More",
+    modalIntro:
+      "Save 10% when you choose a Half-Yearly or Yearly membership for any class type.",
+    enrollCtaLabel: "Explore memberships",
+    enrollRoute: "/enroll",
     isActive: true,
   },
   {
     id: "two-plans-together",
-    title: "Two Plans Together",
-    subtitle: "Combine plans and save more, the longer you commit.",
-    details: [
-      "Monthly · 5% off",
-      "Quarterly · 10% off",
-      "Half-Yearly · 15% off",
-      "Yearly · 20% off",
+    kind: "combination",
+    title: "Unlock more value with multiple classes",
+    subtitle:
+      "Choose 2 or more class types together and unlock additional membership benefits.",
+    discountLabel: "Multi-class offer",
+    cardCtaLabel: "Know More",
+    modalIntro:
+      "When you enroll in 2 or more different class types together, your combination discount depends on the plan duration you choose:",
+    modalSlabs: [
+      { label: "Monthly", percentOff: 5 },
+      { label: "Quarterly", percentOff: 10 },
+      { label: "Half-Yearly", percentOff: 15 },
+      { label: "Yearly", percentOff: 20 },
     ],
-    discountLabel: "Up to 20% OFF",
-    ctaLabel: "Explore memberships",
-    route: "/enroll",
+    enrollCtaLabel: "Explore memberships",
+    enrollRoute: "/enroll",
     isActive: true,
   },
 ];
