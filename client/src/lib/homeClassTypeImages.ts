@@ -1,6 +1,7 @@
 import { normalizeClassTypeName } from "@/lib/classTypeImages";
 
-import aerialFitnessImg from "@/assets/home/class-types/aerial-fitness.png";
+import aerialFitnessImg from "@/assets/home/class-types/aerial-fitness.jpg";
+import kidsAerialFitnessImg from "@/assets/home/class-types/kids-aerial-fitness.jpg";
 import yogaImg from "@/assets/home/class-types/yoga.png";
 import aerialSilkHoopImg from "@/assets/home/class-types/aerial-silk-hoop.png";
 import danceFitnessImg from "@/assets/home/class-types/dance-fitness.png";
@@ -10,6 +11,7 @@ import trampolineFitnessImg from "@/assets/home/class-types/trampoline-fitness.p
 
 const HOME_CLASS_IMAGES: Record<string, string> = {
   "aerial fitness": aerialFitnessImg,
+  "kids aerial fitness": kidsAerialFitnessImg,
   yoga: yogaImg,
   "aerial silk & hoop": aerialSilkHoopImg,
   "dance fitness": danceFitnessImg,
@@ -20,13 +22,11 @@ const HOME_CLASS_IMAGES: Record<string, string> = {
 
 /**
  * Home Explore Classes carousel only — does not affect Book/Enroll pickers.
- * Returns undefined for Kids Aerial Fitness and unknown types so callers can
- * fall back to getClassTypeImageSrc or initials.
+ * Returns undefined for unknown types so callers can fall back to initials.
  */
 export function getHomeClassTypeImageSrc(
   classTypeName: string,
 ): string | undefined {
   const n = normalizeClassTypeName(classTypeName);
-  if (n === "kids aerial fitness") return undefined;
   return HOME_CLASS_IMAGES[n];
 }
